@@ -1,0 +1,43 @@
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0d3b66;
+  margin-bottom: 8px;
+}
+
+.required {
+  color: #dc3545;
+  margin-left: 4px;
+}
+
+.form-control input,
+.form-control textarea,
+.form-control select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #333;
+  background-color: #fafbfc;
+  transition: all 0.3s ease;
+}
+
+.form-control input:focus,
+.form-control textarea:focus,
+.form-control select:focus {
+  outline: none;
+  background-color: white;
+  border-color: #0d3b66;
+  box-shadow: 0 0 0 3px rgba(13, 59, 102, 0.1);
+}
+
+.form-control textarea {
+  resize: vertical;
+  min-height: 80px;
+}
