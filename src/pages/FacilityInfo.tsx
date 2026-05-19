@@ -1,110 +1,109 @@
-import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import FormGroup from '../components/FormGroup'
 import Button from '../components/Button'
+import { FacilityDetail } from '../types/CommunityData'
 import './Pages.css'
 
-const FacilityInfo: React.FC = () => {
-  const [facilities, setFacilities] = useState([
-    { id: 1, name: '커뮤니티센터', area: 500, status: '운영중' },
-    { id: 2, name: '체육관', area: 800, status: '운영중' },
-    { id: 3, name: '도서관', area: 300, status: '폐쇄' },
-  ])
+interface FacilityInfoProps {
+  facilityInfo: { items: FacilityDetail[] }
+  onChange: (items: FacilityDetail[]) => void
+}
 
-  const [newFacility, setNewFacility] = useState({
-    name: '',
-    area: '',
-    status: '운영중',
-  })
-
-  const handleAddFacility = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (newFacility.name && newFacility.area) {
-      setFacilities(prev => [
-        ...prev,
-        {
-          id: Math.max(...prev.map(f => f.id), 0) + 1,
-          ...newFacility,
-          area: parseInt(newFacility.area),
-        }
-      ])
-      setNewFacility({ name: '', area: '', status: '운영중' })
-      alert('시설이 추가되었습니다. (아직 로컬스토리지 미지원)')
-    }
+const FacilityInfo: React.FC<FacilityInfoProps> = ({ facilityInfo, onChange }) => {
+  const handleItemChange = (id: number, next: Partial<FacilityDetail>) => {
+    const updated = facilityInfo.items.map(item =>
+      item.id === id ? { ...item, ...next } : item
+    )
+    onChange(updated)
   }
+
+  const enabledCount = facilityInfo.items.filter(item => item.enabled).length
 
   return (
     <div className="page">
-      <PageHeader 
+      <PageHeader
         title="🏛️ 시설 정보"
-        description="아파트 단지 내 시설의 정보를 관리합니다."
+        description="시설 가용 여부와 운영 조건을 입력하여 시설 운영 현황을 관리합니다."
       />
 
-      {/* Current Facilities */}
-      <Card title="📍 등록된 시설">
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>시설명</th>
-                <th>면적 (㎡)</th>
-                <th>운영상태</th>
-              </tr>
-            </thead>
-            <tbody>
-              {facilities.map(facility => (
-                <tr key={facility.id}>
-                  <td>{facility.name}</td>
-                  <td>{facility.area}</td>
-                  <td>
-                    <span className={`status-badge status-${facility.status}`}>
-                      {facility.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <Card title="📍 시설 요약">
+        <div className="stats-grid">
+          <div className="stat-box" style={{ padding: 16, boxShadow: 'none', border: '1px solid #e9ecef' }}>
+            <p className="stat-label">등록 시설 수</p>
+            <p className="stat-value">{facilityInfo.items.length}</p>
+          </div>
+          <div className="stat-box" style={{ padding: 16, boxShadow: 'none', border: '1px solid #e9ecef' }}>
+            <p className="stat-label">운영 중 시설</p>
+            <p className="stat-value">{enabledCount}</p>
+          </div>
         </div>
       </Card>
 
-      {/* Add New Facility */}
-      <Card title="➕ 시설 추가">
-        <form onSubmit={handleAddFacility}>
-          <div className="form-row">
-            <FormGroup label="시설명" required>
-              <input
-                type="text"
-                value={newFacility.name}
-                onChange={(e) => setNewFacility(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="예: 피트니스센터"
-              />
-            </FormGroup>
-            <FormGroup label="면적 (㎡)" required>
-              <input
-                type="number"
-                value={newFacility.area}
-                onChange={(e) => setNewFacility(prev => ({ ...prev, area: e.target.value }))}
-                placeholder="예: 600"
-              />
-            </FormGroup>
-            <FormGroup label="운영상태" required>
-              <select
-                value={newFacility.status}
-                onChange={(e) => setNewFacility(prev => ({ ...prev, status: e.target.value }))}
-              >
-                <option value="운영중">운영중</option>
-                <option value="폐쇄">폐쇄</option>
-                <option value="유지보수">유지보수</option>
-              </select>
-            </FormGroup>
-          </div>
+      <Card title="✏️ 시설 선택 및 상세">
+        <div className="facility-grid">
+          {facilityInfo.items.map(item => (
+            <div key={item.id} className={`facility-card ${item.enabled ? 'facility-active' : ''}`}>
+              <div className="facility-card-header">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={item.enabled}
+                    onChange={(e) => handleItemChange(item.id, { enabled: e.target.checked, operatingStatus: e.target.checked ? '운영중' : '미운영' })}
+                  />
+                  <strong style={{ marginLeft: 8 }}>{item.name}</strong>
+                </label>
+              </div>
 
-          <Button type="submit" variant="primary">
-            ➕ 추가
+              <FormGroup label="운영 여부">
+                <select
+                  value={item.operatingStatus}
+                  onChange={(e) => handleItemChange(item.id, { operatingStatus: e.target.value as FacilityDetail['operatingStatus'] })}
+                  disabled={!item.enabled}
+                >
+                  <option value="운영중">운영중</option>
+                  <option value="미운영">미운영</option>
+                </select>
+              </FormGroup>
+
+              <FormGroup label="유료 / 무료">
+                <select
+                  value={item.paidType}
+                  onChange={(e) => handleItemChange(item.id, { paidType: e.target.value as FacilityDetail['paidType'] })}
+                  disabled={!item.enabled}
+                >
+                  <option value="유료">유료</option>
+                  <option value="무료">무료</option>
+                </select>
+              </FormGroup>
+
+              <FormGroup label="주요 이용 시간대">
+                <input
+                  type="text"
+                  value={item.peakHours}
+                  onChange={(e) => handleItemChange(item.id, { peakHours: e.target.value })}
+                  placeholder="예: 오전 7시 - 9시"
+                  disabled={!item.enabled}
+                />
+              </FormGroup>
+
+              <FormGroup label="특이사항">
+                <textarea
+                  value={item.notes}
+                  onChange={(e) => handleItemChange(item.id, { notes: e.target.value })}
+                  placeholder="운영 관련 특이사항을 입력하세요."
+                  disabled={!item.enabled}
+                />
+              </FormGroup>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button variant="secondary" type="button" onClick={() => onChange(facilityInfo.items.map(item => ({ ...item, enabled: false })))}>
+            전체 비활성화
           </Button>
-        </form>
+        </div>
       </Card>
     </div>
   )

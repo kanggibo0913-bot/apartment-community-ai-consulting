@@ -1,115 +1,97 @@
-import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import FormGroup from '../components/FormGroup'
 import Button from '../components/Button'
 import StatBox from '../components/StatBox'
+import { CostInfoData } from '../types/CommunityData'
 import './Pages.css'
 
-const CostInfo: React.FC = () => {
-  const [costs, setCosts] = useState([
-    { id: 1, category: '인건비', amount: 800, date: '2024-01' },
-    { id: 2, category: '유틸리티', amount: 500, date: '2024-01' },
-    { id: 3, category: '시설유지', amount: 300, date: '2024-01' },
-  ])
+interface CostInfoProps {
+  data: CostInfoData
+  onChange: (next: Partial<CostInfoData>) => void
+}
 
-  const [newCost, setNewCost] = useState({
-    category: '',
-    amount: '',
-    date: new Date().toISOString().split('T')[0],
-  })
+const defaultCostData: CostInfoData = {
+  salaries: 0,
+  electricity: 0,
+  water: 0,
+  hvac: 0,
+  supplies: 0,
+  maintenance: 0,
+  cleaning: 0,
+  other: 0,
+}
 
-  const totalCost = costs.reduce((sum, cost) => sum + cost.amount, 0)
+const CostInfo: React.FC<CostInfoProps> = ({ data, onChange }) => {
+  const totalCost = Object.values(data).reduce((sum, value) => sum + value, 0)
 
-  const handleAddCost = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (newCost.category && newCost.amount) {
-      setCosts(prev => [
-        ...prev,
-        {
-          id: Math.max(...prev.map(c => c.id), 0) + 1,
-          ...newCost,
-          amount: parseInt(newCost.amount),
-        }
-      ])
-      setNewCost({ category: '', amount: '', date: new Date().toISOString().split('T')[0] })
-      alert('비용이 기록되었습니다. (아직 로컬스토리지 미지원)')
-    }
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    onChange({ [name]: value === '' ? 0 : parseFloat(value) } as Partial<CostInfoData>)
+  }
+
+  const handleReset = () => {
+    onChange(defaultCostData)
   }
 
   return (
     <div className="page">
-      <PageHeader 
+      <PageHeader
         title="💰 비용 정보"
-        description="운영 관련 비용을 기록하고 관리합니다."
+        description="월별 운영비를 상세히 입력하면 대시보드에 자동 집계됩니다."
       />
 
-      {/* Cost Summary */}
-      <Card title="📊 비용 현황">
+      <Card title="📊 월간 운영비 합계">
         <div className="stats-grid">
-          <StatBox label="총 비용" value={totalCost} unit="만원" icon="💳" />
-          <StatBox label="인건비" value={800} unit="만원" icon="👤" />
-          <StatBox label="운영비" value={500} unit="만원" icon="⚙️" />
-          <StatBox label="시설유지비" value={300} unit="만원" icon="🔧" />
+          <StatBox label="총 운영비" value={totalCost} unit="만원" icon="💳" />
+          <StatBox label="인건비" value={data.salaries} unit="만원" icon="👤" />
+          <StatBox label="전기세" value={data.electricity} unit="만원" icon="🔌" />
+          <StatBox label="수도세" value={data.water} unit="만원" icon="🚰" />
         </div>
       </Card>
 
-      {/* Cost History */}
-      <Card title="📝 비용 기록">
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>분류</th>
-                <th>금액 (만원)</th>
-                <th>일자</th>
-              </tr>
-            </thead>
-            <tbody>
-              {costs.map(cost => (
-                <tr key={cost.id}>
-                  <td>{cost.category}</td>
-                  <td>{cost.amount}</td>
-                  <td>{cost.date}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {/* Add New Cost */}
-      <Card title="➕ 비용 기록">
-        <form onSubmit={handleAddCost}>
+      <Card title="✏️ 비용 항목 입력">
+        <form>
           <div className="form-row">
-            <FormGroup label="분류" required>
-              <input
-                type="text"
-                value={newCost.category}
-                onChange={(e) => setNewCost(prev => ({ ...prev, category: e.target.value }))}
-                placeholder="예: 전기료"
-              />
+            <FormGroup label="인건비 (만원)"> 
+              <input type="number" name="salaries" value={data.salaries || ''} onChange={handleChange} placeholder="예: 800" />
             </FormGroup>
-            <FormGroup label="금액 (만원)" required>
-              <input
-                type="number"
-                value={newCost.amount}
-                onChange={(e) => setNewCost(prev => ({ ...prev, amount: e.target.value }))}
-                placeholder="예: 150"
-              />
-            </FormGroup>
-            <FormGroup label="날짜" required>
-              <input
-                type="date"
-                value={newCost.date}
-                onChange={(e) => setNewCost(prev => ({ ...prev, date: e.target.value }))}
-              />
+            <FormGroup label="전기세 (만원)"> 
+              <input type="number" name="electricity" value={data.electricity || ''} onChange={handleChange} placeholder="예: 250" />
             </FormGroup>
           </div>
 
-          <Button type="submit" variant="primary">
-            ➕ 기록
-          </Button>
+          <div className="form-row">
+            <FormGroup label="수도세 (만원)"> 
+              <input type="number" name="water" value={data.water || ''} onChange={handleChange} placeholder="예: 80" />
+            </FormGroup>
+            <FormGroup label="냉난방비 (만원)"> 
+              <input type="number" name="hvac" value={data.hvac || ''} onChange={handleChange} placeholder="예: 180" />
+            </FormGroup>
+          </div>
+
+          <div className="form-row">
+            <FormGroup label="소모품비 (만원)"> 
+              <input type="number" name="supplies" value={data.supplies || ''} onChange={handleChange} placeholder="예: 60" />
+            </FormGroup>
+            <FormGroup label="유지보수비 (만원)"> 
+              <input type="number" name="maintenance" value={data.maintenance || ''} onChange={handleChange} placeholder="예: 120" />
+            </FormGroup>
+          </div>
+
+          <div className="form-row">
+            <FormGroup label="청소비 (만원)"> 
+              <input type="number" name="cleaning" value={data.cleaning || ''} onChange={handleChange} placeholder="예: 70" />
+            </FormGroup>
+            <FormGroup label="기타 비용 (만원)"> 
+              <input type="number" name="other" value={data.other || ''} onChange={handleChange} placeholder="예: 30" />
+            </FormGroup>
+          </div>
+
+          <div style={{ marginTop: '24px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <Button type="button" variant="primary" onClick={() => alert('입력값이 자동 저장됩니다.')}>저장</Button>
+            <Button type="button" variant="secondary" onClick={handleReset}>초기화</Button>
+          </div>
         </form>
       </Card>
     </div>

@@ -1,146 +1,146 @@
-import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import FormGroup from '../components/FormGroup'
 import Button from '../components/Button'
 import StatBox from '../components/StatBox'
+import { ApartmentInfoData } from '../types/CommunityData'
 import './Pages.css'
 
-const ApartmentInfo: React.FC = () => {
-  const [formData, setFormData] = useState({
-    name: '',
-    location: '',
-    totalUnits: '',
-    builtYear: '',
-    commonArea: '',
-    contactPerson: '',
-    phone: '',
-    email: '',
-  })
+interface ApartmentInfoProps {
+  data: ApartmentInfoData
+  onChange: (next: Partial<ApartmentInfoData>) => void
+}
 
+const defaultApartmentInfo: ApartmentInfoData = {
+  name: '',
+  region: '',
+  totalUnits: 0,
+  buildingCount: 0,
+  builtYear: 0,
+  communityArea: 0,
+  officeName: '',
+  remarks: '',
+}
+
+const ApartmentInfo: React.FC<ApartmentInfoProps> = ({ data, onChange }) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+    if (['totalUnits', 'buildingCount', 'builtYear', 'communityArea'].includes(name)) {
+      onChange({ [name]: value === '' ? 0 : parseInt(value, 10) } as Partial<ApartmentInfoData>)
+      return
+    }
+    onChange({ [name]: value } as Partial<ApartmentInfoData>)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    console.log('Apartment Info Submitted:', formData)
-    alert('저장되었습니다. (아직 로컬스토리지 미지원)')
+  const handleReset = () => {
+    onChange(defaultApartmentInfo)
   }
 
   return (
     <div className="page">
-      <PageHeader 
+      <PageHeader
         title="🏢 단지 기본정보"
-        description="아파트 단지의 기본 정보를 입력하고 관리합니다."
+        description="단지 기본정보를 입력하면 대시보드 요약에 자동 반영됩니다."
       />
 
-      {/* Current Info */}
       <Card title="📋 현재 등록 정보">
         <div className="stats-grid">
-          <StatBox label="아파트명" value={formData.name || '미입력'} icon="🏢" />
-          <StatBox label="총 세대수" value={formData.totalUnits || '미입력'} icon="🏠" />
-          <StatBox label="준공연도" value={formData.builtYear || '미입력'} icon="📅" />
-          <StatBox label="공용면적" value={formData.commonArea || '미입력'} unit="㎡" icon="📐" />
+          <StatBox label="아파트명" value={data.name || '미입력'} icon="🏢" />
+          <StatBox label="총 세대수" value={data.totalUnits || '미입력'} unit="세대" icon="🏠" />
+          <StatBox label="동 수" value={data.buildingCount || '미입력'} unit="동" icon="🏘️" />
+          <StatBox label="준공연도" value={data.builtYear || '미입력'} icon="📅" />
+          <StatBox label="커뮤니티 면적" value={data.communityArea || '미입력'} unit="㎡" icon="📐" />
+          <StatBox label="관리사무소명" value={data.officeName || '미입력'} icon="🏢" />
         </div>
       </Card>
 
-      {/* Input Form */}
       <Card title="✏️ 단지 정보 입력">
-        <form onSubmit={handleSubmit}>
+        <form>
           <div className="form-row">
-            <FormGroup label="아파트명" required>
+            <FormGroup label="단지명" required>
               <input
                 type="text"
                 name="name"
-                value={formData.name}
+                value={data.name}
                 onChange={handleChange}
                 placeholder="예: 한강 아파트"
               />
             </FormGroup>
-            <FormGroup label="위치" required>
+            <FormGroup label="지역" required>
               <input
                 type="text"
-                name="location"
-                value={formData.location}
+                name="region"
+                value={data.region}
                 onChange={handleChange}
-                placeholder="예: 서울시 강남구 테헤란로"
+                placeholder="예: 서울시 강남구"
               />
             </FormGroup>
           </div>
 
           <div className="form-row">
-            <FormGroup label="총 세대수" required>
+            <FormGroup label="세대수" required>
               <input
                 type="number"
                 name="totalUnits"
-                value={formData.totalUnits}
+                value={data.totalUnits || ''}
                 onChange={handleChange}
                 placeholder="예: 150"
               />
             </FormGroup>
+            <FormGroup label="동 수" required>
+              <input
+                type="number"
+                name="buildingCount"
+                value={data.buildingCount || ''}
+                onChange={handleChange}
+                placeholder="예: 8"
+              />
+            </FormGroup>
+          </div>
+
+          <div className="form-row">
             <FormGroup label="준공연도" required>
               <input
                 type="number"
                 name="builtYear"
-                value={formData.builtYear}
+                value={data.builtYear || ''}
                 onChange={handleChange}
-                placeholder="예: 2010"
+                placeholder="예: 2014"
+              />
+            </FormGroup>
+            <FormGroup label="커뮤니티 면적 (㎡)" required>
+              <input
+                type="number"
+                name="communityArea"
+                value={data.communityArea || ''}
+                onChange={handleChange}
+                placeholder="예: 2500"
               />
             </FormGroup>
           </div>
 
-          <FormGroup label="공용면적 (㎡)" required>
+          <FormGroup label="관리사무소명" required>
             <input
-              type="number"
-              name="commonArea"
-              value={formData.commonArea}
+              type="text"
+              name="officeName"
+              value={data.officeName}
               onChange={handleChange}
-              placeholder="예: 2500"
+              placeholder="예: 한강 관리사무소"
             />
           </FormGroup>
 
-          <h3 style={{ marginTop: '24px', marginBottom: '16px', color: '#0d3b66' }}>담당자 정보</h3>
-
-          <div className="form-row">
-            <FormGroup label="담당자명" required>
-              <input
-                type="text"
-                name="contactPerson"
-                value={formData.contactPerson}
-                onChange={handleChange}
-                placeholder="예: 김관리"
-              />
-            </FormGroup>
-            <FormGroup label="연락처" required>
-              <input
-                type="tel"
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                placeholder="예: 02-1234-5678"
-              />
-            </FormGroup>
-          </div>
-
-          <FormGroup label="이메일">
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
+          <FormGroup label="비고">
+            <textarea
+              name="remarks"
+              value={data.remarks}
               onChange={handleChange}
-              placeholder="예: manager@apartment.com"
+              placeholder="추가로 필요한 단지 정보를 입력하세요."
             />
           </FormGroup>
 
-          <div style={{ marginTop: '24px', display: 'flex', gap: '12px' }}>
-            <Button type="submit" variant="primary">
-              💾 저장
-            </Button>
-            <Button variant="secondary" type="reset">
-              🔄 초기화
-            </Button>
+          <div style={{ marginTop: '24px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <Button type="button" variant="primary" onClick={() => alert('입력값이 자동 저장됩니다.')}>저장</Button>
+            <Button type="button" variant="secondary" onClick={handleReset}>초기화</Button>
           </div>
         </form>
       </Card>
