@@ -107,9 +107,9 @@ const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onLoadSampleData, 
       <Card title="출력물 바로가기">
         <div className="dashboard-control-group">
           <Button variant="secondary" onClick={() => navigateToOutput('운영 진단 보고서')}>운영 진단 보고서 보기</Button>
-          <Button variant="secondary" onClick={() => navigateToOutput('월간 운영 리포트')}>월간 리포트 보기</Button>
-          <Button variant="secondary" onClick={() => navigateToOutput('입대의 보고용 제안서')}>제안서 초안 보기</Button>
-          <Button variant="secondary" onClick={() => navigateToOutput('PPT 초안')}>PPT 초안 보기</Button>
+          <Button variant="secondary" onClick={() => navigateToOutput('월간 운영 리포트')}>월간 운영 리포트 보기</Button>
+          <Button variant="secondary" onClick={() => navigateToOutput('입주자대표회의 보고용 요약')}>입주자대표회의 보고용 요약 보기</Button>
+          <Button variant="secondary" onClick={() => navigateToOutput('MIK 내부 검토표')}>MIK 내부 검토표 보기</Button>
         </div>
       </Card>
 

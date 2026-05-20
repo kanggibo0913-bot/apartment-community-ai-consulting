@@ -47,6 +47,13 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ data }) => {
             <span className={`diagnosis-badge ${gradeClass}`}>{grade}</span>
           </p>
           <p className="analysis-grade-summary">{summary}</p>
+          <div className="analysis-grade-notes">
+            {metrics.laborRatio >= 50 && <p>• 인건비 비중이 50% 이상으로 인건비 관리가 필요합니다.</p>}
+            {metrics.unresolvedComplaints >= 5 && <p>• 미해결 민원이 5건 이상으로 민원 리스크가 높습니다.</p>}
+            {(data.operationInfo.openStaffNeeded || data.operationInfo.closeStaffNeeded) && data.operationInfo.unmannedHours.trim().length > 0 && (
+              <p>• 오픈/마감 담당이 필요하고 무인운영 가능 시간이 있어 자동화 검토가 권장됩니다.</p>
+            )}
+          </div>
         </div>
       </Card>
 

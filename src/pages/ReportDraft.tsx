@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import Button from '../components/Button'
-import { CommunityData, OutputType, OutputSection, PptSlide } from '../types/CommunityData'
+import { CommunityData, OutputType, OutputSection } from '../types/CommunityData'
 import { generateReportDraft } from '../utils/generateReportDraft'
 import { generateMonthlyReport } from '../utils/generateMonthlyReport'
 import { generateProposalDraft } from '../utils/generateProposalDraft'
-import { generatePptOutline } from '../utils/generatePptOutline'
+import { generateMikChecklist } from '../utils/generateMikChecklist'
 import './Pages.css'
 
 interface ReportDraftProps {
@@ -17,21 +17,20 @@ interface ReportDraftProps {
 const tabs: OutputType[] = [
   '운영 진단 보고서',
   '월간 운영 리포트',
-  '입대의 보고용 제안서',
-  'PPT 초안',
+  '입주자대표회의 보고용 요약',
+  'MIK 내부 검토표',
 ]
 
 const ReportDraft: React.FC<ReportDraftProps> = ({ data, defaultOutputType = '운영 진단 보고서' }) => {
   const [activeTab, setActiveTab] = useState<OutputType>(defaultOutputType)
   const [copyStatus, setCopyStatus] = useState('')
   const [sectionCopyStatus, setSectionCopyStatus] = useState<Record<string, string>>({})
-  const [slideCopyStatus, setSlideCopyStatus] = useState<Record<number, string>>({})
   const [printView, setPrintView] = useState(false)
 
   const reportDraft = generateReportDraft(data)
   const monthlyReport = generateMonthlyReport(data)
-  const proposalDraft = generateProposalDraft(data)
-  const pptOutline = generatePptOutline(data)
+  const representativeSummary = generateProposalDraft(data)
+  const mikChecklist = generateMikChecklist(data)
 
   useEffect(() => {
     setActiveTab(defaultOutputType)
@@ -55,24 +54,6 @@ const ReportDraft: React.FC<ReportDraftProps> = ({ data, defaultOutputType = '�
     } catch {
       setSectionCopyStatus(prev => ({ ...prev, [section.title]: '복사에 실패했습니다.' }))
       setTimeout(() => setSectionCopyStatus(prev => ({ ...prev, [section.title]: '' })), 3000)
-    }
-  }
-
-  const handleCopySlide = async (slide: PptSlide) => {
-    try {
-      const slideText = [
-        `${slide.slideNumber}. ${slide.title}`,
-        slide.keyMessage,
-        ...slide.bulletPoints,
-        `시각화 제안: ${slide.visualSuggestion}`,
-        `메모: ${slide.speakerNote}`,
-      ].join('\n')
-      await navigator.clipboard.writeText(slideText)
-      setSlideCopyStatus(prev => ({ ...prev, [slide.slideNumber]: '슬라이드가 복사되었습니다.' }))
-      setTimeout(() => setSlideCopyStatus(prev => ({ ...prev, [slide.slideNumber]: '' })), 3000)
-    } catch {
-      setSlideCopyStatus(prev => ({ ...prev, [slide.slideNumber]: '복사에 실패했습니다.' }))
-      setTimeout(() => setSlideCopyStatus(prev => ({ ...prev, [slide.slideNumber]: '' })), 3000)
     }
   }
 
@@ -155,26 +136,26 @@ const ReportDraft: React.FC<ReportDraftProps> = ({ data, defaultOutputType = '�
     </>
   )
 
-  const renderProposalDraft = () => (
+  const renderRepresentativeSummary = () => (
     <>
-      <Card title="제안서 초안 정보">
+      <Card title="입주자대표회의 보고용 요약 정보">
         <div className="report-meta">
-          <span>생성일: {proposalDraft.generatedAt}</span>
-          <span>출력물: 입대의 보고용 제안서</span>
+          <span>생성일: {representativeSummary.generatedAt}</span>
+          <span>출력물: 입주자대표회의 보고용 요약</span>
         </div>
       </Card>
       <Card title="복사하기">
         <div className="report-action-row">
-          <Button variant="primary" type="button" onClick={() => handleCopyFull(proposalDraft.fullText)}>
+          <Button variant="primary" type="button" onClick={() => handleCopyFull(representativeSummary.fullText)}>
             전체 복사
           </Button>
           {copyStatus && <span className="copy-status">{copyStatus}</span>}
         </div>
       </Card>
-      {proposalDraft.sections.map(section => renderValueSection(section))}
+      {representativeSummary.sections.map(section => renderValueSection(section))}
       <Card title="MIK 검수 필요 항목">
         <ul className="report-review-list">
-          {proposalDraft.reviewItems.map((item, index) => (
+          {representativeSummary.reviewItems.map((item, index) => (
             <li key={index}>{item}</li>
           ))}
         </ul>
@@ -182,42 +163,30 @@ const ReportDraft: React.FC<ReportDraftProps> = ({ data, defaultOutputType = '�
     </>
   )
 
-  const renderPptOutline = () => (
+  const renderMikChecklist = () => (
     <>
-      <Card title="PPT 초안 정보">
+      <Card title="MIK 내부 검토표 정보">
         <div className="report-meta">
-          <span>생성일: {pptOutline.generatedAt}</span>
-          <span>출력물: PPT 초안</span>
+          <span>생성일: {mikChecklist.generatedAt}</span>
+          <span>출력물: MIK 내부 검토표</span>
         </div>
       </Card>
       <Card title="복사하기">
         <div className="report-action-row">
-          <Button variant="primary" type="button" onClick={() => handleCopyFull(pptOutline.fullText)}>
+          <Button variant="primary" type="button" onClick={() => handleCopyFull(mikChecklist.fullText)}>
             전체 복사
           </Button>
           {copyStatus && <span className="copy-status">{copyStatus}</span>}
         </div>
       </Card>
-      {pptOutline.slides.map(slide => (
-        <Card key={slide.slideNumber} title={`슬라이드 ${slide.slideNumber}: ${slide.title}`} className="report-section-card">
-          <div className="report-section-header">
-            <Button variant="secondary" type="button" onClick={() => handleCopySlide(slide)}>
-              슬라이드 복사
-            </Button>
-            {slideCopyStatus[slide.slideNumber] && <span className="copy-status">{slideCopyStatus[slide.slideNumber]}</span>}
-          </div>
-          <div className="report-section-body">
-            <p><strong>핵심 메시지:</strong> {slide.keyMessage}</p>
-            <p><strong>시각화 제안:</strong> {slide.visualSuggestion}</p>
-            <p><strong>발표 메모:</strong> {slide.speakerNote}</p>
-            <ul>
-              {slide.bulletPoints.map((point, index) => (
-                <li key={index}>{point}</li>
-              ))}
-            </ul>
-          </div>
-        </Card>
-      ))}
+      {mikChecklist.sections.map(section => renderValueSection(section))}
+      <Card title="MIK 검수 필요 항목">
+        <ul className="report-review-list">
+          {mikChecklist.reviewItems.map((item, index) => (
+            <li key={index}>{item}</li>
+          ))}
+        </ul>
+      </Card>
     </>
   )
 
@@ -225,10 +194,10 @@ const ReportDraft: React.FC<ReportDraftProps> = ({ data, defaultOutputType = '�
     switch (activeTab) {
       case '월간 운영 리포트':
         return renderMonthlyReport()
-      case '입대의 보고용 제안서':
-        return renderProposalDraft()
-      case 'PPT 초안':
-        return renderPptOutline()
+      case '입주자대표회의 보고용 요약':
+        return renderRepresentativeSummary()
+      case 'MIK 내부 검토표':
+        return renderMikChecklist()
       default:
         return renderReportContent()
     }

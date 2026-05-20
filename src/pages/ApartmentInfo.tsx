@@ -39,7 +39,7 @@ const ApartmentInfo: React.FC<ApartmentInfoProps> = ({ data, onChange }) => {
   return (
     <div className="page">
       <PageHeader
-        title="🏢 단지 기본정보"
+        title="단지 기본정보"
         description="단지 기본정보를 입력하면 대시보드 요약에 자동 반영됩니다."
       />
 

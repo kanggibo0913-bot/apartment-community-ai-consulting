@@ -10,6 +10,9 @@ import RevenueInfo from './pages/RevenueInfo'
 import ComplaintInfo from './pages/ComplaintInfo'
 import AIAnalysis from './pages/AIAnalysis'
 import ReportDraft from './pages/ReportDraft'
+import TenderNotices from './pages/TenderNotices'
+import EstimateCalculator from './pages/EstimateCalculator'
+import { loadCommunityData, saveCommunityData } from './utils/storage'
 import {
   ApartmentInfoData,
   CommunityData,
@@ -21,9 +24,7 @@ import {
   OutputType,
 } from './types/CommunityData'
 
-type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'analysis' | 'report'
-
-const LOCAL_STORAGE_KEY = 'apartmentCommunityData'
+type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'analysis' | 'report' | 'tender' | 'estimate'
 
 const defaultFacilityItems: FacilityDetail[] = [
   { id: 1, name: '헬스장', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '' },
@@ -147,6 +148,20 @@ const sampleCommunityData: CommunityData = {
   ],
 }
 
+const pageLabels: Record<PageType, string> = {
+  dashboard: '대시보드',
+  apartment: '단지 기본정보',
+  facility: '시설 정보',
+  operation: '운영 정보',
+  cost: '비용 정보',
+  revenue: '수익 정보',
+  complaint: '민원 정보',
+  analysis: 'AI 분석 결과',
+  report: '보고서 초안',
+  tender: '입찰공고 관리',
+  estimate: '산출표 자동 계산',
+}
+
 const isValidCommunityData = (value: unknown): value is CommunityData => {
   if (!value || typeof value !== 'object') return false
   const data = value as any
@@ -172,50 +187,53 @@ function App() {
   const [appState, setAppState] = useState<CommunityData>(defaultCommunityData)
   const [statusMessage, setStatusMessage] = useState<string>('')
   const [selectedOutputType, setSelectedOutputType] = useState<OutputType>('운영 진단 보고서')
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
 
   const showStatusMessage = (message: string) => {
     setStatusMessage(message)
     setTimeout(() => setStatusMessage(''), 5000)
   }
 
+  const handleChangePage = (page: PageType) => {
+    setCurrentPage(page)
+    setIsMobileNavOpen(false)
+  }
+
   useEffect(() => {
-    try {
-      const rawValue = window.localStorage.getItem(LOCAL_STORAGE_KEY)
-      if (!rawValue) return
+    const parsed = loadCommunityData()
+    if (!parsed || typeof parsed !== 'object') return
 
-      const parsed = JSON.parse(rawValue) as Partial<CommunityData>
-      if (!parsed || typeof parsed !== 'object') return
-
-      setAppState({
-        apartmentInfo: {
-          ...defaultCommunityData.apartmentInfo,
-          ...parsed.apartmentInfo,
-        },
-        facilityInfo: {
-          items: parsed.facilityInfo?.items ?? defaultFacilityItems,
-        },
-        operationInfo: {
-          ...defaultCommunityData.operationInfo,
-          ...parsed.operationInfo,
-        },
-        costInfo: {
-          ...defaultCommunityData.costInfo,
-          ...parsed.costInfo,
-        },
-        revenueInfo: {
-          ...defaultCommunityData.revenueInfo,
-          ...parsed.revenueInfo,
-        },
-        complaints: parsed.complaints ?? defaultCommunityData.complaints,
-      })
-    } catch (error) {
-      console.warn('localStorage data load failed:', error)
-    }
+    setAppState({
+      apartmentInfo: {
+        ...defaultCommunityData.apartmentInfo,
+        ...parsed.apartmentInfo,
+      },
+      facilityInfo: {
+        items: parsed.facilityInfo?.items ?? defaultFacilityItems,
+      },
+      operationInfo: {
+        ...defaultCommunityData.operationInfo,
+        ...parsed.operationInfo,
+      },
+      costInfo: {
+        ...defaultCommunityData.costInfo,
+        ...parsed.costInfo,
+      },
+      revenueInfo: {
+        ...defaultCommunityData.revenueInfo,
+        ...parsed.revenueInfo,
+      },
+      complaints: parsed.complaints ?? defaultCommunityData.complaints,
+    })
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(appState))
+    saveCommunityData(appState)
   }, [appState])
+
+  useEffect(() => {
+    setIsMobileNavOpen(false)
+  }, [currentPage])
 
   const updateApartmentInfo = (next: Partial<ApartmentInfoData>) => {
     setAppState(prev => ({
@@ -333,6 +351,10 @@ function App() {
         return <AIAnalysis data={appState} />
       case 'report':
         return <ReportDraft data={appState} defaultOutputType={selectedOutputType} />
+      case 'tender':
+        return <TenderNotices />
+      case 'estimate':
+        return <EstimateCalculator />
       default:
         return (
           <Dashboard
@@ -349,16 +371,33 @@ function App() {
   }
 
   return (
-    <div className="app-container">
-      <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />
-      <main className="main-content">
-        <div className="page-actions">
-          <button className="btn btn-secondary" type="button" onClick={handleResetAll}>
-            전체 데이터 초기화
+    <div className={`app-container ${isMobileNavOpen ? 'nav-open' : ''}`}>
+      <Sidebar
+        currentPage={currentPage}
+        setCurrentPage={handleChangePage}
+        isOpen={isMobileNavOpen}
+        onClose={() => setIsMobileNavOpen(false)}
+      />
+      <div className="main-wrapper">
+        <header className="mobile-topbar">
+          <button className="mobile-menu-button" type="button" onClick={() => setIsMobileNavOpen((prev) => !prev)}>
+            ☰
           </button>
-        </div>
-        {renderPage()}
-      </main>
+          <div className="mobile-topbar-title">{pageLabels[currentPage]}</div>
+          <button className="btn btn-secondary mobile-topbar-action" type="button" onClick={handleResetAll}>
+            전체 초기화
+          </button>
+        </header>
+
+        <main className="main-content">
+          <div className="page-actions">
+            <button className="btn btn-secondary" type="button" onClick={handleResetAll}>
+              전체 데이터 초기화
+            </button>
+          </div>
+          {renderPage()}
+        </main>
+      </div>
     </div>
   )
 }

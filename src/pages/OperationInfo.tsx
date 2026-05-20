@@ -45,7 +45,7 @@ const OperationInfo: React.FC<OperationInfoProps> = ({ data, onChange }) => {
   return (
     <div className="page">
       <PageHeader
-        title="⚙️ 운영 정보"
+        title="운영 정보"
         description="커뮤니티센터 운영 조건을 상세히 기록하고 관리합니다."
       />
 

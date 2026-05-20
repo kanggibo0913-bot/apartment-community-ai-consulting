@@ -58,7 +58,7 @@ const ComplaintInfo: React.FC<ComplaintInfoProps> = ({ complaints, onChange }) =
   return (
     <div className="page">
       <PageHeader
-        title="📞 민원 정보"
+        title="민원 정보"
         description="민원 접수, 상태, 조치 내용을 기록하고 미해결 건수를 대시보드에 반영합니다."
       />
 
@@ -86,10 +86,10 @@ const ComplaintInfo: React.FC<ComplaintInfoProps> = ({ complaints, onChange }) =
               <tbody>
                 {recentComplaints.map(item => (
                   <tr key={item.id}>
-                    <td>{item.date}</td>
-                    <td>{item.type}</td>
-                    <td>{item.status}</td>
-                    <td>{item.content}</td>
+                    <td data-label="접수일">{item.date}</td>
+                    <td data-label="민원유형">{item.type}</td>
+                    <td data-label="상태">{item.status}</td>
+                    <td data-label="내용">{item.content}</td>
                   </tr>
                 ))}
               </tbody>
@@ -172,12 +172,12 @@ const ComplaintInfo: React.FC<ComplaintInfoProps> = ({ complaints, onChange }) =
               <tbody>
                 {complaints.map(item => (
                   <tr key={item.id}>
-                    <td>{item.date}</td>
-                    <td>{item.type}</td>
-                    <td>{item.status}</td>
-                    <td>{item.content}</td>
-                    <td>{item.action || '없음'}</td>
-                    <td>
+                    <td data-label="접수일">{item.date}</td>
+                    <td data-label="유형">{item.type}</td>
+                    <td data-label="상태">{item.status}</td>
+                    <td data-label="내용">{item.content}</td>
+                    <td data-label="조치">{item.action || '없음'}</td>
+                    <td data-label="삭제">
                       <Button type="button" variant="danger" onClick={() => handleDelete(item.id)}>
                         삭제
                       </Button>

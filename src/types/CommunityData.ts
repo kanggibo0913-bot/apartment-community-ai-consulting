@@ -65,7 +65,7 @@ export interface RevenueInfoData {
   otherIncome: number
 }
 
-export type DiagnosisGrade = '양호' | '관리 필요' | '개선 필요' | '긴급 개선 필요'
+export type DiagnosisGrade = '양호' | '주의' | '위험'
 
 export interface AnalysisMetrics {
   totalCost: number
@@ -107,8 +107,8 @@ export interface ReportSection {
 export type OutputType =
   | '운영 진단 보고서'
   | '월간 운영 리포트'
-  | '입대의 보고용 제안서'
-  | 'PPT 초안'
+  | '입주자대표회의 보고용 요약'
+  | 'MIK 내부 검토표'
 
 export interface OutputSection {
   title: string
@@ -127,6 +127,139 @@ export interface ProposalDraft {
   fullText: string
   sections: OutputSection[]
   reviewItems: string[]
+}
+
+export type TenderNoticeStatus = '검토중' | '참여예정' | '보류' | '미참여' | '완료'
+export type TenderNoticeRiskLevel = '낮음' | '보통' | '높음'
+export type TenderNoticeParticipation = '높음' | '보통' | '낮음'
+
+export interface TenderNotice {
+  id: number
+  siteName: string
+  region: string
+  totalUnits: number
+  title: string
+  postedDate: string
+  siteVisitDate: string
+  deadlineDate: string
+  ptDate: string
+  contractStartDate: string
+  contractEndDate: string
+  biddingMethod: string
+  awardMethod: string
+  eligibility: string
+  specialConditions: string
+  fullText: string
+  participationLikelihood: TenderNoticeParticipation
+  riskLevel: TenderNoticeRiskLevel
+  estimatedStaff: number
+  estimatedMonthlyCost: number
+  estimatedMonthlyRevenue: number
+  reviewMemo: string
+  status: TenderNoticeStatus
+  autoAnalysis: {
+    siteVisitRequired: boolean
+    ptRequired: boolean
+    priceRisk: boolean
+    qualitativePossible: boolean
+    performanceRequirement: boolean
+    guaranteeRequired: boolean
+    freeSupportRisk: boolean
+  }
+  generatedSummary: {
+    participation: string
+    risks: string
+    documents: string
+    schedule: string
+    mikOpinion: string
+  }
+}
+
+export type PayType = '시급제' | '월급제'
+
+export interface EstimateStaffRow {
+  id: number
+  role: string
+  count: number
+  workDaysPerMonth: number
+  hoursPerDay: number
+  payType: PayType
+  hourlyWage: number
+  monthlySalary: number
+  nightHours: number
+  overtimeHours: number
+  weeklyHoliday: boolean
+  note: string
+}
+
+export interface EstimateJobRole {
+  id: number
+  name: string
+  active: boolean
+  weekdayHoursText: string
+  weekendHoursText: string
+  weekdayDailyHours: number
+  weekendDailyHours: number
+  nightHours: number
+  positionAllowance: number
+}
+
+export interface EstimateDirectCosts {
+  consumables: number
+  cleaningSupplies: number
+  officeSupplies: number
+  fitnessMaintenance: number
+  golfMaintenance: number
+  programBudget: number
+  insurance: number
+  training: number
+  uniforms: number
+  communication: number
+  other: number
+}
+
+export interface EstimateSheet {
+  id: number
+  name: string
+  createdAt: string
+  selectedTenderId?: number
+  selectedTenderTitle: string
+  siteName: string
+  region: string
+  totalUnits: number
+  title: string
+  contractStartDate: string
+  contractEndDate: string
+  biddingMethod: string
+  awardMethod: string
+  participationLikelihood: TenderNoticeParticipation
+  riskLevel: TenderNoticeRiskLevel
+  estimateMonth: string
+  biddingYear: number
+  baseHourlyRate: number
+  contractMonthsOverride: number
+  feeRate: number
+  healthInsuranceRate: number
+  longTermCareRate: number
+  pensionRate: number
+  employmentInsuranceRate: number
+  industrialAccidentRate: number
+  roundingUnit: '백원' | '천원'
+  weekendBasis: string
+  monthlyStandardHours: number
+  weeklyHolidayApplied: boolean
+  nightAllowanceApplied: boolean
+  overtimeAllowanceApplied: boolean
+  insuranceRate: number
+  retirementRate: number
+  annualLeaveRate: number
+  generalAdminRate: number
+  profitRate: number
+  vatRate: number
+  staffRows: EstimateStaffRow[]
+  directOperatingCosts: EstimateDirectCosts
+  jobRoles: EstimateJobRole[]
+  notes: string
 }
 
 export interface PptSlide {

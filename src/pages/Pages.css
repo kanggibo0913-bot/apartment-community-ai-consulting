@@ -109,11 +109,15 @@
 
 .facility-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 20px;
 }
 
 .facility-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 100%;
   background: #f8f9fa;
   border-radius: 12px;
   border: 1px solid #e9ecef;
@@ -172,6 +176,14 @@
   background: #0d6efd;
 }
 
+.badge-주의 {
+  background: #fd7e14;
+}
+
+.badge-위험 {
+  background: #dc3545;
+}
+
 .badge-관리-필요 {
   background: #0f5132;
 }
@@ -188,6 +200,18 @@
   margin-top: 12px;
   color: #495057;
   line-height: 1.6;
+}
+
+.analysis-grade-notes {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e9ecef;
+  color: #495057;
+}
+
+.analysis-grade-notes p {
+  margin: 6px 0 0;
+  font-size: 14px;
 }
 
 .analysis-summary-list {
@@ -231,8 +255,20 @@
 
 .dashboard-summary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
+}
+
+@media (max-width: 1200px) {
+  .dashboard-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-summary-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .status-chip {
@@ -447,12 +483,53 @@
     grid-template-columns: 1fr;
   }
 
+  .page {
+    padding: 0;
+  }
+
   .data-table {
     font-size: 12px;
   }
 
-  .data-table thead th,
+  .data-table thead {
+    display: none;
+  }
+
+  .data-table tbody {
+    display: grid;
+    gap: 14px;
+  }
+
+  .data-table tbody tr {
+    display: grid;
+    gap: 10px;
+    border: 1px solid #e9ecef;
+    border-radius: 16px;
+    padding: 14px;
+    background: #ffffff;
+  }
+
   .data-table tbody td {
-    padding: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 6px 0;
+    border: none;
+  }
+
+  .data-table tbody td:before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: #495057;
+    margin-right: 12px;
+    flex: 1 1 auto;
+  }
+
+  .data-table tbody td:last-child {
+    padding-bottom: 0;
+  }
+
+  .data-table tbody td button {
+    width: auto;
   }
 }

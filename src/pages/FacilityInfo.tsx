@@ -19,11 +19,15 @@ const FacilityInfo: React.FC<FacilityInfoProps> = ({ facilityInfo, onChange }) =
   }
 
   const enabledCount = facilityInfo.items.filter(item => item.enabled).length
+  const operatingCount = facilityInfo.items.filter(item => item.operatingStatus === '운영중').length
+  const paidCount = facilityInfo.items.filter(item => item.paidType === '유료').length
+  const freeCount = facilityInfo.items.filter(item => item.paidType === '무료').length
+  const sortedItems = [...facilityInfo.items].sort((a, b) => Number(b.enabled) - Number(a.enabled) || a.id - b.id)
 
   return (
     <div className="page">
       <PageHeader
-        title="🏛️ 시설 정보"
+        title="시설 정보"
         description="시설 가용 여부와 운영 조건을 입력하여 시설 운영 현황을 관리합니다."
       />
 
@@ -34,15 +38,27 @@ const FacilityInfo: React.FC<FacilityInfoProps> = ({ facilityInfo, onChange }) =
             <p className="stat-value">{facilityInfo.items.length}</p>
           </div>
           <div className="stat-box" style={{ padding: 16, boxShadow: 'none', border: '1px solid #e9ecef' }}>
-            <p className="stat-label">운영 중 시설</p>
+            <p className="stat-label">선택 시설 수</p>
             <p className="stat-value">{enabledCount}</p>
+          </div>
+          <div className="stat-box" style={{ padding: 16, boxShadow: 'none', border: '1px solid #e9ecef' }}>
+            <p className="stat-label">운영 시설 수</p>
+            <p className="stat-value">{operatingCount}</p>
+          </div>
+          <div className="stat-box" style={{ padding: 16, boxShadow: 'none', border: '1px solid #e9ecef' }}>
+            <p className="stat-label">유료 시설 수</p>
+            <p className="stat-value">{paidCount}</p>
+          </div>
+          <div className="stat-box" style={{ padding: 16, boxShadow: 'none', border: '1px solid #e9ecef' }}>
+            <p className="stat-label">무료 시설 수</p>
+            <p className="stat-value">{freeCount}</p>
           </div>
         </div>
       </Card>
 
       <Card title="✏️ 시설 선택 및 상세">
         <div className="facility-grid">
-          {facilityInfo.items.map(item => (
+          {sortedItems.map(item => (
             <div key={item.id} className={`facility-card ${item.enabled ? 'facility-active' : ''}`}>
               <div className="facility-card-header">
                 <label>

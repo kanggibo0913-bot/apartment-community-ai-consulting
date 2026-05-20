@@ -4,6 +4,7 @@ import FormGroup from '../components/FormGroup'
 import Button from '../components/Button'
 import StatBox from '../components/StatBox'
 import { CostInfoData } from '../types/CommunityData'
+import { formatMoney } from '../utils/formatUtils'
 import './Pages.css'
 
 interface CostInfoProps {
@@ -37,54 +38,54 @@ const CostInfo: React.FC<CostInfoProps> = ({ data, onChange }) => {
   return (
     <div className="page">
       <PageHeader
-        title="💰 비용 정보"
+        title="비용 정보"
         description="월별 운영비를 상세히 입력하면 대시보드에 자동 집계됩니다."
       />
 
       <Card title="📊 월간 운영비 합계">
         <div className="stats-grid">
-          <StatBox label="총 운영비" value={totalCost} unit="만원" icon="💳" />
-          <StatBox label="인건비" value={data.salaries} unit="만원" icon="👤" />
-          <StatBox label="전기세" value={data.electricity} unit="만원" icon="🔌" />
-          <StatBox label="수도세" value={data.water} unit="만원" icon="🚰" />
+          <StatBox label="총 운영비" value={formatMoney(totalCost)} icon="💳" />
+          <StatBox label="인건비" value={formatMoney(data.salaries)} icon="👤" />
+          <StatBox label="전기세" value={formatMoney(data.electricity)} icon="🔌" />
+          <StatBox label="수도세" value={formatMoney(data.water)} icon="🚰" />
         </div>
       </Card>
 
       <Card title="✏️ 비용 항목 입력">
         <form>
           <div className="form-row">
-            <FormGroup label="인건비 (만원)"> 
-              <input type="number" name="salaries" value={data.salaries || ''} onChange={handleChange} placeholder="예: 800" />
+            <FormGroup label="인건비 (원)"> 
+              <input type="number" name="salaries" value={data.salaries || ''} onChange={handleChange} placeholder="예: 9500000" />
             </FormGroup>
-            <FormGroup label="전기세 (만원)"> 
-              <input type="number" name="electricity" value={data.electricity || ''} onChange={handleChange} placeholder="예: 250" />
-            </FormGroup>
-          </div>
-
-          <div className="form-row">
-            <FormGroup label="수도세 (만원)"> 
-              <input type="number" name="water" value={data.water || ''} onChange={handleChange} placeholder="예: 80" />
-            </FormGroup>
-            <FormGroup label="냉난방비 (만원)"> 
-              <input type="number" name="hvac" value={data.hvac || ''} onChange={handleChange} placeholder="예: 180" />
+            <FormGroup label="전기세 (원)"> 
+              <input type="number" name="electricity" value={data.electricity || ''} onChange={handleChange} placeholder="예: 2100000" />
             </FormGroup>
           </div>
 
           <div className="form-row">
-            <FormGroup label="소모품비 (만원)"> 
-              <input type="number" name="supplies" value={data.supplies || ''} onChange={handleChange} placeholder="예: 60" />
+            <FormGroup label="수도세 (원)"> 
+              <input type="number" name="water" value={data.water || ''} onChange={handleChange} placeholder="예: 700000" />
             </FormGroup>
-            <FormGroup label="유지보수비 (만원)"> 
-              <input type="number" name="maintenance" value={data.maintenance || ''} onChange={handleChange} placeholder="예: 120" />
+            <FormGroup label="냉난방비 (원)"> 
+              <input type="number" name="hvac" value={data.hvac || ''} onChange={handleChange} placeholder="예: 1800000" />
             </FormGroup>
           </div>
 
           <div className="form-row">
-            <FormGroup label="청소비 (만원)"> 
-              <input type="number" name="cleaning" value={data.cleaning || ''} onChange={handleChange} placeholder="예: 70" />
+            <FormGroup label="소모품비 (원)"> 
+              <input type="number" name="supplies" value={data.supplies || ''} onChange={handleChange} placeholder="예: 500000" />
             </FormGroup>
-            <FormGroup label="기타 비용 (만원)"> 
-              <input type="number" name="other" value={data.other || ''} onChange={handleChange} placeholder="예: 30" />
+            <FormGroup label="유지보수비 (원)"> 
+              <input type="number" name="maintenance" value={data.maintenance || ''} onChange={handleChange} placeholder="예: 900000" />
+            </FormGroup>
+          </div>
+
+          <div className="form-row">
+            <FormGroup label="청소비 (원)"> 
+              <input type="number" name="cleaning" value={data.cleaning || ''} onChange={handleChange} placeholder="예: 1200000" />
+            </FormGroup>
+            <FormGroup label="기타 비용 (원)"> 
+              <input type="number" name="other" value={data.other || ''} onChange={handleChange} placeholder="예: 300000" />
             </FormGroup>
           </div>
 

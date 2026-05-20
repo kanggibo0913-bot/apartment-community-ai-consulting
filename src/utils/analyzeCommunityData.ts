@@ -38,55 +38,23 @@ export const analyzeCommunityData = (data: CommunityData): AnalysisResult => {
     return types.length > 0 ? `민원 유형별로는 ${types.join(', ')}가 주로 발생합니다.` : '등록된 민원이 없습니다.'
   }
 
-  let score = 0
-
-  if (totalCost === 0 && totalRevenue === 0 && totalUnits === 0) {
-    score += 1
-  }
-  if (laborRatio >= 60) {
-    score += 2
-  } else if (laborRatio >= 50) {
-    score += 1
-  }
-  if (profit < 0) {
-    score += 3
-  } else if (profit < 50) {
-    score += 1
-  }
-  if (unresolvedComplaints >= 5) {
-    score += 2
-  } else if (unresolvedComplaints >= 3) {
-    score += 1
-  }
-  if (repeatComplaints > 0) {
-    score += 1
-  }
-  if (activeFacilityCount >= 4 && staffCount < 3) {
-    score += 1
-  }
-  if (totalUnits >= 400 && weekdayHours > 0 && weekdayHours <= 8) {
-    score += 1
-  }
-  if (!hasUnmannedHours && staffCount > 0) {
-    score += 0
-  }
+  const isLargeDeficit = profit <= -2000000
+  const positiveProfit = profit >= 0
 
   const getGrade = (): DiagnosisGrade => {
-    if (score >= 5) return '긴급 개선 필요'
-    if (score >= 3) return '개선 필요'
-    if (score >= 1) return '관리 필요'
-    return '양호'
+    if (positiveProfit) return '양호'
+    if (isLargeDeficit) return '위험'
+    return '주의'
   }
 
   const grade = getGrade()
-  const positiveProfit = profit >= 0
 
   const laborCostAnalysis = totalCost === 0
     ? '운영비 데이터가 충분하지 않습니다. 비용 정보를 입력하면 인건비 적정성을 보다 정확히 평가할 수 있습니다.'
     : laborRatio >= 60
       ? '총 운영비 대비 인건비 비중이 60% 이상으로 높아, 인력 운영 효율과 예산 재검토가 필요합니다.'
       : laborRatio >= 50
-        ? '인건비 비중이 다소 높은 편입니다. 주요 업무 중심으로 인력 운영을 최적화할 여지가 있습니다.'
+        ? '인건비 비중이 50% 이상입니다. 인건비 관리가 필요하며 인력 배치와 업무 우선순위를 점검하십시오.'
         : '인건비 비중은 비교적 안정적인 수준입니다. 현재 인력 운영을 유지하면서 비용 집중 관리를 권장합니다.'
 
   const costAnalysis = totalCost === 0
@@ -104,7 +72,7 @@ export const analyzeCommunityData = (data: CommunityData): AnalysisResult => {
   const complaintAnalysis = unresolvedComplaints === 0
     ? '미해결 민원이 없습니다. 민원 처리 프로세스를 유지하되, 지속적인 현황 모니터링을 권장합니다.'
     : unresolvedComplaints >= 5
-      ? '미해결 민원이 5건 이상입니다. 민원 대응 체계를 강화하고 우선 처리 기준을 명확히 해야 합니다.'
+      ? '미해결 민원이 5건 이상입니다. 민원 리스크가 있으므로 대응 속도를 높이고 필요 시 전담 팀을 배치해야 합니다.'
       : '미해결 민원이 존재합니다. 우선순위별 민원 처리와 후속 관리가 필요합니다.'
 
   const repeatComplaintRisk = repeatComplaints > 0
@@ -138,11 +106,13 @@ export const analyzeCommunityData = (data: CommunityData): AnalysisResult => {
     improvementAdviceParts.push('현재 운영 체계는 기본적으로 안정적입니다. 주요 지표를 주기적으로 점검하며 개선 기회를 탐색하십시오.')
   }
 
-  const automationReview = hasUnmannedHours
-    ? '무인 운영 가능 시간이 입력되어 있습니다. 출입 및 오픈·마감 자동화 도입을 검토해볼 수 있습니다.'
-    : '무인 운영 가능 시간이 아직 입력되지 않았습니다. 자동화 실행 가능성을 확인하는 것이 좋습니다.'
+  const automationReview = (data.operationInfo.openStaffNeeded || data.operationInfo.closeStaffNeeded) && hasUnmannedHours
+    ? '오픈/마감 담당이 필요하고 무인운영 가능 시간이 있으므로 자동화 검토가 권장됩니다.'
+    : hasUnmannedHours
+      ? '무인 운영 가능 시간이 입력되어 있습니다. 자동화 도입 가능성을 확인해보십시오.'
+      : '무인 운영 가능 시간이 아직 입력되지 않았습니다. 자동화 실행 가능성을 확인하는 것이 좋습니다.'
 
-  const summary = `현재 단지는 ${grade} 단계로 평가됩니다. ${positiveProfit ? `월 손익은 ${formatMoney(profit)} 흑자` : `월 손익은 ${formatMoney(Math.abs(profit))} 적자`}이며, ${laborRatio >= 60 ? '인건비 부담이 높은 편입니다.' : '인건비 비중은 비교적 안정적입니다.'} ${unresolvedComplaints >= 5 ? '민원 처리 체계 강화가 필요합니다.' : '민원 대응 체계를 지속 점검해야 합니다.'}`
+  const summary = `현재 단지는 ${grade} 단계로 평가됩니다. ${positiveProfit ? `월 손익은 ${formatMoney(profit)} 흑자` : `월 손익은 ${formatMoney(Math.abs(profit))} 적자`}이며, ${laborRatio >= 50 ? '인건비 관리가 필요합니다.' : '인건비 비중은 비교적 안정적입니다.'} ${unresolvedComplaints >= 5 ? '민원 리스크가 높아 대응 체계를 강화해야 합니다.' : '민원 대응 체계를 지속 점검해야 합니다.'}`
 
   const keyTakeaways = [
     `총 운영비 대비 인건비 비중은 ${formatPercent(laborRatio)}입니다.`,
