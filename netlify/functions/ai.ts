@@ -338,6 +338,5 @@ ${JSON.stringify(payload, null, 2)}
     }
   }
 }
-}
 
 export { handler }
