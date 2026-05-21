@@ -8,6 +8,10 @@ import OperationInfo from './pages/OperationInfo'
 import CostInfo from './pages/CostInfo'
 import RevenueInfo from './pages/RevenueInfo'
 import ComplaintInfo from './pages/ComplaintInfo'
+import DocumentCenter from './pages/DocumentCenter'
+import ContractGenerator from './pages/ContractGenerator'
+import ContractReview from './pages/ContractReview'
+import AgendaPredictor from './pages/AgendaPredictor'
 import AIAnalysis from './pages/AIAnalysis'
 import ReportDraft from './pages/ReportDraft'
 import TenderNotices from './pages/TenderNotices'
@@ -22,20 +26,28 @@ import {
   RevenueInfoData,
   FacilityDetail,
   OutputType,
+  RevenueTargetInfo,
+  LaborCostData,
+  UtilityForecastData,
+  DocumentCenterData,
+  ContractGeneratorData,
+  ContractReviewData,
+  AgendaPredictorData,
 } from './types/CommunityData'
 
-type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'analysis' | 'report' | 'tender' | 'estimate'
+type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate'
 
 const defaultFacilityItems: FacilityDetail[] = [
-  { id: 1, name: '헬스장', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '' },
-  { id: 2, name: '골프장', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '' },
-  { id: 3, name: 'GX룸', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '' },
-  { id: 4, name: '독서실', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '' },
-  { id: 5, name: '사우나', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '' },
-  { id: 6, name: '카페', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '' },
-  { id: 7, name: '다목적실', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '' },
-  { id: 8, name: '키즈룸', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '' },
-  { id: 9, name: '기타 시설', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '' },
+  { id: 1, name: '헬스장', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
+  { id: 2, name: '골프장', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
+  { id: 3, name: 'GX룸', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
+  { id: 4, name: '독서실', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
+  { id: 5, name: '사우나', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
+  { id: 6, name: '카페', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
+  { id: 7, name: '다목적실', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
+  { id: 8, name: '키즈룸', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
+  { id: 9, name: '기타 시설', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
+  { id: 10, name: '게스트하우스', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
 ]
 
 const defaultCommunityData: CommunityData = {
@@ -80,6 +92,74 @@ const defaultCommunityData: CommunityData = {
     cafeSales: 0,
     rentalIncome: 0,
     otherIncome: 0,
+  },
+  revenueTarget: {
+    currentMembers: 0,
+    avgMembershipPrice: 0,
+    ptForecast: 0,
+    gxForecast: 0,
+    otherServiceRevenue: 0,
+    currentMonthTarget: 0,
+    nextMonthTarget: 0,
+  },
+  laborCost: {
+    employees: [],
+  },
+  utilityForecast: {
+    electricPrev2Month: 0,
+    electricLastMonth: 0,
+    waterPrev2Month: 0,
+    waterLastMonth: 0,
+    gasPrev2Month: 0,
+    gasLastMonth: 0,
+    season: '봄',
+    intensity: '보통',
+  },
+  documentCenter: {
+    documentType: '공문',
+    apartmentName: '',
+    receiver: '',
+    sender: '',
+    title: '',
+    date: '',
+    manager: '',
+    phone: '',
+    mainContent: '',
+    requestContent: '',
+    attachmentName: '',
+    memo: '',
+    generatedDocument: '',
+  },
+  contractGenerator: {
+    contractType: '커뮤니티센터 위탁운영 계약서',
+    contractTitle: '',
+    partyA: '',
+    partyB: '',
+    startDate: '',
+    endDate: '',
+    contractAmount: '',
+    paymentMethod: '',
+    workScope: '',
+    settlementMethod: '',
+    terminationCondition: '',
+    specialTerms: '',
+    jurisdiction: '',
+    memo: '',
+    generatedContract: '',
+  },
+  contractReview: {
+    contractText: '',
+    uploadedFileName: '',
+    reviewResult: '',
+  },
+  agendaPredictor: {
+    apartmentName: '',
+    sourceType: '게시판 공지',
+    sourceText: '',
+    relatedFacility: '헬스장',
+    complaintFrequency: '보통',
+    urgency: '보통',
+    generatedAgenda: '',
   },
   complaints: [],
 }
@@ -138,6 +218,77 @@ const sampleCommunityData: CommunityData = {
     rentalIncome: 0,
     otherIncome: 0,
   },
+  revenueTarget: {
+    currentMembers: 320,
+    avgMembershipPrice: 95000,
+    ptForecast: 6000000,
+    gxForecast: 1200000,
+    otherServiceRevenue: 800000,
+    currentMonthTarget: 16000000,
+    nextMonthTarget: 17000000,
+  },
+  laborCost: {
+    employees: [
+      { id: 1, name: '매니저', payType: '월급제', hourlyWage: 0, monthlySalary: 3200000, monthlyHours: 0, monthlyWorkDays: 22, weeklyHolidayIncluded: false, indirectRate: 15 },
+      { id: 2, name: '강사', payType: '시급제', hourlyWage: 32000, monthlySalary: 0, monthlyHours: 160, monthlyWorkDays: 22, weeklyHolidayIncluded: true, indirectRate: 12 },
+    ],
+  },
+  utilityForecast: {
+    electricPrev2Month: 2100000,
+    electricLastMonth: 2200000,
+    waterPrev2Month: 700000,
+    waterLastMonth: 720000,
+    gasPrev2Month: 480000,
+    gasLastMonth: 500000,
+    season: '여름',
+    intensity: '보통',
+  },
+  documentCenter: {
+    documentType: '공문',
+    apartmentName: '래미안 커뮤니티 시범단지',
+    receiver: '관리사무소',
+    sender: '커뮤니티팀',
+    title: '커뮤니티센터 운영 관련 보고',
+    date: '2024-05-21',
+    manager: '홍길동',
+    phone: '010-1234-5678',
+    mainContent: '커뮤니티센터의 운영 현황과 향후 개선 방안을 보고드립니다.',
+    requestContent: '관련 부서의 확인과 필요 시 추가 협의를 요청합니다.',
+    attachmentName: '운영현황 보고서',
+    memo: '내부 검토용 초안입니다.',
+    generatedDocument: '',
+  },
+  contractGenerator: {
+    contractType: '커뮤니티센터 위탁운영 계약서',
+    contractTitle: '커뮤니티센터 위탁운영 계약서 초안',
+    partyA: '래미안 관리사무소',
+    partyB: 'ABC 운영사',
+    startDate: '2024-06-01',
+    endDate: '2025-05-31',
+    contractAmount: '₩120,000,000',
+    paymentMethod: '월별 분할 지급',
+    workScope: '커뮤니티센터 운영 및 시설 관리',
+    settlementMethod: '월별 정산 및 세금계산서 발행',
+    terminationCondition: '상호 합의 또는 계약 위반 시',
+    specialTerms: '운영 성과 평가에 따른 보너스 지급 검토',
+    jurisdiction: '서울중앙지방법원',
+    memo: '내부 검토용 초안입니다.',
+    generatedContract: '',
+  },
+  contractReview: {
+    contractText: '',
+    uploadedFileName: '',
+    reviewResult: '',
+  },
+  agendaPredictor: {
+    apartmentName: '래미안 커뮤니티 시범단지',
+    sourceType: '민원자료',
+    sourceText: '헬스장 기기 고장과 청소 상태 불만이 자주 접수되고 있습니다.',
+    relatedFacility: '헬스장',
+    complaintFrequency: '높음',
+    urgency: '보통',
+    generatedAgenda: '',
+  },
   complaints: [
     { id: 1, content: '헬스장 기기 고장', type: '시설 고장', status: '접수', date: '2024-05-08', action: '' },
     { id: 2, content: '골프장 조명 불량', type: '시설 고장', status: '진행 중', date: '2024-05-09', action: '수리 요청 접수' },
@@ -156,6 +307,10 @@ const pageLabels: Record<PageType, string> = {
   cost: '비용 정보',
   revenue: '수익 정보',
   complaint: '민원 정보',
+  document: '문서 생성 센터',
+  contract: '계약서 생성 센터',
+  review: '계약서 검토 센터',
+  agenda: '입대의 안건 예상 센터',
   analysis: 'AI 분석 결과',
   report: '보고서 초안',
   tender: '입찰공고 관리',
@@ -166,7 +321,7 @@ const isValidCommunityData = (value: unknown): value is CommunityData => {
   if (!value || typeof value !== 'object') return false
   const data = value as any
   const hasObject = (key: string) => data[key] && typeof data[key] === 'object'
-  if (!hasObject('apartmentInfo') || !hasObject('facilityInfo') || !hasObject('operationInfo') || !hasObject('costInfo') || !hasObject('revenueInfo') || !Array.isArray(data.complaints)) {
+  if (!hasObject('apartmentInfo') || !hasObject('facilityInfo') || !hasObject('operationInfo') || !hasObject('costInfo') || !hasObject('revenueInfo') || !hasObject('revenueTarget') || !hasObject('laborCost') || !hasObject('utilityForecast') || !Array.isArray(data.complaints)) {
     return false
   }
   const apartment = data.apartmentInfo
@@ -179,6 +334,10 @@ const isValidCommunityData = (value: unknown): value is CommunityData => {
   if (typeof revenue.usageFee !== 'number' || typeof revenue.ptFee !== 'number') return false
   const facilityItems = data.facilityInfo.items
   if (!Array.isArray(facilityItems) || !facilityItems.every((item: any) => typeof item.id === 'number' && typeof item.name === 'string')) return false
+  if (data.documentCenter && typeof data.documentCenter !== 'object') return false
+  if (data.contractGenerator && typeof data.contractGenerator !== 'object') return false
+  if (data.contractReview && typeof data.contractReview !== 'object') return false
+  if (data.agendaPredictor && typeof data.agendaPredictor !== 'object') return false
   return data.complaints.every((item: any) => typeof item.id === 'number' && typeof item.content === 'string' && typeof item.type === 'string')
 }
 
@@ -222,6 +381,34 @@ function App() {
       revenueInfo: {
         ...defaultCommunityData.revenueInfo,
         ...parsed.revenueInfo,
+      },
+      revenueTarget: {
+        ...defaultCommunityData.revenueTarget,
+        ...parsed.revenueTarget,
+      },
+      laborCost: {
+        ...defaultCommunityData.laborCost,
+        ...parsed.laborCost,
+      },
+      utilityForecast: {
+        ...defaultCommunityData.utilityForecast,
+        ...parsed.utilityForecast,
+      },
+      documentCenter: {
+        ...defaultCommunityData.documentCenter,
+        ...parsed.documentCenter,
+      },
+      contractGenerator: {
+        ...defaultCommunityData.contractGenerator,
+        ...parsed.contractGenerator,
+      },
+      contractReview: {
+        ...defaultCommunityData.contractReview,
+        ...parsed.contractReview,
+      },
+      agendaPredictor: {
+        ...defaultCommunityData.agendaPredictor,
+        ...parsed.agendaPredictor,
       },
       complaints: parsed.complaints ?? defaultCommunityData.complaints,
     })
@@ -270,6 +457,55 @@ function App() {
     }))
   }
 
+  const updateRevenueTarget = (next: Partial<RevenueTargetInfo>) => {
+    setAppState(prev => ({
+      ...prev,
+      revenueTarget: { ...prev.revenueTarget, ...next },
+    }))
+  }
+
+  const updateLaborCost = (next: Partial<LaborCostData>) => {
+    setAppState(prev => ({
+      ...prev,
+      laborCost: { ...prev.laborCost, ...next },
+    }))
+  }
+
+  const updateDocumentCenter = (next: Partial<DocumentCenterData>) => {
+    setAppState(prev => ({
+      ...prev,
+      documentCenter: { ...prev.documentCenter, ...next },
+    }))
+  }
+
+  const updateContractGenerator = (next: Partial<ContractGeneratorData>) => {
+    setAppState(prev => ({
+      ...prev,
+      contractGenerator: { ...prev.contractGenerator, ...next },
+    }))
+  }
+
+  const updateContractReview = (next: Partial<ContractReviewData>) => {
+    setAppState(prev => ({
+      ...prev,
+      contractReview: { ...prev.contractReview, ...next },
+    }))
+  }
+
+  const updateAgendaPredictor = (next: Partial<AgendaPredictorData>) => {
+    setAppState(prev => ({
+      ...prev,
+      agendaPredictor: { ...prev.agendaPredictor, ...next },
+    }))
+  }
+
+  const updateUtilityForecast = (next: Partial<UtilityForecastData>) => {
+    setAppState(prev => ({
+      ...prev,
+      utilityForecast: { ...prev.utilityForecast, ...next },
+    }))
+  }
+
   const updateComplaints = (complaints: ComplaintItem[]) => {
     setAppState(prev => ({
       ...prev,
@@ -309,7 +545,56 @@ function App() {
       if (!isValidCommunityData(parsed)) {
         return { success: false, message: '올바른 CommunityData 형식이 아닙니다. JSON 구조를 확인해주세요.' }
       }
-      setAppState(parsed)
+      setAppState({
+        apartmentInfo: {
+          ...defaultCommunityData.apartmentInfo,
+          ...parsed.apartmentInfo,
+        },
+        facilityInfo: {
+          items: parsed.facilityInfo?.items ?? defaultFacilityItems,
+        },
+        operationInfo: {
+          ...defaultCommunityData.operationInfo,
+          ...parsed.operationInfo,
+        },
+        costInfo: {
+          ...defaultCommunityData.costInfo,
+          ...parsed.costInfo,
+        },
+        revenueInfo: {
+          ...defaultCommunityData.revenueInfo,
+          ...parsed.revenueInfo,
+        },
+        revenueTarget: {
+          ...defaultCommunityData.revenueTarget,
+          ...parsed.revenueTarget,
+        },
+        laborCost: {
+          ...defaultCommunityData.laborCost,
+          ...parsed.laborCost,
+        },
+        utilityForecast: {
+          ...defaultCommunityData.utilityForecast,
+          ...parsed.utilityForecast,
+        },
+        documentCenter: {
+          ...defaultCommunityData.documentCenter,
+          ...parsed.documentCenter,
+        },
+        contractGenerator: {
+          ...defaultCommunityData.contractGenerator,
+          ...parsed.contractGenerator,
+        },
+        contractReview: {
+          ...defaultCommunityData.contractReview,
+          ...parsed.contractReview,
+        },
+        agendaPredictor: {
+          ...defaultCommunityData.agendaPredictor,
+          ...parsed.agendaPredictor,
+        },
+        complaints: parsed.complaints ?? defaultCommunityData.complaints,
+      })
       return { success: true, message: 'JSON 데이터가 정상적으로 복원되었습니다. 기존 데이터가 덮어써졌습니다.' }
     } catch {
       return { success: false, message: 'JSON 파일을 읽는 중 오류가 발생했습니다. 파일 형식을 확인해주세요.' }
@@ -333,6 +618,7 @@ function App() {
             onImportData={handleImportData}
             statusMessage={statusMessage}
             navigateToOutput={navigateToOutput}
+            navigateToPage={handleChangePage}
           />
         )
       case 'apartment':
@@ -342,11 +628,32 @@ function App() {
       case 'operation':
         return <OperationInfo data={appState.operationInfo} onChange={updateOperationInfo} />
       case 'cost':
-        return <CostInfo data={appState.costInfo} onChange={updateCostInfo} />
+        return <CostInfo
+          data={appState.costInfo}
+          onChange={updateCostInfo}
+          laborCost={appState.laborCost}
+          onChangeLaborCost={updateLaborCost}
+          utilityForecast={appState.utilityForecast}
+          onChangeUtilityForecast={updateUtilityForecast}
+        />
       case 'revenue':
-        return <RevenueInfo data={appState.revenueInfo} onChange={updateRevenueInfo} costTotal={getCostTotal(appState.costInfo)} />
+        return <RevenueInfo
+          data={appState.revenueInfo}
+          onChange={updateRevenueInfo}
+          costTotal={getCostTotal(appState.costInfo)}
+          revenueTarget={appState.revenueTarget}
+          onChangeRevenueTarget={updateRevenueTarget}
+        />
       case 'complaint':
         return <ComplaintInfo complaints={appState.complaints} onChange={updateComplaints} />
+      case 'document':
+        return <DocumentCenter data={appState.documentCenter} onChange={updateDocumentCenter} />
+      case 'contract':
+        return <ContractGenerator data={appState.contractGenerator} onChange={updateContractGenerator} />
+      case 'review':
+        return <ContractReview data={appState.contractReview} onChange={updateContractReview} />
+      case 'agenda':
+        return <AgendaPredictor data={appState.agendaPredictor} onChange={updateAgendaPredictor} />
       case 'analysis':
         return <AIAnalysis data={appState} />
       case 'report':
@@ -365,6 +672,7 @@ function App() {
             onImportData={handleImportData}
             statusMessage={statusMessage}
             navigateToOutput={navigateToOutput}
+            navigateToPage={handleChangePage}
           />
         )
     }

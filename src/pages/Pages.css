@@ -259,6 +259,35 @@
   gap: 18px;
 }
 
+.preview-box {
+  width: 100%;
+  border: 1px solid #e9ecef;
+  border-radius: 12px;
+  padding: 16px;
+  font-family: inherit;
+  background: #fff;
+  color: #212529;
+  resize: vertical;
+  min-height: 260px;
+}
+
+.file-note {
+  padding: 18px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.file-note p {
+  margin: 0;
+  color: #495057;
+  font-size: 13px;
+}
+
 @media (max-width: 1200px) {
   .dashboard-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

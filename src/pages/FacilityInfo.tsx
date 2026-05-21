@@ -93,6 +93,69 @@ const FacilityInfo: React.FC<FacilityInfoProps> = ({ facilityInfo, onChange }) =
                 </select>
               </FormGroup>
 
+              {item.name === '게스트하우스' && (
+                <>
+                  <div className="form-row">
+                    <FormGroup label="객실 수">
+                      <input
+                        type="number"
+                        value={item.roomCount || ''}
+                        onChange={(e) => handleItemChange(item.id, { roomCount: parseInt(e.target.value || '0', 10) })}
+                        disabled={!item.enabled}
+                      />
+                    </FormGroup>
+                    <FormGroup label="1회 이용요금 (원)">
+                      <input
+                        type="number"
+                        value={item.perUseFee || ''}
+                        onChange={(e) => handleItemChange(item.id, { perUseFee: parseInt(e.target.value || '0', 10) })}
+                        disabled={!item.enabled}
+                      />
+                    </FormGroup>
+                  </div>
+
+                  <div className="form-row">
+                    <FormGroup label="월 예상 이용 건수">
+                      <input
+                        type="number"
+                        value={item.monthlyUsageCount || ''}
+                        onChange={(e) => handleItemChange(item.id, { monthlyUsageCount: parseInt(e.target.value || '0', 10) })}
+                        disabled={!item.enabled}
+                      />
+                    </FormGroup>
+                    <FormGroup label="예약 방식">
+                      <input
+                        type="text"
+                        value={item.reservationType}
+                        onChange={(e) => handleItemChange(item.id, { reservationType: e.target.value })}
+                        disabled={!item.enabled}
+                      />
+                    </FormGroup>
+                  </div>
+
+                  <div className="form-row">
+                    <FormGroup label="청소/관리 인력 필요 여부">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={item.needsCleaningStaff}
+                          onChange={(e) => handleItemChange(item.id, { needsCleaningStaff: e.target.checked })}
+                          disabled={!item.enabled}
+                        />
+                        필요
+                      </label>
+                    </FormGroup>
+                    <FormGroup label="게스트하우스 월 예상 수익">
+                      <input
+                        type="text"
+                        value={item.enabled ? `${(item.perUseFee || 0) * (item.monthlyUsageCount || 0)}` : ''}
+                        readOnly
+                      />
+                    </FormGroup>
+                  </div>
+                </>
+              )}
+
               <FormGroup label="주요 이용 시간대">
                 <input
                   type="text"

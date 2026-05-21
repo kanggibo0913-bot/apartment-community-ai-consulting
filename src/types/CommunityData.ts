@@ -8,6 +8,7 @@ export type FacilityName =
   | '다목적실'
   | '키즈룸'
   | '기타 시설'
+  | '게스트하우스'
 
 export type FacilityOperatingStatus = '운영중' | '미운영'
 export type FacilityPaidType = '유료' | '무료'
@@ -20,6 +21,11 @@ export interface FacilityDetail {
   paidType: FacilityPaidType
   peakHours: string
   notes: string
+  roomCount: number
+  perUseFee: number
+  monthlyUsageCount: number
+  reservationType: string
+  needsCleaningStaff: boolean
 }
 
 export interface ApartmentInfoData {
@@ -63,6 +69,109 @@ export interface RevenueInfoData {
   cafeSales: number
   rentalIncome: number
   otherIncome: number
+}
+
+export interface RevenueTargetInfo {
+  currentMembers: number
+  avgMembershipPrice: number
+  ptForecast: number
+  gxForecast: number
+  otherServiceRevenue: number
+  currentMonthTarget: number
+  nextMonthTarget: number
+}
+
+export type DocumentType = '공문' | '안내문' | '운영보고서' | '정산요청서' | '시설보수 요청서'
+
+export interface DocumentCenterData {
+  documentType: DocumentType
+  apartmentName: string
+  receiver: string
+  sender: string
+  title: string
+  date: string
+  manager: string
+  phone: string
+  mainContent: string
+  requestContent: string
+  attachmentName: string
+  memo: string
+  generatedDocument: string
+}
+
+export type ContractType =
+  | '커뮤니티센터 위탁운영 계약서'
+  | '헬스 트레이너 계약서'
+  | '사업소득자 계약서'
+  | '장비 납품 계약서'
+  | '장비 렌탈 계약서'
+  | '업무협약서'
+
+export interface ContractGeneratorData {
+  contractType: ContractType
+  contractTitle: string
+  partyA: string
+  partyB: string
+  startDate: string
+  endDate: string
+  contractAmount: string
+  paymentMethod: string
+  workScope: string
+  settlementMethod: string
+  terminationCondition: string
+  specialTerms: string
+  jurisdiction: string
+  memo: string
+  generatedContract: string
+}
+
+export interface ContractReviewData {
+  contractText: string
+  uploadedFileName: string
+  reviewResult: string
+}
+
+export type SourceType = '게시판 공지' | '민원자료' | '회의록' | '운영일지' | '기타'
+export type AgendaFacility = FacilityName | '기타'
+
+export interface AgendaPredictorData {
+  apartmentName: string
+  sourceType: SourceType
+  sourceText: string
+  relatedFacility: AgendaFacility
+  complaintFrequency: '낮음' | '보통' | '높음'
+  urgency: '낮음' | '보통' | '높음'
+  generatedAgenda: string
+}
+
+export type SeasonType = '봄' | '여름' | '가을' | '겨울'
+export type HvacIntensity = '낮음' | '보통' | '높음'
+
+export interface EmployeeData {
+  id: number
+  name: string
+  payType: PayType
+  hourlyWage: number
+  monthlySalary: number
+  monthlyHours: number
+  monthlyWorkDays: number
+  weeklyHolidayIncluded: boolean
+  indirectRate: number
+}
+
+export interface LaborCostData {
+  employees: EmployeeData[]
+}
+
+export interface UtilityForecastData {
+  electricPrev2Month: number
+  electricLastMonth: number
+  waterPrev2Month: number
+  waterLastMonth: number
+  gasPrev2Month: number
+  gasLastMonth: number
+  season: SeasonType
+  intensity: HvacIntensity
 }
 
 export type DiagnosisGrade = '양호' | '주의' | '위험'
@@ -313,5 +422,12 @@ export interface CommunityData {
   operationInfo: OperationInfoData
   costInfo: CostInfoData
   revenueInfo: RevenueInfoData
+  revenueTarget: RevenueTargetInfo
+  laborCost: LaborCostData
+  utilityForecast: UtilityForecastData
+  documentCenter: DocumentCenterData
+  contractGenerator: ContractGeneratorData
+  contractReview: ContractReviewData
+  agendaPredictor: AgendaPredictorData
   complaints: ComplaintItem[]
 }

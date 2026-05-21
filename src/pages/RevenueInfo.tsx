@@ -3,13 +3,15 @@ import Card from '../components/Card'
 import FormGroup from '../components/FormGroup'
 import Button from '../components/Button'
 import StatBox from '../components/StatBox'
-import { RevenueInfoData } from '../types/CommunityData'
+import { RevenueInfoData, RevenueTargetInfo } from '../types/CommunityData'
 import { formatMoney } from '../utils/formatUtils'
 import './Pages.css'
 
 interface RevenueInfoProps {
   data: RevenueInfoData
+  revenueTarget: RevenueTargetInfo
   onChange: (next: Partial<RevenueInfoData>) => void
+  onChangeRevenueTarget: (next: Partial<RevenueTargetInfo>) => void
   costTotal: number
 }
 
@@ -23,25 +25,101 @@ const defaultRevenueData: RevenueInfoData = {
   otherIncome: 0,
 }
 
-const RevenueInfo: React.FC<RevenueInfoProps> = ({ data, onChange, costTotal }) => {
+const RevenueInfo: React.FC<RevenueInfoProps> = ({ data, revenueTarget, onChange, onChangeRevenueTarget, costTotal }) => {
+  const membershipRevenue = revenueTarget.currentMembers * revenueTarget.avgMembershipPrice
+  const totalExpectedRevenue = membershipRevenue + revenueTarget.ptForecast + revenueTarget.gxForecast + revenueTarget.otherServiceRevenue
+  const currentMonthDiff = totalExpectedRevenue - revenueTarget.currentMonthTarget
+  const nextMonthDiff = totalExpectedRevenue - revenueTarget.nextMonthTarget
   const totalRevenue = Object.values(data).reduce((sum, value) => sum + value, 0)
   const profit = totalRevenue - costTotal
+
+  const getStatusLabel = (value: number) => (value >= 0 ? '초과' : '부족')
+  const formatDiffLabel = (value: number) => `${formatMoney(Math.abs(value))} ${getStatusLabel(value)}`
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     onChange({ [name]: value === '' ? 0 : parseFloat(value) } as Partial<RevenueInfoData>)
   }
 
+  const handleTargetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    onChangeRevenueTarget({ [name]: value === '' ? 0 : parseFloat(value) } as Partial<RevenueTargetInfo>)
+  }
+
   const handleReset = () => {
     onChange(defaultRevenueData)
+    onChangeRevenueTarget({
+      currentMembers: 0,
+      avgMembershipPrice: 0,
+      ptForecast: 0,
+      gxForecast: 0,
+      otherServiceRevenue: 0,
+      currentMonthTarget: 0,
+      nextMonthTarget: 0,
+    })
   }
 
   return (
     <div className="page">
       <PageHeader
         title="수익 정보"
-        description="월별 수익 항목을 입력하면 총 수익과 손익이 자동 계산됩니다."
+        description="월별 수익 항목과 목표 대비 매출 예측을 입력하세요."
       />
+
+      <Card title="📈 수익·목표 관리">
+        <div className="form-row">
+          <FormGroup label="현재 회원수">
+            <input type="number" name="currentMembers" value={revenueTarget.currentMembers || ''} onChange={handleTargetChange} placeholder="예: 320" />
+          </FormGroup>
+          <FormGroup label="평균 회원권 단가 (원)">
+            <input type="number" name="avgMembershipPrice" value={revenueTarget.avgMembershipPrice || ''} onChange={handleTargetChange} placeholder="예: 95000" />
+          </FormGroup>
+        </div>
+
+        <div className="form-row">
+          <FormGroup label="PT 예상 매출 (원)">
+            <input type="number" name="ptForecast" value={revenueTarget.ptForecast || ''} onChange={handleTargetChange} placeholder="예: 6000000" />
+          </FormGroup>
+          <FormGroup label="GX 예상 매출 (원)">
+            <input type="number" name="gxForecast" value={revenueTarget.gxForecast || ''} onChange={handleTargetChange} placeholder="예: 1200000" />
+          </FormGroup>
+        </div>
+
+        <div className="form-row">
+          <FormGroup label="기타 부가서비스 매출 (원)">
+            <input type="number" name="otherServiceRevenue" value={revenueTarget.otherServiceRevenue || ''} onChange={handleTargetChange} placeholder="예: 800000" />
+          </FormGroup>
+          <FormGroup label="당월 목표 매출 (원)">
+            <input type="number" name="currentMonthTarget" value={revenueTarget.currentMonthTarget || ''} onChange={handleTargetChange} placeholder="예: 16000000" />
+          </FormGroup>
+        </div>
+
+        <div className="form-row">
+          <FormGroup label="차월 목표 매출 (원)">
+            <input type="number" name="nextMonthTarget" value={revenueTarget.nextMonthTarget || ''} onChange={handleTargetChange} placeholder="예: 17000000" />
+          </FormGroup>
+          <div />
+        </div>
+
+        <div className="stats-grid">
+          <div className="result-card">
+            <p className="result-label">회원권 예상 매출</p>
+            <p className="result-value">{formatMoney(membershipRevenue)}</p>
+          </div>
+          <div className="result-card">
+            <p className="result-label">총 예상 매출</p>
+            <p className="result-value">{formatMoney(totalExpectedRevenue)}</p>
+          </div>
+          <div className={`result-card ${currentMonthDiff < 0 ? 'negative' : 'positive'}`}>
+            <p className="result-label">당월 목표 대비</p>
+            <p className="result-value">{formatDiffLabel(currentMonthDiff)}</p>
+          </div>
+          <div className={`result-card ${nextMonthDiff < 0 ? 'negative' : 'positive'}`}>
+            <p className="result-label">차월 목표 대비</p>
+            <p className="result-value">{formatDiffLabel(nextMonthDiff)}</p>
+          </div>
+        </div>
+      </Card>
 
       <Card title="💹 수익 현황">
         <div className="stats-grid">
