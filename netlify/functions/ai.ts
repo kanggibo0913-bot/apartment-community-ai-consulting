@@ -164,9 +164,12 @@ const SYSTEM_PROMPTS: Record<string, string> = {
 }
 
 const handler: Handler = async (event) => {
+  const jsonHeaders = { 'Content-Type': 'application/json' }
+
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
+      headers: jsonHeaders,
       body: JSON.stringify({ success: false, error: 'POST 요청만 허용됩니다.' }),
     }
   }
@@ -174,6 +177,7 @@ const handler: Handler = async (event) => {
   if (!event.body) {
     return {
       statusCode: 400,
+      headers: jsonHeaders,
       body: JSON.stringify({ success: false, error: '요청 본문이 필요합니다.' }),
     }
   }
@@ -184,6 +188,7 @@ const handler: Handler = async (event) => {
   } catch {
     return {
       statusCode: 400,
+      headers: jsonHeaders,
       body: JSON.stringify({ success: false, error: '요청 본문이 유효한 JSON이 아닙니다.' }),
     }
   }
@@ -192,17 +197,25 @@ const handler: Handler = async (event) => {
   if (!taskType || typeof taskType !== 'string') {
     return {
       statusCode: 400,
+      headers: jsonHeaders,
       body: JSON.stringify({ success: false, error: 'taskType이 필요합니다.' }),
     }
   }
+
+  console.log('AI function taskType:', taskType)
 
   const systemPrompt = SYSTEM_PROMPTS[taskType]
   if (!systemPrompt) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ success: false, error: '지원하지 않는 taskType입니다.' }),
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        success: false,
+        error: `지원하지 않는 taskType입니다: ${taskType}. 지원하는 taskType: document, contractGenerate, contractReview, agendaPredict`,
+      }),
     }
   }
+
 
   // taskType별 user prompt 생성
   let userPrompt = ''
@@ -273,11 +286,12 @@ ${JSON.stringify(payload, null, 2)}
 
 
   const apiKey = process.env.OPENAI_API_KEY
-  const model = process.env.OPENAI_MODEL || 'gpt-5.5'
+  const model = process.env.OPENAI_MODEL || 'gpt-4-turbo'
 
   if (!apiKey) {
     return {
       statusCode: 500,
+      headers: jsonHeaders,
       body: JSON.stringify({ success: false, error: 'OPENAI_API_KEY가 설정되지 않았습니다.' }),
     }
   }
@@ -311,15 +325,19 @@ ${JSON.stringify(payload, null, 2)}
 
     return {
       statusCode: 200,
+      headers: jsonHeaders,
       body: JSON.stringify({ success: true, result: outputText.trim() }),
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
+    console.error('AI function error:', message)
     return {
       statusCode: 500,
+      headers: jsonHeaders,
       body: JSON.stringify({ success: false, error: message }),
     }
   }
+}
 }
 
 export { handler }
