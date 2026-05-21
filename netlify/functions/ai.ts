@@ -57,6 +57,17 @@ const SYSTEM_PROMPTS: Record<string, string> = {
 const handler: Handler = async (event) => {
   const jsonHeaders = { 'Content-Type': 'application/json' }
 
+  if (event.httpMethod === 'GET') {
+    return {
+      statusCode: 200,
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        success: false,
+        error: 'AI function is alive. Use POST request.',
+      }),
+    }
+  }
+
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -184,12 +195,13 @@ const handler: Handler = async (event) => {
     let message = '알 수 없는 오류가 발생했습니다.'
 
     if (error instanceof Error) {
-      // Timeout 오류 처리
-      if (
+      const isTimeoutError =
+        error.name === 'TimeoutError' ||
         error.message.includes('timeout') ||
         error.message.includes('Timeout') ||
         error.message.includes('ECONNABORTED')
-      ) {
+
+      if (isTimeoutError) {
         message = 'AI 응답 시간이 길어 요청이 중단되었습니다. 입력 내용을 줄이거나 다시 시도해주세요.'
       } else {
         message = `AI 호출 중 오류가 발생했습니다: ${error.message}`
