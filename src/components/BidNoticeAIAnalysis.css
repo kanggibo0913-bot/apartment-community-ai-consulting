@@ -174,3 +174,25 @@
   font-size: 13px;
   color: #0a7f3f;
 }
+
+.bid-actions-section {
+  background: #f9fafb;
+  border: 1px solid #eceff3;
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.bid-action-group {
+  padding: 10px 0;
+  border-bottom: 1px dashed #e3e8ef;
+}
+
+.bid-action-group:last-of-type {
+  border-bottom: none;
+}
+
+.bid-action-desc {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0 0 8px;
+}

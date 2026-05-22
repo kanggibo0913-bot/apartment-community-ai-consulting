@@ -11,6 +11,40 @@ import { BidAnalysisParsed, splitContractPeriod, toDateInput } from '../utils/pa
 import './TenderNotices.css'
 
 const STORAGE_KEY = 'tenderNotices'
+const SCHEDULE_STORAGE_KEY = 'tenderScheduleEvents'
+
+type ScheduleEventType = 'siteBriefing' | 'bidDeadline' | 'pt' | 'opening' | 'contractStart' | 'contractEnd'
+
+// 공고 전체 등록과 별개로, 캘린더에만 표시되는 "일정만" 항목
+interface ScheduleEvent {
+  id: string
+  date: string
+  type: ScheduleEventType
+  label: string
+  complexName: string
+  memo: string
+  source: string
+}
+
+const scheduleBadgeByType: Record<ScheduleEventType, string> = {
+  siteBriefing: 'schedule-site-visit',
+  bidDeadline: 'schedule-deadline',
+  pt: 'schedule-pt',
+  opening: 'schedule-deadline',
+  contractStart: 'schedule-contract-start',
+  contractEnd: 'schedule-contract-end',
+}
+
+// 캘린더가 notices와 scheduleEvents를 함께 렌더링하기 위한 통합 이벤트 형태
+type CalendarItem = {
+  uid: string
+  label: string
+  badge: string
+  title: string
+  kind: 'notice' | 'schedule'
+  notice?: TenderNotice
+  memo?: string
+}
 
 const getLocalDateString = (date: Date) => date.toLocaleDateString('sv')
 
@@ -429,6 +463,18 @@ const TenderNotices = () => {
     }
     return []
   })
+  const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(SCHEDULE_STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as ScheduleEvent[]
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch {
+      // Ignore invalid data
+    }
+    return []
+  })
   const [form, setForm] = useState(defaultForm)
   const [analysisText, setAnalysisText] = useState('')
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
@@ -440,6 +486,10 @@ const TenderNotices = () => {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(notices))
   }, [notices])
+
+  useEffect(() => {
+    window.localStorage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(scheduleEvents))
+  }, [scheduleEvents])
 
   const autoAnalysis = useMemo(() => parseAutoAnalysis(form.fullText), [form.fullText])
   const generatedSummary = useMemo(() => buildSummaryText(form, autoAnalysis), [form, autoAnalysis])
@@ -453,18 +503,38 @@ const TenderNotices = () => {
   ]
 
   const eventsByDate = useMemo(() => {
-    const map: Record<string, Array<{ notice: TenderNotice; field: typeof eventDefinitions[number]['field'] }>> = {}
+    const map: Record<string, CalendarItem[]> = {}
     notices.forEach((notice) => {
       eventDefinitions.forEach((eventDef) => {
         const value = notice[eventDef.field]
         if (value) {
           map[value] = map[value] || []
-          map[value].push({ notice, field: eventDef.field })
+          map[value].push({
+            uid: `n-${notice.id}-${eventDef.field}`,
+            label: eventDef.label,
+            badge: eventDef.badge,
+            title: notice.siteName,
+            kind: 'notice',
+            notice,
+          })
         }
       })
     })
+    scheduleEvents.forEach((ev) => {
+      if (ev.date) {
+        map[ev.date] = map[ev.date] || []
+        map[ev.date].push({
+          uid: `s-${ev.id}`,
+          label: ev.label,
+          badge: scheduleBadgeByType[ev.type] || 'schedule-deadline',
+          title: ev.complexName,
+          kind: 'schedule',
+          memo: ev.memo,
+        })
+      }
+    })
     return map
-  }, [notices])
+  }, [notices, scheduleEvents])
 
   const selectedEvents = eventsByDate[selectedDate] || []
 
@@ -581,9 +651,9 @@ const TenderNotices = () => {
     }))
   }
 
-  // AI 분석에서 추출한 주요 일정으로 공고(notice) 1건을 생성해 스케줄러에 추가한다.
-  // 캘린더는 notices의 날짜 필드에서 이벤트를 파생하므로, 이 방식이 기존 구조에 그대로 맞는다.
-  const handleAddAiSchedule = (parsed: BidAnalysisParsed): { added: number; duplicate: boolean } => {
+  // AI 분석 결과로 공고(TenderNotice) 1건을 등록한다. (버튼: "AI 분석 결과로 공고 등록")
+  // 등록된 공고는 공고 목록과 캘린더 양쪽에 표시된다.
+  const handleRegisterAiNotice = (parsed: BidAnalysisParsed): { added: number; duplicate: boolean } => {
     const sv = toDateInput(parsed.siteBriefingDate)
     const dl = toDateInput(parsed.bidDeadline)
     const { start, end } = splitContractPeriod(parsed.contractPeriod)
@@ -614,7 +684,7 @@ const TenderNotices = () => {
       ...defaultForm,
       siteName,
       region: parsed.region || defaultForm.region,
-      title: `${siteName} 입찰 일정 (AI 분석)`,
+      title: `${siteName} 입찰 공고 (AI 분석)`,
       biddingMethod: parsed.bidMethod || defaultForm.biddingMethod,
       siteVisitDate: sv,
       deadlineDate: dl,
@@ -639,6 +709,47 @@ const TenderNotices = () => {
       setCurrentMonth(new Date(firstDate))
     }
     return { added: addedCount, duplicate: false }
+  }
+
+  // AI 분석의 주요 일정만 캘린더(scheduleEvents)에 추가한다. 공고는 등록하지 않는다.
+  // (버튼: "주요 일정만 스케줄러에 추가") 현장설명회/입찰마감 등 마일스톤만 대상.
+  const handleAddAiScheduleEvents = (parsed: BidAnalysisParsed): { added: number; duplicate: boolean } => {
+    const complexName = parsed.complexName || '(미입력 단지)'
+    const candidates: Array<{ type: ScheduleEventType; label: string; raw: string; date: string }> = []
+    const sv = toDateInput(parsed.siteBriefingDate)
+    if (sv) candidates.push({ type: 'siteBriefing', label: '현장설명회', raw: parsed.siteBriefingDate, date: sv })
+    const dl = toDateInput(parsed.bidDeadline)
+    if (dl) candidates.push({ type: 'bidDeadline', label: '입찰마감', raw: parsed.bidDeadline, date: dl })
+
+    if (candidates.length === 0) return { added: 0, duplicate: false }
+
+    let duplicate = false
+    const toAdd: ScheduleEvent[] = []
+    candidates.forEach((c) => {
+      const exists =
+        scheduleEvents.some((e) => e.complexName === complexName && e.type === c.type && e.date === c.date) ||
+        toAdd.some((e) => e.complexName === complexName && e.type === c.type && e.date === c.date)
+      if (exists) {
+        duplicate = true
+        return
+      }
+      toAdd.push({
+        id: `${Date.now()}-${c.type}-${Math.random().toString(36).slice(2, 7)}`,
+        date: c.date,
+        type: c.type,
+        label: c.label,
+        complexName,
+        memo: `AI 분석에서 추가 (원문: ${c.raw})`,
+        source: 'AI 분석',
+      })
+    })
+
+    if (toAdd.length === 0) return { added: 0, duplicate }
+    setScheduleEvents((prev) => [...toAdd, ...prev])
+    const firstDate = toAdd[0].date
+    setSelectedDate(firstDate)
+    setCurrentMonth(new Date(firstDate))
+    return { added: toAdd.length, duplicate }
   }
 
   const handleSubmit = (event: FormEvent) => {
@@ -683,7 +794,11 @@ const TenderNotices = () => {
         </div>
       </div>
 
-      <BidNoticeAIAnalysis onApplyToForm={handleApplyAiToForm} onAddToSchedule={handleAddAiSchedule} />
+      <BidNoticeAIAnalysis
+        onApplyToForm={handleApplyAiToForm}
+        onRegisterNotice={handleRegisterAiNotice}
+        onAddScheduleEvents={handleAddAiScheduleEvents}
+      />
 
       <div className="tender-summary-grid">
         <div className="tender-summary-card">
@@ -749,14 +864,11 @@ const TenderNotices = () => {
               >
                 <div className="calendar-date-label">{day.getDate()}</div>
                 <div className="calendar-event-list">
-                  {events.slice(0, 3).map((item, index) => {
-                    const eventDef = eventDefinitions.find((def) => def.field === item.field)
-                    return (
-                      <span key={`${dateKey}-${item.notice.id}-${index}`} className={`event-badge ${eventDef?.badge || ''}`}>
-                        {eventDef?.label}: {item.notice.siteName}
-                      </span>
-                    )
-                  })}
+                  {events.slice(0, 3).map((item) => (
+                    <span key={item.uid} className={`event-badge ${item.badge}`}>
+                      {item.label}: {item.title}
+                    </span>
+                  ))}
                   {events.length > 3 && <span className="event-badge event-more">+{events.length - 3}개</span>}
                 </div>
               </button>
@@ -766,23 +878,27 @@ const TenderNotices = () => {
         <div className="calendar-detail-card">
           <h4>{selectedDate} 일정 목록</h4>
           {selectedEvents.length > 0 ? (
-            selectedEvents.map((item, index) => {
-              const eventDef = eventDefinitions.find((def) => def.field === item.field)
-              return (
-                <div key={`${item.notice.id}-${item.field}-${index}`} className="calendar-event-row">
-                  <span className={`event-badge ${eventDef?.badge || ''}`}>{eventDef?.label}</span>
-                  <div>
-                    <strong>{item.notice.siteName}</strong> | {item.notice.title}
-                    <div className="calendar-event-meta">
-                      <span>일정: {selectedDate}</span>
-                      <span>참여 가능성: {item.notice.participationLikelihood}</span>
-                      <span>리스크: {item.notice.riskLevel}</span>
-                      <span>상태: {item.notice.status}</span>
-                    </div>
+            selectedEvents.map((item) => (
+              <div key={item.uid} className="calendar-event-row">
+                <span className={`event-badge ${item.badge}`}>{item.label}</span>
+                <div>
+                  <strong>{item.title}</strong>
+                  {item.kind === 'notice' && item.notice ? ` | ${item.notice.title}` : ' | AI 일정'}
+                  <div className="calendar-event-meta">
+                    <span>일정: {selectedDate}</span>
+                    {item.kind === 'notice' && item.notice ? (
+                      <>
+                        <span>참여 가능성: {item.notice.participationLikelihood}</span>
+                        <span>리스크: {item.notice.riskLevel}</span>
+                        <span>상태: {item.notice.status}</span>
+                      </>
+                    ) : (
+                      <span>{item.memo || 'AI 분석에서 추가된 일정'}</span>
+                    )}
                   </div>
                 </div>
-              )
-            })
+              </div>
+            ))
           ) : (
             <p className="summary-small">선택한 날짜에 예정된 일정이 없습니다.</p>
           )}

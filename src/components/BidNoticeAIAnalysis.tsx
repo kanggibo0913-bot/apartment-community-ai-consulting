@@ -8,7 +8,6 @@ import {
   GRADE_LABEL,
   categorizeRisk,
   parseBidAnalysis,
-  splitContractPeriod,
   toDateInput,
 } from '../utils/parseBidAnalysis'
 import './BidNoticeAIAnalysis.css'
@@ -57,24 +56,30 @@ const loadChecklist = (): Record<string, boolean> => {
 }
 
 interface BidNoticeAIAnalysisProps {
-  // 분석 결과(JSON 파싱 성공 시)를 외부(예: TenderNotices 폼)에 반영하는 콜백
+  // 버튼1: 분석 결과를 공고 등록 폼에 반영
   onApplyToForm?: (parsed: BidAnalysisParsed, overwrite: boolean) => void
-  // 분석 결과의 주요 일정을 스케줄러에 추가하는 콜백. {added, duplicate} 반환
-  onAddToSchedule?: (parsed: BidAnalysisParsed) => { added: number; duplicate: boolean }
+  // 버튼2: 분석 결과로 공고(TenderNotice) 1건 등록
+  onRegisterNotice?: (parsed: BidAnalysisParsed) => { added: number; duplicate: boolean }
+  // 버튼3: 주요 일정만 캘린더에 추가
+  onAddScheduleEvents?: (parsed: BidAnalysisParsed) => { added: number; duplicate: boolean }
 }
 
-const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({ onApplyToForm, onAddToSchedule }) => {
+const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
+  onApplyToForm,
+  onRegisterNotice,
+  onAddScheduleEvents,
+}) => {
   const [form, setForm] = useState<BidForm>(emptyForm)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState('')
   const [checklist, setChecklist] = useState<Record<string, boolean>>(loadChecklist)
   const [applyMsg, setApplyMsg] = useState('')
-  const [scheduleMsg, setScheduleMsg] = useState('')
+  const [actionMsg, setActionMsg] = useState('')
 
   const parsed = useMemo(() => parseBidAnalysis(result), [result])
 
-  // 스케줄러에 추가할 일정 후보 (표시용)
+  // 버튼3(일정만 추가)에 표시할 마일스톤 후보 (현장설명회/입찰마감)
   const scheduleCandidates = useMemo(() => {
     if (!parsed) return [] as { label: string; value: string }[]
     const fmt = (raw: string) => {
@@ -84,26 +89,29 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({ onApplyToForm
     const out: { label: string; value: string }[] = []
     if (parsed.siteBriefingDate) out.push({ label: '현장설명회', value: fmt(parsed.siteBriefingDate) })
     if (parsed.bidDeadline) out.push({ label: '입찰마감', value: fmt(parsed.bidDeadline) })
-    if (parsed.contractPeriod) {
-      const { start, end } = splitContractPeriod(parsed.contractPeriod)
-      if (start) out.push({ label: '계약시작', value: start })
-      if (end) out.push({ label: '계약종료', value: end })
-      if (!start && !end) out.push({ label: '계약기간', value: `날짜 확인 필요 (원문: ${parsed.contractPeriod})` })
-    }
     return out
   }, [parsed])
 
-  const handleAddSchedule = () => {
-    if (!parsed || !onAddToSchedule) return
-    const res = onAddToSchedule(parsed)
-    if (res.duplicate) {
-      setScheduleMsg('이미 추가된 일정입니다.')
-    } else if (res.added > 0) {
-      setScheduleMsg(`${res.added}건의 일정을 스케줄러에 추가했습니다.`)
+  const handleRegister = () => {
+    if (!parsed || !onRegisterNotice) return
+    const res = onRegisterNotice(parsed)
+    if (res.duplicate) setActionMsg('이미 등록된 공고 또는 일정은 제외했습니다.')
+    else if (res.added > 0) setActionMsg('AI 분석 결과로 공고가 등록되었습니다.')
+    else setActionMsg('등록할 일정 정보가 없습니다. (날짜 확인 필요)')
+    setTimeout(() => setActionMsg(''), 6000)
+  }
+
+  const handleAddScheduleOnly = () => {
+    if (!parsed || !onAddScheduleEvents) return
+    const res = onAddScheduleEvents(parsed)
+    if (res.added > 0) {
+      setActionMsg(res.duplicate ? '주요 일정이 스케줄러에 추가되었습니다. (중복 일정은 제외)' : '주요 일정이 스케줄러에 추가되었습니다.')
+    } else if (res.duplicate) {
+      setActionMsg('이미 등록된 공고 또는 일정은 제외했습니다.')
     } else {
-      setScheduleMsg('추가 가능한 일정이 없습니다. (날짜 확인 필요)')
+      setActionMsg('추가 가능한 일정이 없습니다. (날짜 확인 필요)')
     }
-    setTimeout(() => setScheduleMsg(''), 6000)
+    setTimeout(() => setActionMsg(''), 6000)
   }
 
   const update = (key: keyof BidForm, value: string) => setForm(prev => ({ ...prev, [key]: value }))
@@ -301,28 +309,47 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({ onApplyToForm
             </section>
           )}
 
-          {onAddToSchedule && scheduleCandidates.length > 0 && (
-            <section className="bid-block">
-              <h5>스케줄러 추가 예정 일정</h5>
-              <ul className="bid-kv">
-                {scheduleCandidates.map((c, i) => (
-                  <li key={i}><span>{c.label}</span> {c.value}</li>
-                ))}
-              </ul>
-              <div className="bid-apply-actions">
-                <Button variant="primary" onClick={handleAddSchedule}>주요 일정을 스케줄러에 추가</Button>
-              </div>
-              {scheduleMsg && <p className="bid-apply-msg">{scheduleMsg}</p>}
-            </section>
-          )}
+          <section className="bid-block bid-actions-section">
+            <h5>분석 결과 활용</h5>
 
-          {onApplyToForm && (
-            <div className="bid-apply-actions">
-              <Button variant="primary" onClick={() => handleApply(false)}>분석 결과를 공고 정보에 반영 (빈 항목만)</Button>
-              <Button variant="secondary" onClick={() => handleApply(true)}>전체 덮어쓰기</Button>
-            </div>
-          )}
-          {applyMsg && <p className="bid-apply-msg">{applyMsg}</p>}
+            {onApplyToForm && (
+              <div className="bid-action-group">
+                <p className="bid-action-desc">아래 공고 등록 폼에 분석 값을 채웁니다. (직접 검토 후 등록)</p>
+                <div className="bid-apply-actions">
+                  <Button variant="secondary" onClick={() => handleApply(false)}>분석 결과를 공고 정보에 반영 (빈 항목만)</Button>
+                  <Button variant="secondary" onClick={() => handleApply(true)}>전체 덮어쓰기</Button>
+                </div>
+                {applyMsg && <p className="bid-apply-msg">{applyMsg}</p>}
+              </div>
+            )}
+
+            {onRegisterNotice && (
+              <div className="bid-action-group">
+                <p className="bid-action-desc">분석 결과로 공고 1건을 바로 등록합니다. (공고 목록 + 스케줄러에 표시)</p>
+                <div className="bid-apply-actions">
+                  <Button variant="primary" onClick={handleRegister}>AI 분석 결과로 공고 등록</Button>
+                </div>
+              </div>
+            )}
+
+            {onAddScheduleEvents && (
+              <div className="bid-action-group">
+                <p className="bid-action-desc">공고 등록 없이 주요 일정만 캘린더에 추가합니다.</p>
+                {scheduleCandidates.length > 0 && (
+                  <ul className="bid-kv">
+                    {scheduleCandidates.map((c, i) => (
+                      <li key={i}><span>{c.label}</span> {c.value}</li>
+                    ))}
+                  </ul>
+                )}
+                <div className="bid-apply-actions">
+                  <Button variant="primary" onClick={handleAddScheduleOnly}>주요 일정만 스케줄러에 추가</Button>
+                </div>
+              </div>
+            )}
+
+            {actionMsg && <p className="bid-apply-msg">{actionMsg}</p>}
+          </section>
         </div>
       )}
 
