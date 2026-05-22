@@ -6,6 +6,7 @@ import {
   TenderNoticeRiskLevel,
   TenderNoticeStatus,
 } from '../types/CommunityData'
+import BidNoticeAIAnalysis from '../components/BidNoticeAIAnalysis'
 import './TenderNotices.css'
 
 const STORAGE_KEY = 'tenderNotices'
@@ -577,6 +578,8 @@ const TenderNotices = () => {
           <p className="report-disclaimer">입찰공고 등록, 달력 기반 스케줄러, 자동 분석 및 참여 검토 결과를 한 곳에서 관리합니다.</p>
         </div>
       </div>
+
+      <BidNoticeAIAnalysis />
 
       <div className="tender-summary-grid">
         <div className="tender-summary-card">
