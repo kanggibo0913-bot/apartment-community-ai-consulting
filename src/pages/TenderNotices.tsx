@@ -7,6 +7,7 @@ import {
   TenderNoticeStatus,
 } from '../types/CommunityData'
 import BidNoticeAIAnalysis from '../components/BidNoticeAIAnalysis'
+import { BidAnalysisParsed, splitContractPeriod, toDateInput } from '../utils/parseBidAnalysis'
 import './TenderNotices.css'
 
 const STORAGE_KEY = 'tenderNotices'
@@ -537,6 +538,50 @@ const TenderNotices = () => {
     }))
   }
 
+  // AI 공고문 분석(JSON) 결과를 공고 등록 폼에 반영. overwrite=false면 빈 항목만 채운다.
+  const handleApplyAiToForm = (parsed: BidAnalysisParsed, overwrite: boolean) => {
+    const pick = (prev: string, ai: string) => (overwrite ? ai || prev : prev || ai)
+
+    const svDate = toDateInput(parsed.siteBriefingDate)
+    const dlDate = toDateInput(parsed.bidDeadline)
+    const { start, end } = splitContractPeriod(parsed.contractPeriod)
+
+    const dateNotes: string[] = []
+    if (parsed.siteBriefingDate && !svDate) dateNotes.push(`현장설명회 날짜 확인 필요: ${parsed.siteBriefingDate}`)
+    if (parsed.bidDeadline && !dlDate) dateNotes.push(`입찰마감 날짜 확인 필요: ${parsed.bidDeadline}`)
+    if (parsed.contractPeriod && !start && !end) dateNotes.push(`계약기간 확인 필요: ${parsed.contractPeriod}`)
+
+    const gradeMap: Record<string, { p: TenderNoticeParticipation; r: TenderNoticeRiskLevel }> = {
+      A: { p: '높음', r: '낮음' },
+      B: { p: '높음', r: '보통' },
+      C: { p: '보통', r: '보통' },
+      D: { p: '낮음', r: '높음' },
+    }
+    const g = gradeMap[parsed.participationGrade]
+
+    const memoParts: string[] = []
+    if (parsed.participationGrade) memoParts.push(`[참여등급 ${parsed.participationGrade}] ${parsed.participationReason}`.trim())
+    if (parsed.recommendedAction) memoParts.push(`다음 조치: ${parsed.recommendedAction}`)
+    if (parsed.risks.length) memoParts.push(`주요 리스크: ${parsed.risks.join(' / ')}`)
+    memoParts.push(...dateNotes)
+    const aiMemo = memoParts.filter(Boolean).join('\n')
+
+    setForm((prev) => ({
+      ...prev,
+      siteName: pick(prev.siteName, parsed.complexName),
+      region: pick(prev.region, parsed.region),
+      biddingMethod: pick(prev.biddingMethod, parsed.bidMethod),
+      siteVisitDate: pick(prev.siteVisitDate, svDate),
+      deadlineDate: pick(prev.deadlineDate, dlDate),
+      contractStartDate: pick(prev.contractStartDate, start),
+      contractEndDate: pick(prev.contractEndDate, end),
+      specialConditions: pick(prev.specialConditions, parsed.specialConditions.join(', ')),
+      participationLikelihood: g ? g.p : prev.participationLikelihood,
+      riskLevel: g ? g.r : prev.riskLevel,
+      reviewMemo: pick(prev.reviewMemo, aiMemo),
+    }))
+  }
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
     const notice: TenderNotice = {
@@ -579,7 +624,7 @@ const TenderNotices = () => {
         </div>
       </div>
 
-      <BidNoticeAIAnalysis />
+      <BidNoticeAIAnalysis onApplyToForm={handleApplyAiToForm} />
 
       <div className="tender-summary-grid">
         <div className="tender-summary-card">
