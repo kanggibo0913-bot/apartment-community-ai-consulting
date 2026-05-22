@@ -11,10 +11,21 @@ interface MonthlyReportProps {
   onChange: (next: Partial<MonthlyReportData>) => void
 }
 
-const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData, onChange }) => {
+const defaultMonthlyReportData: MonthlyReportData = {
+  reportMonth: new Date().toISOString().slice(0, 7),
+  summaryMemo: '',
+  keyIssues: '',
+  improvementPlan: '',
+  memo: '',
+  generatedReport: '',
+}
+
+const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData: reportDataProp, onChange }) => {
+  const reportData = reportDataProp ?? defaultMonthlyReportData
   const [isGenerating, setIsGenerating] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
+  const [aiError, setAiError] = useState('')
 
   const showMessage = (msg: string) => {
     setStatusMessage(msg)
@@ -23,7 +34,9 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData, onChang
 
   const generateLocalReport = () => {
     setIsGenerating(true)
+    setAiError('')
 
+    try {
     // Collect relevant data
     const contractCount = data.contractManagement.contracts.length
     const contractsExpiring = data.contractManagement.contracts.filter(c => {
@@ -102,11 +115,17 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
       generatedReport: report,
     })
     showMessage('로컬 리포트가 생성되었습니다.')
-    setIsGenerating(false)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      setAiError('로컬 리포트 생성 실패: ' + msg)
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   const generateAiReport = async () => {
     setAiLoading(true)
+    setAiError('')
 
     const payload = {
       apartmentName: data.apartmentInfo.name,
@@ -149,10 +168,11 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
         })
         showMessage('AI 리포트 생성이 완료되었습니다.')
       } else {
-        showMessage('AI 생성 중 오류가 발생했습니다: ' + (result.error || '알 수 없는 오류'))
+        setAiError('AI 응답 생성 실패: ' + (result.error || '알 수 없는 오류 (서버 응답에 오류 메시지가 없습니다).'))
       }
     } catch (error) {
-      showMessage('AI 생성 중 오류가 발생했습니다.')
+      const msg = error instanceof Error ? error.message : String(error)
+      setAiError('AI 응답 생성 실패: ' + (msg || 'AI 함수 호출에 실패했습니다.'))
     }
 
     setAiLoading(false)
@@ -237,9 +257,30 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
           </Button>
         </div>
 
+        <p style={{ marginTop: '10px', marginBottom: 0, fontSize: '12px', color: '#667085' }}>
+          ※ AI 고도화는 OPENAI_API_KEY가 필요합니다. 로컬은 프로젝트 루트의 <code>.env</code>, 배포 환경은 Netlify 대시보드(Site settings → Environment variables)에 설정하세요. 로컬은 <code>npm run dev:netlify</code>로 실행해야 AI 함수가 동작합니다.
+        </p>
+
         {statusMessage && (
           <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#e7f3ff', color: '#0066cc', borderRadius: '4px', fontSize: '14px' }}>
             {statusMessage}
+          </div>
+        )}
+
+        {aiError && (
+          <div
+            role="alert"
+            style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fdecea', color: '#b71c1c', border: '1px solid #f5c2c0', borderRadius: '4px', fontSize: '14px' }}
+          >
+            <strong>오류</strong>
+            <div style={{ marginTop: '4px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{aiError}</div>
+            <button
+              type="button"
+              onClick={() => setAiError('')}
+              style={{ marginTop: '8px', background: 'transparent', border: '1px solid #b71c1c', color: '#b71c1c', borderRadius: '4px', padding: '2px 10px', cursor: 'pointer', fontSize: '12px' }}
+            >
+              닫기
+            </button>
           </div>
         )}
       </Card>

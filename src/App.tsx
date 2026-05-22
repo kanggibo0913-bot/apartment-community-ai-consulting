@@ -328,6 +328,32 @@ const sampleCommunityData: CommunityData = {
   },
 }
 
+// 구버전 localStorage 데이터에는 이후 추가된 필드(monthlyReport 등)가 없을 수 있어
+// defaultCommunityData 기준으로 누락 필드를 채워 런타임 오류를 방지한다.
+const normalizeCommunityData = (saved?: Partial<CommunityData>): CommunityData => {
+  const base = defaultCommunityData
+  const s = (saved ?? {}) as Partial<CommunityData>
+  return {
+    ...base,
+    ...s,
+    apartmentInfo: { ...base.apartmentInfo, ...s.apartmentInfo },
+    facilityInfo: { items: s.facilityInfo?.items ?? base.facilityInfo.items },
+    operationInfo: { ...base.operationInfo, ...s.operationInfo },
+    costInfo: { ...base.costInfo, ...s.costInfo },
+    revenueInfo: { ...base.revenueInfo, ...s.revenueInfo },
+    revenueTarget: { ...base.revenueTarget, ...s.revenueTarget },
+    laborCost: { employees: s.laborCost?.employees ?? base.laborCost.employees },
+    utilityForecast: { ...base.utilityForecast, ...s.utilityForecast },
+    documentCenter: { ...base.documentCenter, ...s.documentCenter },
+    contractGenerator: { ...base.contractGenerator, ...s.contractGenerator },
+    contractReview: { ...base.contractReview, ...s.contractReview },
+    agendaPredictor: { ...base.agendaPredictor, ...s.agendaPredictor },
+    complaints: s.complaints ?? base.complaints,
+    contractManagement: { contracts: s.contractManagement?.contracts ?? base.contractManagement.contracts },
+    monthlyReport: { ...base.monthlyReport, ...s.monthlyReport },
+  }
+}
+
 const pageLabels: Record<PageType, string> = {
   dashboard: '대시보드',
   apartment: '단지 기본정보',
@@ -378,7 +404,7 @@ function App() {
   useEffect(() => {
     const state = loadProjects()
     if (state && state.projects.length > 0) {
-      setProjects(state.projects)
+      setProjects(state.projects.map(p => ({ ...p, data: normalizeCommunityData(p.data) })))
       setActiveProjectId(state.activeProjectId)
     } else {
       // Create default empty project
@@ -606,7 +632,7 @@ function App() {
         return { success: false, message: '올바른 백업 파일이 아닙니다. projects 배열이 없습니다.' }
       }
 
-      setProjects(parsed.projects)
+      setProjects(parsed.projects.map((p: CommunityProject) => ({ ...p, data: normalizeCommunityData(p.data) })))
       setActiveProjectId(parsed.activeProjectId || parsed.projects[0]?.id)
       return { success: true, message: '데이터가 정상적으로 복원되었습니다.' }
     } catch (error) {
@@ -657,7 +683,7 @@ function App() {
         return { success: false, message: '올바른 CommunityData 형식이 아닙니다.' }
       }
 
-      updateActiveProjectData(() => parsed)
+      updateActiveProjectData(() => normalizeCommunityData(parsed))
       return { success: true, message: '데이터가 정상적으로 복원되었습니다.' }
     } catch {
       return { success: false, message: 'JSON 파일을 읽는 중 오류가 발생했습니다.' }

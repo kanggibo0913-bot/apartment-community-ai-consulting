@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Environment variables (실제 키는 절대 커밋 금지)
+.env
+.env.local
+.env.*.local
+
+# Netlify (netlify dev 실행 시 생성)
+.netlify
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

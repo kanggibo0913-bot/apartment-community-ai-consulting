@@ -80,7 +80,7 @@ const handler: Handler = async (event) => {
       headers: jsonHeaders,
       body: JSON.stringify({
         success: false,
-        error: `지원하지 않는 taskType입니다: ${taskType}. 지원하는 taskType: document, contractGenerate, contractReview, agendaPredict`,
+        error: `지원하지 않는 taskType입니다: ${taskType}. 지원하는 taskType: ${Object.keys(SYSTEM_PROMPTS).join(', ')}`,
       }),
     }
   }
@@ -118,16 +118,22 @@ const handler: Handler = async (event) => {
   const maxOutputTokens = maxOutputTokensByTask[taskType] || 900
 
   const apiKey = process.env.OPENAI_API_KEY
-  const model = process.env.OPENAI_MODEL || 'gpt-4-turbo'
-
+  const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini'
 
   if (!apiKey) {
+    console.error('AI function error: OPENAI_API_KEY 미설정')
     return {
       statusCode: 500,
       headers: jsonHeaders,
-      body: JSON.stringify({ success: false, error: 'OPENAI_API_KEY가 설정되지 않았습니다.' }),
+      body: JSON.stringify({
+        success: false,
+        error:
+          'OPENAI_API_KEY가 설정되지 않았습니다. 로컬은 프로젝트 루트의 .env 파일에, 배포 환경은 Netlify 대시보드(Site settings → Environment variables)에 설정하세요.',
+      }),
     }
   }
+
+  console.log('AI request start:', { taskType, model, maxOutputTokens })
 
   try {
     const client = new OpenAI({ apiKey, timeout: 25000 })
@@ -179,7 +185,7 @@ const handler: Handler = async (event) => {
       }
     }
 
-    console.error('AI function error:', message)
+    console.error('AI function error:', { taskType, model, message, error })
     return {
       statusCode: 500,
       headers: jsonHeaders,
