@@ -1,8 +1,15 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Card from './Card'
 import Button from './Button'
 import AIResultPanel from './AIResultPanel'
 import { callAI } from '../utils/aiClient'
+import {
+  BidAnalysisParsed,
+  GRADE_LABEL,
+  categorizeRisk,
+  parseBidAnalysis,
+} from '../utils/parseBidAnalysis'
+import './BidNoticeAIAnalysis.css'
 
 interface BidForm {
   siteName: string
@@ -24,12 +31,43 @@ const emptyForm: BidForm = {
   specialConditions: '',
 }
 
-// 입찰 공고문 텍스트 붙여넣기 기반 AI 분석. TenderNotices 기존 로직과 독립적으로 동작한다.
-const BidNoticeAIAnalysis: React.FC = () => {
+const DEFAULT_DOCS = [
+  '사업자등록증',
+  '법인등기부등본',
+  '법인인감증명서',
+  '사용인감계',
+  '국세 완납증명서',
+  '지방세 완납증명서',
+  '실적증명서',
+  '운영계획서',
+  '산출내역서',
+  '입찰보증금 관련 서류',
+]
+
+const CHECKLIST_KEY = 'bidNoticeChecklist'
+
+const loadChecklist = (): Record<string, boolean> => {
+  try {
+    return JSON.parse(window.localStorage.getItem(CHECKLIST_KEY) || '{}') as Record<string, boolean>
+  } catch {
+    return {}
+  }
+}
+
+interface BidNoticeAIAnalysisProps {
+  // 분석 결과(JSON 파싱 성공 시)를 외부(예: TenderNotices 폼)에 반영하는 콜백
+  onApplyToForm?: (parsed: BidAnalysisParsed, overwrite: boolean) => void
+}
+
+const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({ onApplyToForm }) => {
   const [form, setForm] = useState<BidForm>(emptyForm)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState('')
+  const [checklist, setChecklist] = useState<Record<string, boolean>>(loadChecklist)
+  const [applyMsg, setApplyMsg] = useState('')
+
+  const parsed = useMemo(() => parseBidAnalysis(result), [result])
 
   const update = (key: keyof BidForm, value: string) => setForm(prev => ({ ...prev, [key]: value }))
 
@@ -40,6 +78,7 @@ const BidNoticeAIAnalysis: React.FC = () => {
     }
     setLoading(true)
     setError('')
+    setApplyMsg('')
     try {
       const res = await callAI('bidNoticeAnalysis', form)
       if (res.ok) {
@@ -58,6 +97,28 @@ const BidNoticeAIAnalysis: React.FC = () => {
       setLoading(false)
     }
   }
+
+  const toggleDoc = (doc: string) => {
+    setChecklist(prev => {
+      const next = { ...prev, [doc]: !prev[doc] }
+      window.localStorage.setItem(CHECKLIST_KEY, JSON.stringify(next))
+      return next
+    })
+  }
+
+  const handleApply = (overwrite: boolean) => {
+    if (!parsed || !onApplyToForm) return
+    onApplyToForm(parsed, overwrite)
+    setApplyMsg(
+      overwrite
+        ? '공고 등록 폼을 분석 결과로 덮어썼습니다. 폼에서 확인 후 "공고 등록"을 누르면 스케줄러에도 반영됩니다.'
+        : '비어 있는 공고 정보 항목을 분석 결과로 채웠습니다. 폼에서 확인 후 "공고 등록"을 누르면 스케줄러에도 반영됩니다.',
+    )
+    setTimeout(() => setApplyMsg(''), 6000)
+  }
+
+  const docs = parsed && parsed.requiredDocuments.length > 0 ? parsed.requiredDocuments : DEFAULT_DOCS
+  const gradeKey = parsed && /^[ABCD]$/.test(parsed.participationGrade) ? parsed.participationGrade : ''
 
   return (
     <Card title="AI 공고문 분석 (텍스트 붙여넣기)">
@@ -110,8 +171,112 @@ const BidNoticeAIAnalysis: React.FC = () => {
         </Button>
       </div>
 
+      {/* 구조화 분석 카드 (JSON 파싱 성공 시) */}
+      {parsed && (
+        <div className="bid-structured">
+          <div className="bid-structured-head">
+            <h4>구조화 분석 결과</h4>
+            {gradeKey && (
+              <span className={`grade-badge grade-${gradeKey}`}>{GRADE_LABEL[gradeKey] || gradeKey}</span>
+            )}
+          </div>
+
+          {parsed.summary && (
+            <section className="bid-block">
+              <h5>공고 요약</h5>
+              <p>{parsed.summary}</p>
+            </section>
+          )}
+
+          <section className="bid-block">
+            <h5>주요 일정</h5>
+            <ul className="bid-kv">
+              <li><span>현장설명회</span> {parsed.siteBriefingDate || '공고문 확인 필요'}</li>
+              <li><span>입찰마감</span> {parsed.bidDeadline || '공고문 확인 필요'}</li>
+              <li><span>계약기간</span> {parsed.contractPeriod || '공고문 확인 필요'}</li>
+            </ul>
+          </section>
+
+          <section className="bid-block">
+            <h5>제출서류 체크리스트</h5>
+            <ul className="bid-checklist">
+              {docs.map(doc => (
+                <li key={doc}>
+                  <label>
+                    <input type="checkbox" checked={!!checklist[doc]} onChange={() => toggleDoc(doc)} />
+                    <span className={checklist[doc] ? 'checked' : ''}>{doc}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {parsed.risks.length > 0 && (
+            <section className="bid-block">
+              <h5>리스크</h5>
+              <ul className="bid-risks">
+                {parsed.risks.map((risk, i) => {
+                  const { category, advice } = categorizeRisk(risk)
+                  return (
+                    <li key={i}>
+                      <span className="risk-cat">{category}</span>
+                      <span className="risk-text">{risk}</span>
+                      <div className="risk-advice">대응: {advice}</div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
+
+          {parsed.estimateNotes.length > 0 && (
+            <section className="bid-block">
+              <h5>산출표 작성 주의사항</h5>
+              <ul className="bid-list">
+                {parsed.estimateNotes.map((n, i) => <li key={i}>{n}</li>)}
+              </ul>
+            </section>
+          )}
+
+          {parsed.specialConditions.length > 0 && (
+            <section className="bid-block">
+              <h5>특이조건</h5>
+              <ul className="bid-list">
+                {parsed.specialConditions.map((n, i) => <li key={i}>{n}</li>)}
+              </ul>
+            </section>
+          )}
+
+          {parsed.siteBriefingQuestions.length > 0 && (
+            <section className="bid-block">
+              <h5>현장설명회 질문 리스트</h5>
+              <ul className="bid-list">
+                {parsed.siteBriefingQuestions.map((q, i) => <li key={i}>{q}</li>)}
+              </ul>
+            </section>
+          )}
+
+          {(parsed.participationReason || parsed.recommendedAction) && (
+            <section className="bid-block">
+              <h5>참여 판단 / 다음 조치</h5>
+              {parsed.participationReason && <p><strong>판단 근거:</strong> {parsed.participationReason}</p>}
+              {parsed.recommendedAction && <p><strong>다음 조치:</strong> {parsed.recommendedAction}</p>}
+            </section>
+          )}
+
+          {onApplyToForm && (
+            <div className="bid-apply-actions">
+              <Button variant="primary" onClick={() => handleApply(false)}>분석 결과를 공고 정보에 반영 (빈 항목만)</Button>
+              <Button variant="secondary" onClick={() => handleApply(true)}>전체 덮어쓰기</Button>
+            </div>
+          )}
+          {applyMsg && <p className="bid-apply-msg">{applyMsg}</p>}
+        </div>
+      )}
+
+      {/* 원문 AI 결과 (복사/저장/다운로드/이력) */}
       <AIResultPanel
-        title="공고문 분석 결과"
+        title="공고문 분석 결과 (원문)"
         taskType="bidNoticeAnalysis"
         loading={loading}
         loadingText="AI가 공고문을 분석 중입니다."

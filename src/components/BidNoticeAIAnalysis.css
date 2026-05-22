@@ -1,0 +1,176 @@
+.bid-structured {
+  margin-top: 16px;
+  border: 1px solid #e3e8ef;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fcfdff;
+}
+
+.bid-structured-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.bid-structured-head h4 {
+  margin: 0;
+  font-size: 15px;
+  color: #1f2a44;
+}
+
+.grade-badge {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.grade-badge.grade-A {
+  background: #e7f6ee;
+  color: #0a7f3f;
+  border-color: #b6e3c8;
+}
+
+.grade-badge.grade-B {
+  background: #e8f0fe;
+  color: #1d4ed8;
+  border-color: #c2d6fb;
+}
+
+.grade-badge.grade-C {
+  background: #fdf2e6;
+  color: #b54708;
+  border-color: #f3d5ad;
+}
+
+.grade-badge.grade-D {
+  background: #fdecea;
+  color: #b71c1c;
+  border-color: #f5c2c0;
+}
+
+.bid-block {
+  border-top: 1px solid #eef1f6;
+  padding: 12px 0;
+}
+
+.bid-block h5 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.bid-block p {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1f2a44;
+}
+
+.bid-kv {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bid-kv li {
+  font-size: 14px;
+  padding: 3px 0;
+  color: #1f2a44;
+}
+
+.bid-kv li span {
+  display: inline-block;
+  min-width: 84px;
+  color: #64748b;
+}
+
+.bid-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.bid-list li {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1f2a44;
+  margin-bottom: 4px;
+}
+
+.bid-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 4px 12px;
+}
+
+.bid-checklist label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.bid-checklist span.checked {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+
+.bid-risks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bid-risks li {
+  padding: 8px 0;
+  border-bottom: 1px dashed #eef1f6;
+  font-size: 14px;
+}
+
+.bid-risks li:last-child {
+  border-bottom: none;
+}
+
+.risk-cat {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  background: #eef2f7;
+  border-radius: 4px;
+  padding: 2px 8px;
+  margin-right: 8px;
+}
+
+.risk-text {
+  color: #1f2a44;
+}
+
+.risk-advice {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 3px;
+}
+
+.bid-apply-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #eef1f6;
+}
+
+.bid-apply-msg {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #0a7f3f;
+}
