@@ -8,6 +8,8 @@ import {
   GRADE_LABEL,
   categorizeRisk,
   parseBidAnalysis,
+  splitContractPeriod,
+  toDateInput,
 } from '../utils/parseBidAnalysis'
 import './BidNoticeAIAnalysis.css'
 
@@ -57,17 +59,52 @@ const loadChecklist = (): Record<string, boolean> => {
 interface BidNoticeAIAnalysisProps {
   // 분석 결과(JSON 파싱 성공 시)를 외부(예: TenderNotices 폼)에 반영하는 콜백
   onApplyToForm?: (parsed: BidAnalysisParsed, overwrite: boolean) => void
+  // 분석 결과의 주요 일정을 스케줄러에 추가하는 콜백. {added, duplicate} 반환
+  onAddToSchedule?: (parsed: BidAnalysisParsed) => { added: number; duplicate: boolean }
 }
 
-const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({ onApplyToForm }) => {
+const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({ onApplyToForm, onAddToSchedule }) => {
   const [form, setForm] = useState<BidForm>(emptyForm)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState('')
   const [checklist, setChecklist] = useState<Record<string, boolean>>(loadChecklist)
   const [applyMsg, setApplyMsg] = useState('')
+  const [scheduleMsg, setScheduleMsg] = useState('')
 
   const parsed = useMemo(() => parseBidAnalysis(result), [result])
+
+  // 스케줄러에 추가할 일정 후보 (표시용)
+  const scheduleCandidates = useMemo(() => {
+    if (!parsed) return [] as { label: string; value: string }[]
+    const fmt = (raw: string) => {
+      const d = toDateInput(raw)
+      return d || (raw ? `날짜 확인 필요 (원문: ${raw})` : '')
+    }
+    const out: { label: string; value: string }[] = []
+    if (parsed.siteBriefingDate) out.push({ label: '현장설명회', value: fmt(parsed.siteBriefingDate) })
+    if (parsed.bidDeadline) out.push({ label: '입찰마감', value: fmt(parsed.bidDeadline) })
+    if (parsed.contractPeriod) {
+      const { start, end } = splitContractPeriod(parsed.contractPeriod)
+      if (start) out.push({ label: '계약시작', value: start })
+      if (end) out.push({ label: '계약종료', value: end })
+      if (!start && !end) out.push({ label: '계약기간', value: `날짜 확인 필요 (원문: ${parsed.contractPeriod})` })
+    }
+    return out
+  }, [parsed])
+
+  const handleAddSchedule = () => {
+    if (!parsed || !onAddToSchedule) return
+    const res = onAddToSchedule(parsed)
+    if (res.duplicate) {
+      setScheduleMsg('이미 추가된 일정입니다.')
+    } else if (res.added > 0) {
+      setScheduleMsg(`${res.added}건의 일정을 스케줄러에 추가했습니다.`)
+    } else {
+      setScheduleMsg('추가 가능한 일정이 없습니다. (날짜 확인 필요)')
+    }
+    setTimeout(() => setScheduleMsg(''), 6000)
+  }
 
   const update = (key: keyof BidForm, value: string) => setForm(prev => ({ ...prev, [key]: value }))
 
@@ -261,6 +298,21 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({ onApplyToForm
               <h5>참여 판단 / 다음 조치</h5>
               {parsed.participationReason && <p><strong>판단 근거:</strong> {parsed.participationReason}</p>}
               {parsed.recommendedAction && <p><strong>다음 조치:</strong> {parsed.recommendedAction}</p>}
+            </section>
+          )}
+
+          {onAddToSchedule && scheduleCandidates.length > 0 && (
+            <section className="bid-block">
+              <h5>스케줄러 추가 예정 일정</h5>
+              <ul className="bid-kv">
+                {scheduleCandidates.map((c, i) => (
+                  <li key={i}><span>{c.label}</span> {c.value}</li>
+                ))}
+              </ul>
+              <div className="bid-apply-actions">
+                <Button variant="primary" onClick={handleAddSchedule}>주요 일정을 스케줄러에 추가</Button>
+              </div>
+              {scheduleMsg && <p className="bid-apply-msg">{scheduleMsg}</p>}
             </section>
           )}
 

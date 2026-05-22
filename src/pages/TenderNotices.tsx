@@ -416,7 +416,19 @@ const buildSummaryText = (
 }
 
 const TenderNotices = () => {
-  const [notices, setNotices] = useState<TenderNotice[]>([])
+  const [notices, setNotices] = useState<TenderNotice[]>(() => {
+    // localStorage 로드를 초기화 시점에 수행 → 마운트 시 빈 배열 저장으로 덮어쓰는 경합 방지
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as TenderNotice[]
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch {
+      // Ignore invalid data
+    }
+    return []
+  })
   const [form, setForm] = useState(defaultForm)
   const [analysisText, setAnalysisText] = useState('')
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
@@ -424,19 +436,6 @@ const TenderNotices = () => {
   const [selectedDate, setSelectedDate] = useState(getLocalDateString(new Date()))
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [showRawText, setShowRawText] = useState(false)
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
-      if (!raw) return
-      const parsed = JSON.parse(raw) as TenderNotice[]
-      if (Array.isArray(parsed)) {
-        setNotices(parsed)
-      }
-    } catch {
-      // Ignore invalid data
-    }
-  }, [])
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(notices))
@@ -582,6 +581,66 @@ const TenderNotices = () => {
     }))
   }
 
+  // AI 분석에서 추출한 주요 일정으로 공고(notice) 1건을 생성해 스케줄러에 추가한다.
+  // 캘린더는 notices의 날짜 필드에서 이벤트를 파생하므로, 이 방식이 기존 구조에 그대로 맞는다.
+  const handleAddAiSchedule = (parsed: BidAnalysisParsed): { added: number; duplicate: boolean } => {
+    const sv = toDateInput(parsed.siteBriefingDate)
+    const dl = toDateInput(parsed.bidDeadline)
+    const { start, end } = splitContractPeriod(parsed.contractPeriod)
+    const addedCount = [sv, dl, start, end].filter(Boolean).length
+    if (addedCount === 0) return { added: 0, duplicate: false }
+
+    const siteName = parsed.complexName || '(미입력 단지)'
+    const signature = [siteName, sv, dl, start, end].join('|')
+    const isDup = notices.some(
+      (n) => [n.siteName, n.siteVisitDate, n.deadlineDate, n.contractStartDate, n.contractEndDate].join('|') === signature,
+    )
+    if (isDup) return { added: 0, duplicate: true }
+
+    const gradeMap: Record<string, { p: TenderNoticeParticipation; r: TenderNoticeRiskLevel }> = {
+      A: { p: '높음', r: '낮음' },
+      B: { p: '높음', r: '보통' },
+      C: { p: '보통', r: '보통' },
+      D: { p: '낮음', r: '높음' },
+    }
+    const g = gradeMap[parsed.participationGrade]
+
+    const dateNotes: string[] = []
+    if (parsed.siteBriefingDate && !sv) dateNotes.push(`현장설명회 날짜 확인 필요: ${parsed.siteBriefingDate}`)
+    if (parsed.bidDeadline && !dl) dateNotes.push(`입찰마감 날짜 확인 필요: ${parsed.bidDeadline}`)
+    if (parsed.contractPeriod && !start && !end) dateNotes.push(`계약기간 확인 필요: ${parsed.contractPeriod}`)
+
+    const formPortion = {
+      ...defaultForm,
+      siteName,
+      region: parsed.region || defaultForm.region,
+      title: `${siteName} 입찰 일정 (AI 분석)`,
+      biddingMethod: parsed.bidMethod || defaultForm.biddingMethod,
+      siteVisitDate: sv,
+      deadlineDate: dl,
+      contractStartDate: start,
+      contractEndDate: end,
+      specialConditions: parsed.specialConditions.join(', '),
+      participationLikelihood: g ? g.p : defaultForm.participationLikelihood,
+      riskLevel: g ? g.r : defaultForm.riskLevel,
+      reviewMemo: [`[AI 분석] ${parsed.summary}`.trim(), ...dateNotes].filter(Boolean).join('\n'),
+    }
+
+    const notice: TenderNotice = {
+      id: Date.now(),
+      ...formPortion,
+      autoAnalysis: parseAutoAnalysis(formPortion.fullText),
+      generatedSummary: buildSummaryText(formPortion, parseAutoAnalysis(formPortion.fullText)),
+    }
+    setNotices((prev) => [notice, ...prev])
+    const firstDate = sv || dl || start || end
+    if (firstDate) {
+      setSelectedDate(firstDate)
+      setCurrentMonth(new Date(firstDate))
+    }
+    return { added: addedCount, duplicate: false }
+  }
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
     const notice: TenderNotice = {
@@ -624,7 +683,7 @@ const TenderNotices = () => {
         </div>
       </div>
 
-      <BidNoticeAIAnalysis onApplyToForm={handleApplyAiToForm} />
+      <BidNoticeAIAnalysis onApplyToForm={handleApplyAiToForm} onAddToSchedule={handleAddAiSchedule} />
 
       <div className="tender-summary-grid">
         <div className="tender-summary-card">
