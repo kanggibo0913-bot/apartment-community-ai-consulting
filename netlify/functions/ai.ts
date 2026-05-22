@@ -19,6 +19,39 @@ const SYSTEM_PROMPTS: Record<string, string> = {
   agendaPredict: `${COMMON_GUIDELINES}\n\n아파트 커뮤니티센터 운영 컨설턴트입니다. 입주자대표회의에서 논의될 안건을 예측합니다. 상단에 "[AI 예상 안건]" 라벨 붙일 것. 분석 항목: 1. 예상 안건명 2. 발생 배경 3. 쟁점 4. 관리주체 확인 자료 5. 위탁운영사 준비 자료 6. 입대의 보고용 요약 (200자) 7. 게시판 공지 초안 (300자). 800~1,100자.`,
 
   monthlyReport: `${COMMON_GUIDELINES}\n\n너는 아파트 커뮤니티센터 위탁운영사의 월간 운영보고서 작성 담당자다. 입력된 단지 정보, 매출, 비용, 민원, 계약, 운영 메모를 바탕으로 관리사무소와 입주자대표회의에 제출할 수 있는 월간 운영 리포트를 작성한다. 과장된 표현은 피하고, 수치와 검토사항 중심으로 작성한다. 입력되지 않은 구체적 사실은 임의로 만들지 말고 "확인 필요"로 표시한다. 상단에 "[AI 월간 운영 리포트]" 라벨을 붙이고, 다음 구조에 맞춰 작성하십시오. 1. 운영 개요 2. 수익 및 목표 달성 현황 3. 비용 및 손익 현황 4. 민원 및 이용자 이슈 5. 시설 및 유지관리 이슈 6. 계약 만료 / 갱신 관리 현황 7. 주요 리스크 8. 개선 제안 9. 입대의 보고용 요약문 10. 다음 달 실행 과제. 900~1,200자.`,
+
+  bidNoticeAnalysis: `${COMMON_GUIDELINES}\n\n아파트 커뮤니티센터 위탁운영 입찰 공고문을 분석하는 컨설턴트입니다. 입력된 공고문 텍스트와 단지 정보를 바탕으로 위탁운영사(MIK) 관점에서 입찰 참여 판단을 돕는 분석을 작성합니다. 상단에 "[AI 공고문 분석]" 라벨을 붙이고 다음 구조로 작성하십시오. 1. 공고 요약 2. 주요 일정 (현장설명회/입찰마감/계약기간 등, 입력에 없으면 "공고문 확인 필요"로 표시) 3. 제출 서류 체크리스트 4. MIK 참여 가능성 5. 리스크 6. 산출표 작성 시 주의사항 7. 현장설명회 질문 리스트 8. 입찰 참여 판단 등급 — 반드시 A(적극 참여)/B(조건 확인 후 참여)/C(신중 검토)/D(참여 비추천) 중 하나로 제시하고 근거를 1~2문장으로 설명. 공고문에 없는 금액/일정/자격요건을 임의로 단정하지 말고 "공고문 확인 필요"로 표시. 800~1,300자.`,
+}
+
+// taskType별 user prompt 빌더 (taskType 추가 시 여기에 case만 더하면 됨)
+const buildUserPrompt = (taskType: string, payload: unknown): string => {
+  const json = JSON.stringify(payload)
+  switch (taskType) {
+    case 'document':
+      return `입력: ${json}\n위 정보로 공문 형식의 문서를 작성하세요. 배경, 내용, 요청사항 포함.`
+    case 'contractGenerate':
+      return `입력: ${json}\n위 정보로 계약서 초안 (11개 조항)을 작성하세요. 각 조항은 2~4문장.`
+    case 'contractReview':
+      return `검토 계약서: ${json}\n위 계약서의 핵심 리스크를 검토하고 수정 요청 문구를 작성하세요.`
+    case 'agendaPredict':
+      return `자료: ${json}\n입대의 안건을 예측하고, 보고 요약문과 공지문 초안을 작성하세요.`
+    case 'monthlyReport':
+      return `월간 운영 리포트 작성: ${json}\n위 데이터를 기반으로 보고서 형식의 월간 운영 리포트를 작성하세요.`
+    case 'bidNoticeAnalysis':
+      return `입찰 공고문 분석: ${json}\n위 공고문 텍스트와 단지 정보를 분석해 참여 판단(A~D 등급 포함)을 작성하세요.`
+    default:
+      return `payload:\n${JSON.stringify(payload, null, 2)}`
+  }
+}
+
+// taskType별 최대 출력 토큰 (taskType 추가 시 여기에 항목만 더하면 됨)
+const MAX_OUTPUT_TOKENS: Record<string, number> = {
+  document: 900,
+  contractGenerate: 1400,
+  contractReview: 1200,
+  agendaPredict: 1100,
+  monthlyReport: 1200,
+  bidNoticeAnalysis: 1300,
 }
 
 const handler: Handler = async (event) => {
@@ -86,36 +119,8 @@ const handler: Handler = async (event) => {
   }
 
 
-  // taskType별 user prompt 생성 (간결하게)
-  let userPrompt = ''
-  switch (taskType) {
-    case 'document':
-      userPrompt = `입력: ${JSON.stringify(payload)}\n위 정보로 공문 형식의 문서를 작성하세요. 배경, 내용, 요청사항 포함.`
-      break
-    case 'contractGenerate':
-      userPrompt = `입력: ${JSON.stringify(payload)}\n위 정보로 계약서 초안 (11개 조항)을 작성하세요. 각 조항은 2~4문장.`
-      break
-    case 'contractReview':
-      userPrompt = `검토 계약서: ${JSON.stringify(payload)}\n위 계약서의 핵심 리스크를 검토하고 수정 요청 문구를 작성하세요.`
-      break
-    case 'agendaPredict':
-      userPrompt = `자료: ${JSON.stringify(payload)}\n입대의 안건을 예측하고, 보고 요약문과 공지문 초안을 작성하세요.`
-      break
-    case 'monthlyReport':
-      userPrompt = `월간 운영 리포트 작성: ${JSON.stringify(payload)}\n위 데이터를 기반으로 보고서 형식의 월간 운영 리포트를 작성하세요.`
-      break
-    default:
-      userPrompt = `payload:\n${JSON.stringify(payload, null, 2)}`
-  }
-
-  const maxOutputTokensByTask: Record<string, number> = {
-    document: 900,
-    contractGenerate: 1400,
-    contractReview: 1200,
-    agendaPredict: 1100,
-    monthlyReport: 1200,
-  }
-  const maxOutputTokens = maxOutputTokensByTask[taskType] || 900
+  const userPrompt = buildUserPrompt(taskType, payload)
+  const maxOutputTokens = MAX_OUTPUT_TOKENS[taskType] || 900
 
   const apiKey = process.env.OPENAI_API_KEY
   const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini'

@@ -123,3 +123,43 @@ export function saveEstimateSheets(sheets: EstimateSheet[]): void {
 export function clearEstimateSheets(): void {
   window.localStorage.removeItem(ESTIMATE_STORAGE_KEY)
 }
+
+// ===== AI 결과 저장 이력 =====
+const AI_RESULTS_STORAGE_KEY = 'aiResultHistory'
+
+export interface AiResultEntry {
+  id: string
+  title: string
+  taskType: string
+  createdAt: string
+  content: string
+}
+
+export function loadAiResults(): AiResultEntry[] {
+  try {
+    const raw = window.localStorage.getItem(AI_RESULTS_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as AiResultEntry[]) : []
+  } catch {
+    return []
+  }
+}
+
+export function saveAiResult(entry: { title: string; taskType: string; content: string }): AiResultEntry {
+  const full: AiResultEntry = {
+    id: 'ai-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    title: entry.title,
+    taskType: entry.taskType,
+    createdAt: new Date().toISOString(),
+    content: entry.content,
+  }
+  const next = [full, ...loadAiResults()].slice(0, 100) // 최대 100개 보관
+  window.localStorage.setItem(AI_RESULTS_STORAGE_KEY, JSON.stringify(next))
+  return full
+}
+
+export function deleteAiResult(id: string): void {
+  const list = loadAiResults().filter((e) => e.id !== id)
+  window.localStorage.setItem(AI_RESULTS_STORAGE_KEY, JSON.stringify(list))
+}
