@@ -1,4 +1,4 @@
-export type AiTaskType = 'document' | 'contractGenerate' | 'contractReview' | 'agendaPredict'
+export type AiTaskType = 'document' | 'contractGenerate' | 'contractReview' | 'agendaPredict' | 'monthlyReport'
 
 export interface AiResponse {
   success: boolean

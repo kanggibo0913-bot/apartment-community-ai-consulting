@@ -1,0 +1,159 @@
+.project-selector {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.project-selector.error {
+  background: #fff3cd;
+  border-color: #ffc107;
+  text-align: center;
+  padding: 24px;
+}
+
+.project-selector.error p {
+  margin: 0 0 16px 0;
+  color: #856404;
+  font-size: 14px;
+}
+
+.project-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  border-bottom: 2px solid #dee2e6;
+  padding-bottom: 12px;
+}
+
+.project-header h2 {
+  margin: 0;
+  font-size: 18px;
+  color: #212529;
+  flex: 1;
+}
+
+.btn-toggle-actions {
+  background: none;
+  border: none;
+  color: #0066cc;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+  transition: color 0.2s;
+}
+
+.btn-toggle-actions:hover {
+  color: #0052a3;
+}
+
+.project-info {
+  background: white;
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #e9ecef;
+  font-size: 14px;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-row .label {
+  font-weight: 600;
+  color: #495057;
+  min-width: 100px;
+}
+
+.info-row .value {
+  color: #212529;
+  text-align: right;
+  flex: 1;
+}
+
+.project-select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 14px;
+  margin-bottom: 12px;
+  background: white;
+  cursor: pointer;
+}
+
+.project-select:focus {
+  outline: none;
+  border-color: #0066cc;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
+.project-actions {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.backup-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+}
+
+.backup-actions button {
+  flex: 1;
+  white-space: nowrap;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .project-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .project-header h2 {
+    font-size: 16px;
+  }
+
+  .project-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-actions {
+    flex-direction: column;
+  }
+
+  .project-info {
+    padding: 8px;
+  }
+
+  .info-row {
+    flex-direction: column;
+    padding: 6px 0;
+  }
+
+  .info-row .label {
+    min-width: auto;
+    margin-bottom: 4px;
+  }
+
+  .info-row .value {
+    text-align: left;
+  }
+}

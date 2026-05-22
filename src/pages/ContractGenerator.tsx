@@ -3,7 +3,7 @@ import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import FormGroup from '../components/FormGroup'
 import Button from '../components/Button'
-import { ContractGeneratorData, ContractType } from '../types/CommunityData'
+import { ContractGeneratorData, ContractDocumentType } from '../types/CommunityData'
 import { generateContractDraft } from '../utils/localDraftGenerators'
 import { callAiFunction } from '../utils/aiClient'
 import './Pages.css'
@@ -13,7 +13,7 @@ interface ContractGeneratorProps {
   onChange: (next: Partial<ContractGeneratorData>) => void
 }
 
-const contractTypes: ContractType[] = [
+const contractTypes: ContractDocumentType[] = [
   '커뮤니티센터 위탁운영 계약서',
   '헬스 트레이너 계약서',
   '사업소득자 계약서',

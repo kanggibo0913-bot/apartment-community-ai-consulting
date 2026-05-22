@@ -99,7 +99,7 @@ export interface DocumentCenterData {
   generatedDocument: string
 }
 
-export type ContractType =
+export type ContractDocumentType =
   | '커뮤니티센터 위탁운영 계약서'
   | '헬스 트레이너 계약서'
   | '사업소득자 계약서'
@@ -108,7 +108,7 @@ export type ContractType =
   | '업무협약서'
 
 export interface ContractGeneratorData {
-  contractType: ContractType
+  contractType: ContractDocumentType
   contractTitle: string
   partyA: string
   partyB: string
@@ -414,6 +414,39 @@ export interface ComplaintItem {
   action: string
 }
 
+export type ContractType = '커뮤니티센터 위탁운영' | '헬스 트레이너' | '사업소득자' | '장비 납품' | '장비 렌탈' | '업무협약' | '기타'
+export type ContractStatus = '진행중' | '갱신검토' | '만료예정' | '종료' | '보류'
+
+export interface ContractItem {
+  id: number
+  contractName: string
+  contractType: ContractType
+  counterparty: string
+  startDate: string
+  endDate: string
+  renewalReviewDate: string
+  noticeDeadline: string
+  contractAmount: string
+  paymentMethod: string
+  status: ContractStatus
+  memo: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ContractManagement {
+  contracts: ContractItem[]
+}
+
+export interface MonthlyReportData {
+  reportMonth: string
+  summaryMemo: string
+  keyIssues: string
+  improvementPlan: string
+  memo: string
+  generatedReport: string
+}
+
 export interface CommunityData {
   apartmentInfo: ApartmentInfoData
   facilityInfo: {
@@ -430,4 +463,23 @@ export interface CommunityData {
   contractReview: ContractReviewData
   agendaPredictor: AgendaPredictorData
   complaints: ComplaintItem[]
+  contractManagement: ContractManagement
+  monthlyReport: MonthlyReportData
+}
+
+export interface CommunityProject {
+  id: string
+  name: string
+  address: string
+  householdCount: number
+  managementCompany: string
+  memo: string
+  createdAt: string
+  updatedAt: string
+  data: CommunityData
+}
+
+export interface AppState {
+  projects: CommunityProject[]
+  activeProjectId: string
 }

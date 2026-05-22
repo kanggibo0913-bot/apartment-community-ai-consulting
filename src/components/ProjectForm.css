@@ -1,0 +1,90 @@
+.project-form-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.project-form-modal {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.project-form-modal h3 {
+  margin: 0 0 20px 0;
+  font-size: 18px;
+  color: #212529;
+  border-bottom: 2px solid #dee2e6;
+  padding-bottom: 12px;
+}
+
+.project-form-modal .form-group {
+  margin-bottom: 16px;
+}
+
+.project-form-modal label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #495057;
+}
+
+.project-form-modal input,
+.project-form-modal textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.project-form-modal input:focus,
+.project-form-modal textarea:focus {
+  outline: none;
+  border-color: #0066cc;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
+.project-form-modal textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #dee2e6;
+}
+
+.form-actions button {
+  flex: 1;
+}
+
+@media (max-width: 768px) {
+  .project-form-modal {
+    width: 95%;
+    padding: 16px;
+  }
+
+  .project-form-modal h3 {
+    font-size: 16px;
+  }
+}

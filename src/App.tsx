@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import Sidebar from './components/Sidebar'
+import ProjectSelector from './components/ProjectSelector'
+import ProjectForm from './components/ProjectForm'
 import Dashboard from './pages/Dashboard'
 import ApartmentInfo from './pages/ApartmentInfo'
 import FacilityInfo from './pages/FacilityInfo'
@@ -11,15 +13,18 @@ import ComplaintInfo from './pages/ComplaintInfo'
 import DocumentCenter from './pages/DocumentCenter'
 import ContractGenerator from './pages/ContractGenerator'
 import ContractReview from './pages/ContractReview'
+import ContractManagement from './pages/ContractManagement'
+import MonthlyReport from './pages/MonthlyReport'
 import AgendaPredictor from './pages/AgendaPredictor'
 import AIAnalysis from './pages/AIAnalysis'
 import ReportDraft from './pages/ReportDraft'
 import TenderNotices from './pages/TenderNotices'
 import EstimateCalculator from './pages/EstimateCalculator'
-import { loadCommunityData, saveCommunityData } from './utils/storage'
+import { loadProjects, saveProjects } from './utils/storage'
 import {
   ApartmentInfoData,
   CommunityData,
+  CommunityProject,
   ComplaintItem,
   CostInfoData,
   OperationInfoData,
@@ -33,9 +38,11 @@ import {
   ContractGeneratorData,
   ContractReviewData,
   AgendaPredictorData,
+  ContractItem,
+  MonthlyReportData,
 } from './types/CommunityData'
 
-type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate'
+type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate' | 'contract-manage' | 'monthly-report'
 
 const defaultFacilityItems: FacilityDetail[] = [
   { id: 1, name: '헬스장', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
@@ -162,6 +169,17 @@ const defaultCommunityData: CommunityData = {
     generatedAgenda: '',
   },
   complaints: [],
+  contractManagement: {
+    contracts: [],
+  },
+  monthlyReport: {
+    reportMonth: '',
+    summaryMemo: '',
+    keyIssues: '',
+    improvementPlan: '',
+    memo: '',
+    generatedReport: '',
+  },
 }
 
 const sampleCommunityData: CommunityData = {
@@ -297,6 +315,17 @@ const sampleCommunityData: CommunityData = {
     { id: 5, content: '주말 프로그램 확대 요청', type: '프로그램 불만', status: '접수', date: '2024-05-12', action: '' },
     { id: 6, content: '운영시간 추가 요청', type: '운영시간', status: '반복 민원', date: '2024-05-13', action: '운영 시간 재검토 중' },
   ],
+  contractManagement: {
+    contracts: [],
+  },
+  monthlyReport: {
+    reportMonth: '',
+    summaryMemo: '',
+    keyIssues: '',
+    improvementPlan: '',
+    memo: '',
+    generatedReport: '',
+  },
 }
 
 const pageLabels: Record<PageType, string> = {
@@ -315,38 +344,25 @@ const pageLabels: Record<PageType, string> = {
   report: '보고서 초안',
   tender: '입찰공고 관리',
   estimate: '산출표 자동 계산',
+  'contract-manage': '계약 관리',
+  'monthly-report': '월간 운영 리포트',
 }
 
-const isValidCommunityData = (value: unknown): value is CommunityData => {
-  if (!value || typeof value !== 'object') return false
-  const data = value as any
-  const hasObject = (key: string) => data[key] && typeof data[key] === 'object'
-  if (!hasObject('apartmentInfo') || !hasObject('facilityInfo') || !hasObject('operationInfo') || !hasObject('costInfo') || !hasObject('revenueInfo') || !hasObject('revenueTarget') || !hasObject('laborCost') || !hasObject('utilityForecast') || !Array.isArray(data.complaints)) {
-    return false
-  }
-  const apartment = data.apartmentInfo
-  if (typeof apartment.name !== 'string' || typeof apartment.region !== 'string' || typeof apartment.totalUnits !== 'number') return false
-  const operation = data.operationInfo
-  if (typeof operation.weekdayHours !== 'string' || typeof operation.weekendHours !== 'string') return false
-  const cost = data.costInfo
-  if (typeof cost.salaries !== 'number' || typeof cost.electricity !== 'number') return false
-  const revenue = data.revenueInfo
-  if (typeof revenue.usageFee !== 'number' || typeof revenue.ptFee !== 'number') return false
-  const facilityItems = data.facilityInfo.items
-  if (!Array.isArray(facilityItems) || !facilityItems.every((item: any) => typeof item.id === 'number' && typeof item.name === 'string')) return false
-  if (data.documentCenter && typeof data.documentCenter !== 'object') return false
-  if (data.contractGenerator && typeof data.contractGenerator !== 'object') return false
-  if (data.contractReview && typeof data.contractReview !== 'object') return false
-  if (data.agendaPredictor && typeof data.agendaPredictor !== 'object') return false
-  return data.complaints.every((item: any) => typeof item.id === 'number' && typeof item.content === 'string' && typeof item.type === 'string')
+function generateProjectId(): string {
+  return 'project-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9)
 }
 
 function App() {
   const [currentPage, setCurrentPage] = useState<PageType>('dashboard')
-  const [appState, setAppState] = useState<CommunityData>(defaultCommunityData)
+  const [projects, setProjects] = useState<CommunityProject[]>([])
+  const [activeProjectId, setActiveProjectId] = useState<string>('')
+  const [editingProject, setEditingProject] = useState<CommunityProject | undefined>()
+  const [showProjectForm, setShowProjectForm] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string>('')
   const [selectedOutputType, setSelectedOutputType] = useState<OutputType>('운영 진단 보고서')
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+
+  const activeProject = projects.find(p => p.id === activeProjectId)
 
   const showStatusMessage = (message: string) => {
     setStatusMessage(message)
@@ -358,248 +374,298 @@ function App() {
     setIsMobileNavOpen(false)
   }
 
+  // Initialize from localStorage with migration
   useEffect(() => {
-    const parsed = loadCommunityData()
-    if (!parsed || typeof parsed !== 'object') return
-
-    setAppState({
-      apartmentInfo: {
-        ...defaultCommunityData.apartmentInfo,
-        ...parsed.apartmentInfo,
-      },
-      facilityInfo: {
-        items: parsed.facilityInfo?.items ?? defaultFacilityItems,
-      },
-      operationInfo: {
-        ...defaultCommunityData.operationInfo,
-        ...parsed.operationInfo,
-      },
-      costInfo: {
-        ...defaultCommunityData.costInfo,
-        ...parsed.costInfo,
-      },
-      revenueInfo: {
-        ...defaultCommunityData.revenueInfo,
-        ...parsed.revenueInfo,
-      },
-      revenueTarget: {
-        ...defaultCommunityData.revenueTarget,
-        ...parsed.revenueTarget,
-      },
-      laborCost: {
-        ...defaultCommunityData.laborCost,
-        ...parsed.laborCost,
-      },
-      utilityForecast: {
-        ...defaultCommunityData.utilityForecast,
-        ...parsed.utilityForecast,
-      },
-      documentCenter: {
-        ...defaultCommunityData.documentCenter,
-        ...parsed.documentCenter,
-      },
-      contractGenerator: {
-        ...defaultCommunityData.contractGenerator,
-        ...parsed.contractGenerator,
-      },
-      contractReview: {
-        ...defaultCommunityData.contractReview,
-        ...parsed.contractReview,
-      },
-      agendaPredictor: {
-        ...defaultCommunityData.agendaPredictor,
-        ...parsed.agendaPredictor,
-      },
-      complaints: parsed.complaints ?? defaultCommunityData.complaints,
-    })
+    const state = loadProjects()
+    if (state && state.projects.length > 0) {
+      setProjects(state.projects)
+      setActiveProjectId(state.activeProjectId)
+    } else {
+      // Create default empty project
+      const projectId = generateProjectId()
+      const now = new Date().toISOString()
+      const newProject: CommunityProject = {
+        id: projectId,
+        name: '기본 단지',
+        address: '',
+        householdCount: 0,
+        managementCompany: '',
+        memo: '',
+        createdAt: now,
+        updatedAt: now,
+        data: defaultCommunityData,
+      }
+      setProjects([newProject])
+      setActiveProjectId(projectId)
+    }
   }, [])
 
+  // Save to localStorage whenever projects or activeProjectId changes
   useEffect(() => {
-    saveCommunityData(appState)
-  }, [appState])
+    if (projects.length > 0) {
+      saveProjects({ projects, activeProjectId })
+    }
+  }, [projects, activeProjectId])
 
   useEffect(() => {
     setIsMobileNavOpen(false)
   }, [currentPage])
 
+  // Data update functions
+  const updateActiveProjectData = (updater: (data: CommunityData) => CommunityData) => {
+    setProjects(prev => prev.map(p => 
+      p.id === activeProjectId 
+        ? { ...p, data: updater(p.data), updatedAt: new Date().toISOString() }
+        : p
+    ))
+  }
+
   const updateApartmentInfo = (next: Partial<ApartmentInfoData>) => {
-    setAppState(prev => ({
-      ...prev,
-      apartmentInfo: { ...prev.apartmentInfo, ...next },
+    updateActiveProjectData(data => ({
+      ...data,
+      apartmentInfo: { ...data.apartmentInfo, ...next },
     }))
   }
 
   const updateFacilityItems = (items: FacilityDetail[]) => {
-    setAppState(prev => ({
-      ...prev,
-      facilityInfo: { ...prev.facilityInfo, items },
+    updateActiveProjectData(data => ({
+      ...data,
+      facilityInfo: { ...data.facilityInfo, items },
     }))
   }
 
   const updateOperationInfo = (next: Partial<OperationInfoData>) => {
-    setAppState(prev => ({
-      ...prev,
-      operationInfo: { ...prev.operationInfo, ...next },
+    updateActiveProjectData(data => ({
+      ...data,
+      operationInfo: { ...data.operationInfo, ...next },
     }))
   }
 
   const updateCostInfo = (next: Partial<CostInfoData>) => {
-    setAppState(prev => ({
-      ...prev,
-      costInfo: { ...prev.costInfo, ...next },
+    updateActiveProjectData(data => ({
+      ...data,
+      costInfo: { ...data.costInfo, ...next },
     }))
   }
 
   const updateRevenueInfo = (next: Partial<RevenueInfoData>) => {
-    setAppState(prev => ({
-      ...prev,
-      revenueInfo: { ...prev.revenueInfo, ...next },
+    updateActiveProjectData(data => ({
+      ...data,
+      revenueInfo: { ...data.revenueInfo, ...next },
     }))
   }
 
   const updateRevenueTarget = (next: Partial<RevenueTargetInfo>) => {
-    setAppState(prev => ({
-      ...prev,
-      revenueTarget: { ...prev.revenueTarget, ...next },
+    updateActiveProjectData(data => ({
+      ...data,
+      revenueTarget: { ...data.revenueTarget, ...next },
     }))
   }
 
   const updateLaborCost = (next: Partial<LaborCostData>) => {
-    setAppState(prev => ({
-      ...prev,
-      laborCost: { ...prev.laborCost, ...next },
+    updateActiveProjectData(data => ({
+      ...data,
+      laborCost: { ...data.laborCost, ...next },
     }))
   }
 
   const updateDocumentCenter = (next: Partial<DocumentCenterData>) => {
-    setAppState(prev => ({
-      ...prev,
-      documentCenter: { ...prev.documentCenter, ...next },
+    updateActiveProjectData(data => ({
+      ...data,
+      documentCenter: { ...data.documentCenter, ...next },
     }))
   }
 
   const updateContractGenerator = (next: Partial<ContractGeneratorData>) => {
-    setAppState(prev => ({
-      ...prev,
-      contractGenerator: { ...prev.contractGenerator, ...next },
+    updateActiveProjectData(data => ({
+      ...data,
+      contractGenerator: { ...data.contractGenerator, ...next },
     }))
   }
 
   const updateContractReview = (next: Partial<ContractReviewData>) => {
-    setAppState(prev => ({
-      ...prev,
-      contractReview: { ...prev.contractReview, ...next },
+    updateActiveProjectData(data => ({
+      ...data,
+      contractReview: { ...data.contractReview, ...next },
     }))
   }
 
   const updateAgendaPredictor = (next: Partial<AgendaPredictorData>) => {
-    setAppState(prev => ({
-      ...prev,
-      agendaPredictor: { ...prev.agendaPredictor, ...next },
+    updateActiveProjectData(data => ({
+      ...data,
+      agendaPredictor: { ...data.agendaPredictor, ...next },
     }))
   }
 
   const updateUtilityForecast = (next: Partial<UtilityForecastData>) => {
-    setAppState(prev => ({
-      ...prev,
-      utilityForecast: { ...prev.utilityForecast, ...next },
+    updateActiveProjectData(data => ({
+      ...data,
+      utilityForecast: { ...data.utilityForecast, ...next },
     }))
   }
 
   const updateComplaints = (complaints: ComplaintItem[]) => {
-    setAppState(prev => ({
-      ...prev,
+    updateActiveProjectData(data => ({
+      ...data,
       complaints,
     }))
   }
 
-  const getCostTotal = (costInfo: CostInfoData) =>
-    Object.values(costInfo).reduce((sum, value) => sum + value, 0)
-
-  const handleResetAll = () => {
-    setAppState(defaultCommunityData)
-    showStatusMessage('전체 데이터가 초기화되었습니다.')
+  const updateContractManagement = (contracts: ContractItem[]) => {
+    updateActiveProjectData(data => ({
+      ...data,
+      contractManagement: { contracts },
+    }))
   }
 
-  const handleLoadSampleData = () => {
-    setAppState(sampleCommunityData)
-    showStatusMessage('샘플 데이터가 로드되었습니다. 기존 데이터가 덮어써졌습니다.')
+  const updateMonthlyReport = (next: Partial<MonthlyReportData>) => {
+    updateActiveProjectData(data => ({
+      ...data,
+      monthlyReport: { ...data.monthlyReport, ...next },
+    }))
   }
 
-  const handleExportData = () => {
-    const fileName = `community-consulting-data-${new Date().toISOString().slice(0, 10)}.json`
-    const blob = new Blob([JSON.stringify(appState, null, 2)], { type: 'application/json' })
+  // Project management
+  const handleAddProject = () => {
+    setEditingProject(undefined)
+    setShowProjectForm(true)
+  }
+
+  const handleEditProject = (project: CommunityProject) => {
+    setEditingProject(project)
+    setShowProjectForm(true)
+  }
+
+  const handleSaveProject = (projectData: any) => {
+    if (editingProject) {
+      // Update existing project
+      setProjects(prev => prev.map(p => 
+        p.id === editingProject.id
+          ? { ...p, ...projectData, updatedAt: new Date().toISOString() }
+          : p
+      ))
+      showStatusMessage(`"${projectData.name}" 단지가 수정되었습니다.`)
+    } else {
+      // Add new project
+      const projectId = generateProjectId()
+      const now = new Date().toISOString()
+      const newProject: CommunityProject = {
+        ...projectData,
+        id: projectId,
+        createdAt: now,
+        updatedAt: now,
+      }
+      setProjects(prev => [...prev, newProject])
+      setActiveProjectId(projectId)
+      showStatusMessage(`"${projectData.name}" 단지가 추가되었습니다.`)
+    }
+  }
+
+  const handleSelectProject = (projectId: string) => {
+    setActiveProjectId(projectId)
+  }
+
+  const handleDeleteProject = (projectId: string) => {
+    const projectToDelete = projects.find(p => p.id === projectId)
+    setProjects(prev => prev.filter(p => p.id !== projectId))
+    
+    // Select another project if the deleted one was active
+    if (activeProjectId === projectId) {
+      const remaining = projects.filter(p => p.id !== projectId)
+      if (remaining.length > 0) {
+        setActiveProjectId(remaining[0].id)
+      }
+    }
+    showStatusMessage(`"${projectToDelete?.name}" 단지가 삭제되었습니다.`)
+  }
+
+  const handleBackupProjects = () => {
+    const fileName = `community-ai-backup-${new Date().toISOString().slice(0, 10)}.json`
+    const backupData = {
+      projects,
+      activeProjectId,
+      exportDate: new Date().toISOString(),
+      appVersion: '1.0.0',
+    }
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
     link.download = fileName
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-    showStatusMessage('현재 데이터가 JSON 파일로 다운로드되었습니다.')
+    showStatusMessage('전체 데이터 백업이 완료되었습니다.')
   }
 
-  const handleImportData = async (file: File): Promise<{success: boolean; message: string}> => {
+  const handleRestoreProjects = async (file: File): Promise<{ success: boolean; message: string }> => {
     try {
       const text = await file.text()
       const parsed = JSON.parse(text)
-      if (!isValidCommunityData(parsed)) {
-        return { success: false, message: '올바른 CommunityData 형식이 아닙니다. JSON 구조를 확인해주세요.' }
+
+      if (!parsed.projects || !Array.isArray(parsed.projects)) {
+        return { success: false, message: '올바른 백업 파일이 아닙니다. projects 배열이 없습니다.' }
       }
-      setAppState({
-        apartmentInfo: {
-          ...defaultCommunityData.apartmentInfo,
-          ...parsed.apartmentInfo,
-        },
-        facilityInfo: {
-          items: parsed.facilityInfo?.items ?? defaultFacilityItems,
-        },
-        operationInfo: {
-          ...defaultCommunityData.operationInfo,
-          ...parsed.operationInfo,
-        },
-        costInfo: {
-          ...defaultCommunityData.costInfo,
-          ...parsed.costInfo,
-        },
-        revenueInfo: {
-          ...defaultCommunityData.revenueInfo,
-          ...parsed.revenueInfo,
-        },
-        revenueTarget: {
-          ...defaultCommunityData.revenueTarget,
-          ...parsed.revenueTarget,
-        },
-        laborCost: {
-          ...defaultCommunityData.laborCost,
-          ...parsed.laborCost,
-        },
-        utilityForecast: {
-          ...defaultCommunityData.utilityForecast,
-          ...parsed.utilityForecast,
-        },
-        documentCenter: {
-          ...defaultCommunityData.documentCenter,
-          ...parsed.documentCenter,
-        },
-        contractGenerator: {
-          ...defaultCommunityData.contractGenerator,
-          ...parsed.contractGenerator,
-        },
-        contractReview: {
-          ...defaultCommunityData.contractReview,
-          ...parsed.contractReview,
-        },
-        agendaPredictor: {
-          ...defaultCommunityData.agendaPredictor,
-          ...parsed.agendaPredictor,
-        },
-        complaints: parsed.complaints ?? defaultCommunityData.complaints,
-      })
-      return { success: true, message: 'JSON 데이터가 정상적으로 복원되었습니다. 기존 데이터가 덮어써졌습니다.' }
-    } catch {
-      return { success: false, message: 'JSON 파일을 읽는 중 오류가 발생했습니다. 파일 형식을 확인해주세요.' }
+
+      setProjects(parsed.projects)
+      setActiveProjectId(parsed.activeProjectId || parsed.projects[0]?.id)
+      return { success: true, message: '데이터가 정상적으로 복원되었습니다.' }
+    } catch (error) {
+      return { success: false, message: 'JSON 파일을 읽는 중 오류가 발생했습니다.' }
     }
   }
+
+  // Legacy handlers for backward compatibility
+  const handleResetAll = () => {
+    if (activeProject) {
+      setProjects(prev => prev.map(p =>
+        p.id === activeProjectId ? { ...p, data: defaultCommunityData, updatedAt: new Date().toISOString() } : p
+      ))
+      showStatusMessage('현재 단지 데이터가 초기화되었습니다.')
+    }
+  }
+
+  const handleLoadSampleData = () => {
+    if (activeProject) {
+      setProjects(prev => prev.map(p =>
+        p.id === activeProjectId ? { ...p, data: sampleCommunityData, updatedAt: new Date().toISOString() } : p
+      ))
+      showStatusMessage('샘플 데이터가 로드되었습니다. 기존 데이터가 덮어써졌습니다.')
+    }
+  }
+
+  const handleExportData = () => {
+    if (activeProject) {
+      const fileName = `community-consulting-data-${new Date().toISOString().slice(0, 10)}.json`
+      const blob = new Blob([JSON.stringify(activeProject.data, null, 2)], { type: 'application/json' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      showStatusMessage('현재 단지 데이터가 JSON 파일로 다운로드되었습니다.')
+    }
+  }
+
+  const handleImportData = async (file: File): Promise<{ success: boolean; message: string }> => {
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text)
+
+      // Simple validation
+      if (!parsed.apartmentInfo || !parsed.complaints) {
+        return { success: false, message: '올바른 CommunityData 형식이 아닙니다.' }
+      }
+
+      updateActiveProjectData(() => parsed)
+      return { success: true, message: '데이터가 정상적으로 복원되었습니다.' }
+    } catch {
+      return { success: false, message: 'JSON 파일을 읽는 중 오류가 발생했습니다.' }
+    }
+  }
+
+  const getCostTotal = (costInfo: CostInfoData) =>
+    Object.values(costInfo).reduce((sum, value) => sum + value, 0)
 
   const navigateToOutput = (outputType: OutputType) => {
     setSelectedOutputType(outputType)
@@ -607,11 +673,17 @@ function App() {
   }
 
   const renderPage = () => {
+    if (!activeProject) {
+      return <div className="error-message">단지를 선택해주세요.</div>
+    }
+
+    const data = activeProject.data
+
     switch (currentPage) {
       case 'dashboard':
         return (
           <Dashboard
-            data={appState}
+            data={data}
             onReset={handleResetAll}
             onLoadSampleData={handleLoadSampleData}
             onExportData={handleExportData}
@@ -622,50 +694,71 @@ function App() {
           />
         )
       case 'apartment':
-        return <ApartmentInfo data={appState.apartmentInfo} onChange={updateApartmentInfo} />
+        return <ApartmentInfo data={data.apartmentInfo} onChange={updateApartmentInfo} />
       case 'facility':
-        return <FacilityInfo facilityInfo={appState.facilityInfo} onChange={updateFacilityItems} />
+        return <FacilityInfo facilityInfo={data.facilityInfo} onChange={updateFacilityItems} />
       case 'operation':
-        return <OperationInfo data={appState.operationInfo} onChange={updateOperationInfo} />
+        return <OperationInfo data={data.operationInfo} onChange={updateOperationInfo} />
       case 'cost':
         return <CostInfo
-          data={appState.costInfo}
+          data={data.costInfo}
           onChange={updateCostInfo}
-          laborCost={appState.laborCost}
+          laborCost={data.laborCost}
           onChangeLaborCost={updateLaborCost}
-          utilityForecast={appState.utilityForecast}
+          utilityForecast={data.utilityForecast}
           onChangeUtilityForecast={updateUtilityForecast}
         />
       case 'revenue':
         return <RevenueInfo
-          data={appState.revenueInfo}
+          data={data.revenueInfo}
           onChange={updateRevenueInfo}
-          costTotal={getCostTotal(appState.costInfo)}
-          revenueTarget={appState.revenueTarget}
+          costTotal={getCostTotal(data.costInfo)}
+          revenueTarget={data.revenueTarget}
           onChangeRevenueTarget={updateRevenueTarget}
         />
       case 'complaint':
-        return <ComplaintInfo complaints={appState.complaints} onChange={updateComplaints} />
+        return <ComplaintInfo complaints={data.complaints} onChange={updateComplaints} />
       case 'document':
-        return <DocumentCenter data={appState.documentCenter} onChange={updateDocumentCenter} />
+        return <DocumentCenter data={data.documentCenter} onChange={updateDocumentCenter} />
       case 'contract':
-        return <ContractGenerator data={appState.contractGenerator} onChange={updateContractGenerator} />
+        return <ContractGenerator data={data.contractGenerator} onChange={updateContractGenerator} />
       case 'review':
-        return <ContractReview data={appState.contractReview} onChange={updateContractReview} />
+        return <ContractReview data={data.contractReview} onChange={updateContractReview} />
       case 'agenda':
-        return <AgendaPredictor data={appState.agendaPredictor} onChange={updateAgendaPredictor} />
+        return <AgendaPredictor data={data.agendaPredictor} onChange={updateAgendaPredictor} />
       case 'analysis':
-        return <AIAnalysis data={appState} />
+        return <AIAnalysis data={data} />
       case 'report':
-        return <ReportDraft data={appState} defaultOutputType={selectedOutputType} />
+        return <ReportDraft data={data} defaultOutputType={selectedOutputType} />
       case 'tender':
         return <TenderNotices />
       case 'estimate':
         return <EstimateCalculator />
+      case 'contract-manage':
+        return (
+          <>
+            <h2>계약 만료 / 갱신 관리</h2>
+            <ContractManagement
+              contracts={data.contractManagement.contracts}
+              onChange={updateContractManagement}
+            />
+          </>
+        )
+      case 'monthly-report':
+        return (
+          <>
+            <h2>월간 운영 리포트</h2>
+            <MonthlyReport
+              data={data}
+              reportData={data.monthlyReport}
+              onChange={updateMonthlyReport}
+            />
+          </>
+        )
       default:
         return (
           <Dashboard
-            data={appState}
+            data={data}
             onReset={handleResetAll}
             onLoadSampleData={handleLoadSampleData}
             onExportData={handleExportData}
@@ -693,19 +786,34 @@ function App() {
           </button>
           <div className="mobile-topbar-title">{pageLabels[currentPage]}</div>
           <button className="btn btn-secondary mobile-topbar-action" type="button" onClick={handleResetAll}>
-            전체 초기화
+            초기화
           </button>
         </header>
 
         <main className="main-content">
-          <div className="page-actions">
-            <button className="btn btn-secondary" type="button" onClick={handleResetAll}>
-              전체 데이터 초기화
-            </button>
-          </div>
+          <ProjectSelector
+            projects={projects}
+            activeProjectId={activeProjectId}
+            onSelectProject={handleSelectProject}
+            onAddProject={handleAddProject}
+            onEditProject={handleEditProject}
+            onDeleteProject={handleDeleteProject}
+            onBackupProjects={handleBackupProjects}
+            onRestoreProjects={handleRestoreProjects}
+          />
           {renderPage()}
         </main>
       </div>
+
+      <ProjectForm
+        project={editingProject}
+        isOpen={showProjectForm}
+        onClose={() => {
+          setShowProjectForm(false)
+          setEditingProject(undefined)
+        }}
+        onSave={handleSaveProject}
+      />
     </div>
   )
 }
