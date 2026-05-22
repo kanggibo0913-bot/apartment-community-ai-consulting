@@ -188,6 +188,8 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
     }
   }
 
+  const isConfigError = /API 키|환경변수|OPENAI_API_KEY|OPENAI_MODEL/.test(aiError)
+
   return (
     <div className="page">
       <Card>
@@ -254,9 +256,18 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
           </Button>
         </div>
 
-        <p style={{ marginTop: '10px', marginBottom: 0, fontSize: '12px', color: '#667085' }}>
-          ※ AI 고도화는 OPENAI_API_KEY가 필요합니다. 로컬은 프로젝트 루트의 <code>.env</code>, 배포 환경은 Netlify 대시보드(Site settings → Environment variables)에 설정하세요. 로컬은 <code>npm run dev:netlify</code>로 실행해야 AI 함수가 동작합니다.
-        </p>
+        {isConfigError && (
+          <p style={{ marginTop: '10px', marginBottom: 0, fontSize: '12px', color: '#b54708' }}>
+            AI 호출에 실패한 경우 Netlify 환경변수 <code>OPENAI_API_KEY</code>와 <code>OPENAI_MODEL</code> 설정을 확인해주세요.
+          </p>
+        )}
+
+        <details style={{ marginTop: '10px', fontSize: '12px', color: '#667085' }}>
+          <summary style={{ cursor: 'pointer' }}>AI 설정 도움말</summary>
+          <p style={{ margin: '6px 0 0', lineHeight: 1.6 }}>
+            로컬 개발에서는 <code>npm run dev:netlify</code>로 실행하고 프로젝트 루트 <code>.env</code>에 <code>OPENAI_API_KEY</code>를 설정해야 AI 함수가 동작합니다. 배포 환경은 Netlify 대시보드(Site settings → Environment variables)에서 <code>OPENAI_API_KEY</code>·<code>OPENAI_MODEL</code>을 설정합니다.
+          </p>
+        </details>
 
         {statusMessage && (
           <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#e7f3ff', color: '#0066cc', borderRadius: '4px', fontSize: '14px' }}>
