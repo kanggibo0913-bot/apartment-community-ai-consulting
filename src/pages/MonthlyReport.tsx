@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CommunityData, MonthlyReportData } from '../types/CommunityData'
 import Button from '../components/Button'
 import Card from '../components/Card'
-import { callAiFunction } from '../utils/aiClient'
+import AIResultPanel from '../components/AIResultPanel'
+import { callAI } from '../utils/aiClient'
 import './Pages.css'
 
 interface MonthlyReportProps {
@@ -22,10 +23,19 @@ const defaultMonthlyReportData: MonthlyReportData = {
 
 const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData: reportDataProp, onChange }) => {
   const reportData = reportDataProp ?? defaultMonthlyReportData
+  const currentMonth = new Date().toISOString().slice(0, 7)
   const [isGenerating, setIsGenerating] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
   const [aiError, setAiError] = useState('')
+
+  // 보고 월이 비어 있으면 현재 월로 안전하게 초기화 (reportMonth 누락 방어)
+  useEffect(() => {
+    if (!reportData.reportMonth) {
+      onChange({ reportMonth: currentMonth })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const showMessage = (msg: string) => {
     setStatusMessage(msg)
@@ -37,32 +47,31 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData: reportD
     setAiError('')
 
     try {
-    // Collect relevant data
-    const contractCount = data.contractManagement.contracts.length
-    const contractsExpiring = data.contractManagement.contracts.filter(c => {
-      const endDate = new Date(c.endDate)
-      const today = new Date()
-      const daysLeft = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-      return daysLeft > 0 && daysLeft <= 60
-    }).length
-    const contractsRenewal = data.contractManagement.contracts.filter(c => {
-      const reviewDate = new Date(c.renewalReviewDate)
-      const today = new Date()
-      return reviewDate < today && c.status === '진행중'
-    }).length
+      const contractCount = data.contractManagement.contracts.length
+      const contractsExpiring = data.contractManagement.contracts.filter(c => {
+        const endDate = new Date(c.endDate)
+        const today = new Date()
+        const daysLeft = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        return daysLeft > 0 && daysLeft <= 60
+      }).length
+      const contractsRenewal = data.contractManagement.contracts.filter(c => {
+        const reviewDate = new Date(c.renewalReviewDate)
+        const today = new Date()
+        return reviewDate < today && c.status === '진행중'
+      }).length
 
-    const complaintTotal = data.complaints.length
-    const complaintByType = data.complaints.reduce<Record<string, number>>((acc, c) => {
-      acc[c.type] = (acc[c.type] || 0) + 1
-      return acc
-    }, {})
+      const complaintTotal = data.complaints.length
+      const complaintByType = data.complaints.reduce<Record<string, number>>((acc, c) => {
+        acc[c.type] = (acc[c.type] || 0) + 1
+        return acc
+      }, {})
 
-    const facilityEnabled = data.facilityInfo.items.filter(f => f.enabled).length
-    const totalCost = Object.values(data.costInfo).reduce((a, b) => a + b, 0)
-    const membershipRevenue = data.revenueTarget.currentMembers * data.revenueTarget.avgMembershipPrice
-    const totalRevenue = membershipRevenue + data.revenueTarget.ptForecast + data.revenueTarget.gxForecast + data.revenueTarget.otherServiceRevenue
+      const facilityEnabled = data.facilityInfo.items.filter(f => f.enabled).length
+      const totalCost = Object.values(data.costInfo).reduce((a, b) => a + b, 0)
+      const membershipRevenue = data.revenueTarget.currentMembers * data.revenueTarget.avgMembershipPrice
+      const totalRevenue = membershipRevenue + data.revenueTarget.ptForecast + data.revenueTarget.gxForecast + data.revenueTarget.otherServiceRevenue
 
-    const report = `[월간 커뮤니티센터 운영 리포트]
+      const report = `[월간 커뮤니티센터 운영 리포트]
 
 1. 단지 개요
 - 단지명: ${data.apartmentInfo.name || '(미입력)'}
@@ -88,8 +97,8 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData: reportD
 5. 민원 현황
 - 총 민원 수: ${complaintTotal}건
 - 주요 민원 유형: ${Object.entries(complaintByType)
-      .map(([type, count]) => `${type}(${count}건)`)
-      .join(', ') || '없음'}
+        .map(([type, count]) => `${type}(${count}건)`)
+        .join(', ') || '없음'}
 - 처리 필요 사항: ${data.complaints.filter(c => c.status !== '완료').length}건 미처리
 
 6. 계약 관리 현황
@@ -104,17 +113,15 @@ ${reportData.keyIssues ? reportData.keyIssues : '(입력된 이슈 없음)'}
 ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 없음)'}
 
 9. 입대의 보고용 요약
-이번 달 커뮤니티센터는 ${data.apartmentInfo.name || '단지'}의 주요 시설 운영을 담당하여 관리사무소 및 입주자분들에게 서비스를 제공하였습니다. 
+이번 달 커뮤니티센터는 ${data.apartmentInfo.name || '단지'}의 주요 시설 운영을 담당하여 관리사무소 및 입주자분들에게 서비스를 제공하였습니다.
 전체적인 운영 현황은 양호하며, 월간 예상 손익은 ₩${(totalRevenue - totalCost).toLocaleString()}입니다.
 주요 검토사항으로는 ${contractsExpiring > 0 ? `${contractsExpiring}건의 만료 예정 계약 갱신` : '특별한 사항 없음'}이 있습니다.
 
 ---
 생성일시: ${new Date().toLocaleString('ko-KR')}`
 
-    onChange({
-      generatedReport: report,
-    })
-    showMessage('로컬 리포트가 생성되었습니다.')
+      onChange({ generatedReport: report })
+      showMessage('로컬 리포트가 생성되었습니다.')
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       setAiError('로컬 리포트 생성 실패: ' + msg)
@@ -131,7 +138,7 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
       apartmentName: data.apartmentInfo.name,
       totalUnits: data.apartmentInfo.totalUnits,
       managementCompany: data.apartmentInfo.officeName,
-      reportMonth: reportData.reportMonth,
+      reportMonth: reportData.reportMonth || currentMonth,
       summaryMemo: reportData.summaryMemo,
       facilities: data.facilityInfo.items.filter(f => f.enabled).map(f => f.name),
       revenueData: {
@@ -150,7 +157,7 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
       complaintCount: data.complaints.length,
       unresolvedComplaints: data.complaints.filter(c => c.status !== '완료').length,
       contractCount: data.contractManagement.contracts.length,
-      expringContracts: data.contractManagement.contracts.filter(c => {
+      expiringContracts: data.contractManagement.contracts.filter(c => {
         const endDate = new Date(c.endDate)
         const today = new Date()
         const daysLeft = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
@@ -161,26 +168,19 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
     }
 
     try {
-      const result = await callAiFunction('monthlyReport', payload)
-      if (result.success) {
-        onChange({
-          generatedReport: '[AI 월간 운영 리포트]\n\n' + (result.result || ''),
-        })
+      const result = await callAI('monthlyReport', payload)
+      if (result.ok) {
+        onChange({ generatedReport: result.result || '' })
         showMessage('AI 리포트 생성이 완료되었습니다.')
       } else {
-        setAiError('AI 응답 생성 실패: ' + (result.error || '알 수 없는 오류 (서버 응답에 오류 메시지가 없습니다).'))
+        setAiError(result.error || 'AI 응답 생성 중 알 수 없는 오류가 발생했습니다.')
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
-      setAiError('AI 응답 생성 실패: ' + (msg || 'AI 함수 호출에 실패했습니다.'))
+      setAiError(msg || 'AI 응답 생성 중 알 수 없는 오류가 발생했습니다.')
+    } finally {
+      setAiLoading(false)
     }
-
-    setAiLoading(false)
-  }
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(reportData.generatedReport)
-    showMessage('클립보드에 복사되었습니다.')
   }
 
   return (
@@ -193,7 +193,7 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
             <label>보고 월</label>
             <input
               type="month"
-              value={reportData.reportMonth}
+              value={reportData.reportMonth || currentMonth}
               onChange={e => onChange({ reportMonth: e.target.value })}
             />
           </div>
@@ -241,18 +241,10 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
         </div>
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <Button
-            onClick={generateLocalReport}
-            disabled={isGenerating}
-            className="btn-secondary"
-          >
+          <Button onClick={generateLocalReport} disabled={isGenerating || aiLoading} className="btn-secondary">
             {isGenerating ? '생성 중...' : '로컬 리포트 생성'}
           </Button>
-          <Button
-            onClick={generateAiReport}
-            disabled={aiLoading}
-            className="btn-primary"
-          >
+          <Button onClick={generateAiReport} disabled={aiLoading || isGenerating} className="btn-primary">
             {aiLoading ? 'AI 생성 중...' : 'AI 고도화'}
           </Button>
         </div>
@@ -266,43 +258,20 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
             {statusMessage}
           </div>
         )}
-
-        {aiError && (
-          <div
-            role="alert"
-            style={{ marginTop: '12px', padding: '12px', backgroundColor: '#fdecea', color: '#b71c1c', border: '1px solid #f5c2c0', borderRadius: '4px', fontSize: '14px' }}
-          >
-            <strong>오류</strong>
-            <div style={{ marginTop: '4px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{aiError}</div>
-            <button
-              type="button"
-              onClick={() => setAiError('')}
-              style={{ marginTop: '8px', background: 'transparent', border: '1px solid #b71c1c', color: '#b71c1c', borderRadius: '4px', padding: '2px 10px', cursor: 'pointer', fontSize: '12px' }}
-            >
-              닫기
-            </button>
-          </div>
-        )}
       </Card>
 
-      {reportData.generatedReport && (
-        <Card className="monthly-report-preview">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ margin: 0 }}>생성된 리포트</h3>
-            <Button onClick={copyToClipboard} className="btn-secondary btn-sm">
-              📋 복사
-            </Button>
-          </div>
-
-          <div className="report-preview">
-            {reportData.generatedReport.split('\n').map((line, idx) => (
-              <div key={idx} style={{ whiteSpace: 'pre-wrap', marginBottom: '4px' }}>
-                {line}
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+      <AIResultPanel
+        title="생성된 월간 리포트"
+        taskType="monthlyReport"
+        loading={aiLoading}
+        loadingText="AI가 월간 운영 데이터를 분석 중입니다."
+        error={aiError}
+        result={reportData.generatedReport}
+        downloadFileName={`monthly-report-${reportData.reportMonth || currentMonth}.txt`}
+        onClear={() => onChange({ generatedReport: '' })}
+        onLoadSaved={(content) => onChange({ generatedReport: content })}
+        showHistory
+      />
     </div>
   )
 }
