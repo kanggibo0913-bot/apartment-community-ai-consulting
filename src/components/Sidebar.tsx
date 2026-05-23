@@ -24,6 +24,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, isOpen, 
     { id: 'report', label: '보고서 초안', icon: '📄' },
     { id: 'contract-manage', label: '계약 관리', icon: '📋' },
     { id: 'monthly-report', label: '월간 리포트', icon: '📰' },
+    { id: 'ai-history', label: 'AI 결과 이력', icon: '🗂️' },
     { id: 'tender', label: '입찰공고 관리', icon: '📑' },
     { id: 'estimate', label: '산출표 자동 계산', icon: '🧮' },
   ]

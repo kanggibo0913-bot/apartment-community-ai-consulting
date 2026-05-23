@@ -20,6 +20,7 @@ import AIAnalysis from './pages/AIAnalysis'
 import ReportDraft from './pages/ReportDraft'
 import TenderNotices from './pages/TenderNotices'
 import EstimateCalculator from './pages/EstimateCalculator'
+import AiResultHistoryPage from './pages/AiResultHistoryPage'
 import { loadProjects, saveProjects } from './utils/storage'
 import {
   ApartmentInfoData,
@@ -42,7 +43,7 @@ import {
   MonthlyReportData,
 } from './types/CommunityData'
 
-type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate' | 'contract-manage' | 'monthly-report'
+type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate' | 'contract-manage' | 'monthly-report' | 'ai-history'
 
 const defaultFacilityItems: FacilityDetail[] = [
   { id: 1, name: '헬스장', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
@@ -372,6 +373,7 @@ const pageLabels: Record<PageType, string> = {
   estimate: '산출표 자동 계산',
   'contract-manage': '계약 관리',
   'monthly-report': '월간 운영 리포트',
+  'ai-history': 'AI 결과 이력',
 }
 
 function generateProjectId(): string {
@@ -436,6 +438,13 @@ function App() {
   useEffect(() => {
     setIsMobileNavOpen(false)
   }, [currentPage])
+
+  // AIResultPanel 등에서 "전체 AI 결과 이력 보기" 클릭 시 이력 화면으로 이동
+  useEffect(() => {
+    const handler = () => setCurrentPage('ai-history')
+    window.addEventListener('open-ai-history', handler)
+    return () => window.removeEventListener('open-ai-history', handler)
+  }, [])
 
   // Data update functions
   const updateActiveProjectData = (updater: (data: CommunityData) => CommunityData) => {
@@ -758,6 +767,8 @@ function App() {
         return <ReportDraft data={data} defaultOutputType={selectedOutputType} />
       case 'tender':
         return <TenderNotices />
+      case 'ai-history':
+        return <AiResultHistoryPage />
       case 'estimate':
         return <EstimateCalculator />
       case 'contract-manage':

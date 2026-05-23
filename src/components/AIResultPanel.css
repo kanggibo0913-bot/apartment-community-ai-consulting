@@ -143,3 +143,18 @@
   border-radius: 4px;
   cursor: pointer;
 }
+
+.ai-result-history-all {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 13px;
+  background: transparent;
+  border: none;
+  color: #1d4ed8;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ai-result-history-all:hover {
+  text-decoration: underline;
+}

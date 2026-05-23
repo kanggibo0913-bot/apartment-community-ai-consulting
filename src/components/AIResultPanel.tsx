@@ -148,7 +148,13 @@ const AIResultPanel: React.FC<AIResultPanelProps> = ({
                 ))}
               </ul>
             ))}
-          {/* TODO: 전 기능 통합 AI 결과 이력 화면(별도 페이지)으로 확장 */}
+          <button
+            type="button"
+            className="ai-result-history-all"
+            onClick={() => window.dispatchEvent(new Event('open-ai-history'))}
+          >
+            전체 AI 결과 이력 보기 →
+          </button>
         </div>
       )}
     </div>
