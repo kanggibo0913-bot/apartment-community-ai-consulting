@@ -40,6 +40,47 @@
   color: #94a3b8;
 }
 
+.ai-history-workfilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ai-history-workfilter {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 18px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #475569;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.ai-history-workfilter.active {
+  background: #1f2a44;
+  color: #fff;
+  border-color: #1f2a44;
+}
+
+.work-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.work-badge.work-bid {
+  background: #e8f0fe;
+  color: #1d4ed8;
+}
+
+.work-badge.work-ops {
+  background: #e7f6ee;
+  color: #0a7f3f;
+}
+
 .ai-history-controls {
   display: flex;
   flex-wrap: wrap;

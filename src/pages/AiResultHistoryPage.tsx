@@ -24,6 +24,11 @@ const TASK_LABELS: Record<string, string> = {
 
 const taskLabel = (t: string) => TASK_LABELS[t] || '기타'
 
+// 업무 구분 매핑: 입찰용 taskType, 그 외는 현장 운영
+const BID_TASK_TYPES = ['bidNoticeAnalysis', 'document', 'contractGenerate', 'contractReview']
+const workGroupOf = (taskType: string): 'bid' | 'ops' => (BID_TASK_TYPES.includes(taskType) ? 'bid' : 'ops')
+const workGroupLabel = (taskType: string) => (workGroupOf(taskType) === 'bid' ? '입찰용' : '현장 운영')
+
 const FILTERS: Array<{ key: string; label: string; match: (taskType: string) => boolean }> = [
   { key: 'all', label: '전체', match: () => true },
   { key: 'bidNoticeAnalysis', label: '공고문 분석', match: (t) => t === 'bidNoticeAnalysis' },
@@ -48,6 +53,7 @@ const previewText = (content: string) =>
 
 const AiResultHistoryPage: React.FC = () => {
   const [items, setItems] = useState<AiResultEntry[]>(() => loadAiResults())
+  const [workFilter, setWorkFilter] = useState<'all' | 'bid' | 'ops'>('all')
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<AiResultEntry | null>(null)
@@ -106,6 +112,7 @@ const AiResultHistoryPage: React.FC = () => {
     const active = FILTERS.find((f) => f.key === filter) || FILTERS[0]
     const q = query.trim().toLowerCase()
     return items
+      .filter((it) => workFilter === 'all' || workGroupOf(it.taskType) === workFilter)
       .filter((it) => active.match(it.taskType))
       .filter(
         (it) =>
@@ -116,7 +123,7 @@ const AiResultHistoryPage: React.FC = () => {
       )
       .slice()
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
-  }, [items, filter, query])
+  }, [items, filter, query, workFilter])
 
   const handleDelete = (id: string) => {
     if (!window.confirm('이 AI 결과 이력을 삭제하시겠습니까?')) return
@@ -196,6 +203,23 @@ const AiResultHistoryPage: React.FC = () => {
 
       {view === 'ai' && (
         <>
+      <div className="ai-history-workfilters">
+        {([
+          { key: 'all', label: '전체' },
+          { key: 'bid', label: '입찰용' },
+          { key: 'ops', label: '현장 운영' },
+        ] as const).map((w) => (
+          <button
+            key={w.key}
+            type="button"
+            className={`ai-history-workfilter ${workFilter === w.key ? 'active' : ''}`}
+            onClick={() => setWorkFilter(w.key)}
+          >
+            {w.label}
+          </button>
+        ))}
+      </div>
+
       <div className="ai-history-controls">
         <div className="ai-history-filters">
           {FILTERS.map((f) => (
@@ -223,13 +247,22 @@ const AiResultHistoryPage: React.FC = () => {
           아직 저장된 AI 결과가 없습니다. 공고문 분석, 월간 리포트 생성, AI 질문 등을 실행하면 이곳에 결과가 저장됩니다.
         </div>
       ) : filtered.length === 0 ? (
-        <div className="ai-history-empty">조건에 맞는 결과가 없습니다.</div>
+        <div className="ai-history-empty">
+          {query.trim()
+            ? '검색 조건에 맞는 AI 결과가 없습니다.'
+            : workFilter === 'bid'
+              ? '입찰용 AI 결과가 없습니다.'
+              : workFilter === 'ops'
+                ? '현장 운영 AI 결과가 없습니다.'
+                : '조건에 맞는 AI 결과가 없습니다.'}
+        </div>
       ) : (
         <div className="ai-history-list">
           {filtered.map((it) => (
             <div key={it.id} className="ai-history-card">
               <div className="ai-history-card-head">
                 <span className="ai-history-tasktype">{taskLabel(it.taskType)}</span>
+                <span className={`work-badge work-${workGroupOf(it.taskType)}`}>{workGroupLabel(it.taskType)}</span>
                 <span className="ai-history-status">완료</span>
               </div>
               <h4 className="ai-history-title">{it.title}</h4>
