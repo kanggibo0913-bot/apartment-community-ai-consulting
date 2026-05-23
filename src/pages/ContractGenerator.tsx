@@ -6,6 +6,7 @@ import Button from '../components/Button'
 import { ContractGeneratorData, ContractDocumentType } from '../types/CommunityData'
 import { generateContractDraft } from '../utils/localDraftGenerators'
 import { callAiFunction } from '../utils/aiClient'
+import { saveAiResult } from '../utils/storage'
 import './Pages.css'
 
 interface ContractGeneratorProps {
@@ -42,6 +43,7 @@ const ContractGenerator: React.FC<ContractGeneratorProps> = ({ data, onChange })
     const response = await callAiFunction('contractGenerate', data)
     if (response.success && response.result) {
       onChange({ generatedContract: response.result })
+      saveAiResult({ title: data.contractTitle?.trim() || data.contractType, taskType: 'contractGenerate', content: response.result })
     } else {
       setAiError(response.error || 'AI 생성 중 오류가 발생했습니다.')
     }

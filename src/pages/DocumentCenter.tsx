@@ -6,6 +6,7 @@ import Button from '../components/Button'
 import { DocumentCenterData, DocumentType } from '../types/CommunityData'
 import { generateDocumentDraft } from '../utils/localDraftGenerators'
 import { callAiFunction } from '../utils/aiClient'
+import { saveAiResult } from '../utils/storage'
 import './Pages.css'
 
 interface DocumentCenterProps {
@@ -35,6 +36,7 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ data, onChange }) => {
     const response = await callAiFunction('document', data)
     if (response.success && response.result) {
       onChange({ generatedDocument: response.result })
+      saveAiResult({ title: data.title?.trim() || `${data.documentType} 문서`, taskType: 'document', content: response.result })
     } else {
       setAiError(response.error || 'AI 생성 중 오류가 발생했습니다.')
     }

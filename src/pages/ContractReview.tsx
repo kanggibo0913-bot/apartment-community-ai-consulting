@@ -6,6 +6,7 @@ import Button from '../components/Button'
 import { ContractReviewData } from '../types/CommunityData'
 import { generateContractReviewResult } from '../utils/localDraftGenerators'
 import { callAiFunction } from '../utils/aiClient'
+import { saveAiResult } from '../utils/storage'
 import './Pages.css'
 
 interface ContractReviewProps {
@@ -52,6 +53,7 @@ const ContractReview: React.FC<ContractReviewProps> = ({ data, onChange }) => {
     })
     if (response.success && response.result) {
       onChange({ reviewResult: response.result })
+      saveAiResult({ title: `${data.uploadedFileName?.trim() || '계약서'} 검토 결과`, taskType: 'contractReview', content: response.result })
     } else {
       setAiError(response.error || 'AI 검토 중 오류가 발생했습니다.')
     }

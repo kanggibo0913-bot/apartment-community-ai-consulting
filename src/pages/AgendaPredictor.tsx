@@ -6,6 +6,7 @@ import Button from '../components/Button'
 import { AgendaPredictorData, SourceType, AgendaFacility } from '../types/CommunityData'
 import { predictAgenda } from '../utils/localDraftGenerators'
 import { callAiFunction } from '../utils/aiClient'
+import { saveAiResult } from '../utils/storage'
 import './Pages.css'
 
 interface AgendaPredictorProps {
@@ -38,6 +39,7 @@ const AgendaPredictor: React.FC<AgendaPredictorProps> = ({ data, onChange }) => 
     const response = await callAiFunction('agendaPredict', data)
     if (response.success && response.result) {
       onChange({ generatedAgenda: response.result })
+      saveAiResult({ title: `${data.apartmentName?.trim() || '입대의'} 안건 예상`, taskType: 'agendaPredict', content: response.result })
     } else {
       setAiError(response.error || 'AI 안건 예측 중 오류가 발생했습니다.')
     }
