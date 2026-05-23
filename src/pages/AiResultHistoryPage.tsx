@@ -315,6 +315,9 @@ const AiResultHistoryPage: React.FC = () => {
                     <button type="button" onClick={() => openPublished(p.encodedUrl)}>
                       보기
                     </button>
+                    <button type="button" onClick={() => openPublished(p.encodedUrl)}>
+                      인쇄/PDF
+                    </button>
                     <button type="button" onClick={() => togglePublishedStatus(p.id, p.status)}>
                       {p.status === 'published' ? '공개 중지' : '공개 재개'}
                     </button>

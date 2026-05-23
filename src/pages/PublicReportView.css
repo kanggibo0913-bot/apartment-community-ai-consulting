@@ -91,11 +91,88 @@
   line-height: 1.7;
 }
 
+.public-report-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.public-report-actions button {
+  font-size: 14px;
+  padding: 8px 16px;
+  border: 1px solid #1f2a44;
+  background: #1f2a44;
+  color: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.public-report-actions button:hover {
+  background: #16203a;
+}
+
 @media (max-width: 600px) {
   .public-report-card {
     padding: 20px;
   }
   .public-report-head h1 {
     font-size: 20px;
+  }
+}
+
+/* 인쇄/PDF 저장용 스타일 (A4) — 화면 UI는 숨기고 보고서 본문만 출력 */
+@page {
+  size: A4;
+  margin: 14mm;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .public-report-wrap {
+    background: #fff !important;
+    padding: 0 !important;
+    min-height: auto !important;
+    display: block !important;
+  }
+
+  .public-report-card {
+    box-shadow: none !important;
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .public-report-card,
+  .public-report-head,
+  .public-report-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .public-report-head h1 {
+    font-size: 18pt;
+  }
+
+  .public-report-section h2 {
+    font-size: 13pt;
+  }
+
+  .public-report-section p,
+  .public-report-meta {
+    font-size: 11pt;
+  }
+
+  .public-report-footer {
+    border-top: 1px solid #ccc;
+    color: #555;
   }
 }
