@@ -2,6 +2,14 @@ import { useMemo, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { AiResultEntry, deleteAiResult, loadAiResults } from '../utils/storage'
 import { RESIDENT_SECTIONS, buildPublishedReport, buildShareUrl } from '../utils/publishedReport'
+import {
+  PublishedStatus,
+  StoredPublishedReport,
+  deletePublishedReport,
+  loadPublishedReports,
+  savePublishedReport,
+  updatePublishedReportStatus,
+} from '../utils/publishedReportStorage'
 import './AiResultHistoryPage.css'
 
 // taskType → 사용자용 한글 라벨 (현재 저장되는 taskType + 확장 대비)
@@ -53,7 +61,13 @@ const AiResultHistoryPage: React.FC = () => {
   const [shareUrl, setShareUrl] = useState('')
   const [shareCopyMsg, setShareCopyMsg] = useState('')
 
+  // 입주민 공개 보고서 발행 이력
+  const [view, setView] = useState<'ai' | 'published'>('ai')
+  const [published, setPublished] = useState<StoredPublishedReport[]>(() => loadPublishedReports())
+  const [pubListMsg, setPubListMsg] = useState('')
+
   const refresh = () => setItems(loadAiResults())
+  const refreshPublished = () => setPublished(loadPublishedReports())
 
   const openPublish = (entry: AiResultEntry) => {
     setPublishTarget(entry)
@@ -70,8 +84,12 @@ const AiResultHistoryPage: React.FC = () => {
       reportMonth: pubMonth,
       sections: RESIDENT_SECTIONS.map((s) => ({ title: s.title, body: pubSections[s.key] || '' })),
     })
-    setShareUrl(buildShareUrl(report))
+    const url = buildShareUrl(report)
+    setShareUrl(url)
     setShareCopyMsg('')
+    // 발행 이력에 저장 (위생처리된 PublishedReport 기준 데이터만)
+    savePublishedReport(report, url)
+    refreshPublished()
   }
 
   const copyShareUrl = async () => {
@@ -118,6 +136,37 @@ const AiResultHistoryPage: React.FC = () => {
     }
   }
 
+  const flashPubList = (msg: string) => {
+    setPubListMsg(msg)
+    setTimeout(() => setPubListMsg(''), 2500)
+  }
+
+  const copyPublishedLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      flashPubList('공개 링크가 복사되었습니다.')
+    } catch {
+      flashPubList('복사에 실패했습니다.')
+    }
+  }
+
+  // 새 탭에서 공개 보고서 열기 (#/report/<encoded>)
+  const openPublished = (url: string) => {
+    window.open(url, '_blank', 'noopener')
+  }
+
+  // 공개 중지/재개 — 내부 표시만 변경(이미 공유된 URL은 차단되지 않음)
+  const togglePublishedStatus = (id: string, current: PublishedStatus) => {
+    updatePublishedReportStatus(id, current === 'published' ? 'disabled' : 'published')
+    refreshPublished()
+  }
+
+  const handleDeletePublished = (id: string) => {
+    if (!window.confirm('이 발행 이력을 삭제하시겠습니까? (이미 공유된 링크 자체는 무효화되지 않습니다)')) return
+    deletePublishedReport(id)
+    refreshPublished()
+  }
+
   return (
     <div className="page ai-history-page">
       <PageHeader
@@ -125,6 +174,28 @@ const AiResultHistoryPage: React.FC = () => {
         description="공고문 분석, 월간 리포트, 계약서 검토, 공문 작성 등 AI가 생성한 결과를 한 곳에서 확인할 수 있습니다."
       />
 
+      <div className="ai-history-tabs">
+        <button
+          type="button"
+          className={`ai-history-tab ${view === 'ai' ? 'active' : ''}`}
+          onClick={() => setView('ai')}
+        >
+          AI 결과 이력
+        </button>
+        <button
+          type="button"
+          className={`ai-history-tab ${view === 'published' ? 'active' : ''}`}
+          onClick={() => {
+            setView('published')
+            refreshPublished()
+          }}
+        >
+          입주민 공개 보고서 발행 이력
+        </button>
+      </div>
+
+      {view === 'ai' && (
+        <>
       <div className="ai-history-controls">
         <div className="ai-history-filters">
           {FILTERS.map((f) => (
@@ -178,6 +249,51 @@ const AiResultHistoryPage: React.FC = () => {
             </div>
           ))}
         </div>
+      )}
+        </>
+      )}
+
+      {view === 'published' && (
+        <>
+          {pubListMsg && <p className="ai-history-copy-msg" style={{ marginBottom: '12px' }}>{pubListMsg}</p>}
+          {published.length === 0 ? (
+            <div className="ai-history-empty">
+              아직 발행한 입주민 공개 보고서가 없습니다. "AI 결과 이력" 탭에서 "입주민 공개용 발행"으로 링크를 생성하면 이곳에 기록됩니다.
+            </div>
+          ) : (
+            <div className="ai-history-list">
+              {published.map((p) => (
+                <div key={p.id} className="ai-history-card">
+                  <div className="ai-history-card-head">
+                    <span className="ai-history-tasktype">입주민 공개</span>
+                    <span className={`pub-status pub-status-${p.status}`}>
+                      {p.status === 'published' ? '공개중' : '공개중지'}
+                    </span>
+                  </div>
+                  <h4 className="ai-history-title">{p.apartmentName || '입주민 공개 보고서'}</h4>
+                  <div className="ai-history-date">
+                    {p.reportMonth ? `보고월 ${p.reportMonth} · ` : ''}발행 {new Date(p.publishedAt).toLocaleString('ko-KR')}
+                  </div>
+                  <p className="ai-history-preview">{p.sections.map((s) => s.title).join(' · ') || '내용 없음'}</p>
+                  <div className="ai-history-actions">
+                    <button type="button" onClick={() => copyPublishedLink(p.encodedUrl)}>
+                      링크 복사
+                    </button>
+                    <button type="button" onClick={() => openPublished(p.encodedUrl)}>
+                      보기
+                    </button>
+                    <button type="button" onClick={() => togglePublishedStatus(p.id, p.status)}>
+                      {p.status === 'published' ? '공개 중지' : '공개 재개'}
+                    </button>
+                    <button type="button" className="danger" onClick={() => handleDeletePublished(p.id)}>
+                      삭제
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {selected && (
