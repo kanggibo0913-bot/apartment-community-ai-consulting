@@ -63,6 +63,51 @@
   padding-left: 13px;
 }
 
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.nav-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  text-align: left;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 12px;
+}
+
+.nav-group-header:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.nav-group.active-group .nav-group-header {
+  color: #4ecdc4;
+}
+
+.nav-group-caret {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.nav-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 4px;
+}
+
 .nav-icon {
   font-size: 18px;
   min-width: 24px;
