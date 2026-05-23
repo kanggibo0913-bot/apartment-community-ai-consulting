@@ -21,6 +21,7 @@ import ReportDraft from './pages/ReportDraft'
 import TenderNotices from './pages/TenderNotices'
 import EstimateCalculator from './pages/EstimateCalculator'
 import AiResultHistoryPage from './pages/AiResultHistoryPage'
+import PublicReportView from './pages/PublicReportView'
 import { loadProjects, saveProjects } from './utils/storage'
 import {
   ApartmentInfoData,
@@ -389,6 +390,7 @@ function App() {
   const [statusMessage, setStatusMessage] = useState<string>('')
   const [selectedOutputType, setSelectedOutputType] = useState<OutputType>('운영 진단 보고서')
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+  const [hashRoute, setHashRoute] = useState<string>(() => window.location.hash)
 
   const activeProject = projects.find(p => p.id === activeProjectId)
 
@@ -444,6 +446,13 @@ function App() {
     const handler = () => setCurrentPage('ai-history')
     window.addEventListener('open-ai-history', handler)
     return () => window.removeEventListener('open-ai-history', handler)
+  }, [])
+
+  // 입주민 공개 보고서 해시 라우팅 (#/report/<encoded>)
+  useEffect(() => {
+    const onHash = () => setHashRoute(window.location.hash)
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
   // Data update functions
@@ -806,6 +815,12 @@ function App() {
           />
         )
     }
+  }
+
+  // 입주민 공개 보고서 페이지는 사이드바/내부 앱 없이 독립 렌더
+  const publicReportMatch = hashRoute.match(/^#\/report\/(.+)$/)
+  if (publicReportMatch) {
+    return <PublicReportView encoded={publicReportMatch[1]} />
   }
 
   return (

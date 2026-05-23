@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { AiResultEntry, deleteAiResult, loadAiResults } from '../utils/storage'
+import { RESIDENT_SECTIONS, buildPublishedReport, buildShareUrl } from '../utils/publishedReport'
 import './AiResultHistoryPage.css'
 
 // taskType → 사용자용 한글 라벨 (현재 저장되는 taskType + 확장 대비)
@@ -44,7 +45,44 @@ const AiResultHistoryPage: React.FC = () => {
   const [selected, setSelected] = useState<AiResultEntry | null>(null)
   const [copyMsg, setCopyMsg] = useState('')
 
+  // 입주민 공개용 발행 편집기 상태
+  const [publishTarget, setPublishTarget] = useState<AiResultEntry | null>(null)
+  const [pubApt, setPubApt] = useState('')
+  const [pubMonth, setPubMonth] = useState('')
+  const [pubSections, setPubSections] = useState<Record<string, string>>({})
+  const [shareUrl, setShareUrl] = useState('')
+  const [shareCopyMsg, setShareCopyMsg] = useState('')
+
   const refresh = () => setItems(loadAiResults())
+
+  const openPublish = (entry: AiResultEntry) => {
+    setPublishTarget(entry)
+    setPubApt('')
+    setPubMonth('')
+    setPubSections({})
+    setShareUrl('')
+    setShareCopyMsg('')
+  }
+
+  const generateShare = () => {
+    const report = buildPublishedReport({
+      apartmentName: pubApt,
+      reportMonth: pubMonth,
+      sections: RESIDENT_SECTIONS.map((s) => ({ title: s.title, body: pubSections[s.key] || '' })),
+    })
+    setShareUrl(buildShareUrl(report))
+    setShareCopyMsg('')
+  }
+
+  const copyShareUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setShareCopyMsg('링크가 복사되었습니다.')
+    } catch {
+      setShareCopyMsg('복사에 실패했습니다.')
+    }
+    setTimeout(() => setShareCopyMsg(''), 2500)
+  }
 
   const filtered = useMemo(() => {
     const active = FILTERS.find((f) => f.key === filter) || FILTERS[0]
@@ -130,6 +168,9 @@ const AiResultHistoryPage: React.FC = () => {
                 <button type="button" onClick={() => setSelected(it)}>
                   열기
                 </button>
+                <button type="button" onClick={() => openPublish(it)}>
+                  입주민 공개용 발행
+                </button>
                 <button type="button" className="danger" onClick={() => handleDelete(it.id)}>
                   삭제
                 </button>
@@ -162,6 +203,74 @@ const AiResultHistoryPage: React.FC = () => {
               </button>
               {copyMsg && <span className="ai-history-copy-msg">{copyMsg}</span>}
             </div>
+          </div>
+        </div>
+      )}
+
+      {publishTarget && (
+        <div className="ai-history-modal-backdrop" onClick={() => setPublishTarget(null)}>
+          <div className="ai-history-modal publish-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="ai-history-modal-head">
+              <div>
+                <span className="ai-history-tasktype">입주민 공개용 발행</span>
+                <h3>{publishTarget.title}</h3>
+              </div>
+              <button
+                type="button"
+                className="ai-history-modal-close"
+                onClick={() => setPublishTarget(null)}
+                aria-label="닫기"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="publish-warn">
+              아래 입력 내용만 입주민에게 공개됩니다. 매출·인건비·원가·계약금액·내부 메모·민원 개인정보 등 민감 정보는 입력하지 마세요.
+            </p>
+
+            <div className="publish-fields">
+              <label>
+                단지명
+                <input type="text" value={pubApt} onChange={(e) => setPubApt(e.target.value)} placeholder="예: 래미안 커뮤니티" />
+              </label>
+              <label>
+                보고 월 (선택)
+                <input type="text" value={pubMonth} onChange={(e) => setPubMonth(e.target.value)} placeholder="예: 2026-05" />
+              </label>
+              {RESIDENT_SECTIONS.map((s) => (
+                <label key={s.key}>
+                  {s.title}
+                  <textarea
+                    rows={3}
+                    value={pubSections[s.key] || ''}
+                    onChange={(e) => setPubSections((prev) => ({ ...prev, [s.key]: e.target.value }))}
+                    placeholder={s.placeholder}
+                  />
+                </label>
+              ))}
+            </div>
+
+            <details className="publish-reference">
+              <summary>내부 AI 결과 (참고용 · 공개되지 않음)</summary>
+              <div className="publish-reference-body">{publishTarget.content}</div>
+            </details>
+
+            <div className="ai-history-actions">
+              <button type="button" onClick={generateShare}>
+                공개 링크 생성
+              </button>
+            </div>
+
+            {shareUrl && (
+              <div className="publish-share">
+                <input type="text" readOnly value={shareUrl} onFocus={(e) => e.target.select()} />
+                <button type="button" onClick={copyShareUrl}>
+                  링크 복사
+                </button>
+                {shareCopyMsg && <span className="ai-history-copy-msg">{shareCopyMsg}</span>}
+              </div>
+            )}
           </div>
         </div>
       )}
