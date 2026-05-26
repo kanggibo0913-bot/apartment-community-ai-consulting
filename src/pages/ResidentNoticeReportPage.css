@@ -93,6 +93,55 @@
   cursor: pointer;
 }
 
+.rnr-sum-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rnr-sum-stats span {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #eef2f7;
+  color: #1f2a44;
+}
+
+.rnr-sum-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.rnr-sum-cats span {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e8f0fe;
+  color: #1d4ed8;
+}
+
+.rnr-modal-body h4 {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.rnr-sum-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f9fafb;
+  border: 1px solid #eceff3;
+  border-radius: 6px;
+  padding: 14px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #1f2a44;
+}
+
 .rnr-mnt-import {
   display: flex;
   flex-wrap: wrap;

@@ -87,6 +87,81 @@ const formatMaintenance = (r: MaintenanceRecord): string => {
   return lines.join('\n')
 }
 
+// 보고월 정규화: "YYYY-MM" 또는 "YYYY년 M월" → "YYYY-MM", 실패 시 null
+const normalizeReportMonth = (rm: string): string | null => {
+  const t = (rm || '').trim()
+  let m = t.match(/^(\d{4})-(\d{1,2})/)
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}`
+  m = t.match(/(\d{4})\s*년\s*(\d{1,2})\s*월/)
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}`
+  return null
+}
+
+// 접수/점검/완료일 중 하나라도 해당 월(YYYY-MM)이면 포함
+const inMonth = (r: MaintenanceRecord, ym: string) =>
+  [r.reportedAt, r.inspectionDate, r.completedAt].some((d) => typeof d === 'string' && d.startsWith(ym))
+
+const MNT_DONE = '완료'
+const MNT_HOLD = '보류'
+const MNT_IN_PROGRESS = ['접수', '점검중', '보수중']
+const MNT_CATEGORY_ORDER = ['헬스장', '골프연습장', 'GX룸', '샤워실', '탈의실', '공용부', '기타']
+
+export interface MonthlySummary {
+  total: number
+  completed: number
+  inProgress: number
+  hold: number
+  byCategory: Array<{ cat: string; count: number }>
+  text: string
+}
+
+// 월별 공개용 시설 보수 자동 요약 (memo/vendorName 등 비공개 필드 미사용 — 화이트리스트)
+const buildMonthlySummary = (records: MaintenanceRecord[], ym: string): MonthlySummary => {
+  const [y, mo] = ym.split('-')
+  const monthLabel = `${y}년 ${parseInt(mo, 10)}월`
+  const completedItems = records.filter((r) => r.status === MNT_DONE)
+  const inProgItems = records.filter((r) => MNT_IN_PROGRESS.includes(r.status))
+  const holdItems = records.filter((r) => r.status === MNT_HOLD)
+
+  const catCount: Record<string, number> = {}
+  records.forEach((r) => {
+    catCount[r.category] = (catCount[r.category] || 0) + 1
+  })
+  const byCategory: Array<{ cat: string; count: number }> = []
+  MNT_CATEGORY_ORDER.forEach((c) => {
+    if (catCount[c]) byCategory.push({ cat: c, count: catCount[c] })
+  })
+  Object.keys(catCount).forEach((c) => {
+    if (!MNT_CATEGORY_ORDER.includes(c)) byCategory.push({ cat: c, count: catCount[c] })
+  })
+
+  const catText = byCategory.map((c) => `${c.cat} ${c.count}건`).join(', ')
+  const line2 = `이번 달 입주민 공개 대상 시설 보수·점검 내역은 총 ${records.length}건입니다.`
+  let line3 = `이 중 ${completedItems.length}건은 조치가 완료되었고, ${inProgItems.length}건은 점검 또는 보수 진행 중입니다.`
+  if (holdItems.length) line3 += ` ${holdItems.length}건은 보류 중입니다.`
+  const completedBlock = completedItems.length
+    ? '완료된 조치\n' +
+      completedItems.map((r) => `- ${r.facilityName} / ${r.issueTitle}: ${r.actionTaken?.trim() || '조치 내용 확인 중'}`).join('\n')
+    : ''
+  const inProgBlock = inProgItems.length
+    ? '진행 중인 조치\n' +
+      inProgItems.map((r) => `- ${r.facilityName} / ${r.issueTitle}: ${r.actionTaken?.trim() || '조치 내용 확인 중'}`).join('\n')
+    : ''
+
+  const text = [
+    `${monthLabel} 시설 보수 및 점검 요약`,
+    `${line2}\n${line3}`,
+    catText ? `시설별로는 ${catText}이(가) 접수되었습니다.` : '',
+    completedBlock,
+    inProgBlock,
+    '본 내용은 입주민 안내를 위한 요약이며, 내부 검토 메모 및 개인정보는 포함하지 않았습니다.',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+
+  return { total: records.length, completed: completedItems.length, inProgress: inProgItems.length, hold: holdItems.length, byCategory, text }
+}
+
 const loadReports = (): ResidentNoticeReport[] => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
@@ -164,6 +239,36 @@ const ResidentNoticeReportPage: React.FC = () => {
     })
     setMntModalOpen(false)
     flash(`시설 보수 ${chosen.length}건을 시설 보수 요약에 삽입했습니다.`)
+  }
+
+  // 월별 시설 보수 자동 요약
+  const [summaryOpen, setSummaryOpen] = useState(false)
+  const [summary, setSummary] = useState<(MonthlySummary & { ym: string; records: MaintenanceRecord[] }) | null>(null)
+
+  const openSummary = () => {
+    if (!form.reportMonth.trim()) {
+      flash('보고월을 먼저 입력해주세요.')
+      return
+    }
+    const ym = normalizeReportMonth(form.reportMonth)
+    if (!ym) {
+      flash('보고월 형식을 YYYY-MM으로 입력해주세요.')
+      return
+    }
+    const records = loadPublicMaintenance().filter((r) => inMonth(r, ym))
+    setSummary({ ym, records, ...buildMonthlySummary(records, ym) })
+    setSummaryOpen(true)
+  }
+
+  const insertSummary = (mode: 'append' | 'overwrite') => {
+    if (!summary) return
+    setForm((prev) => {
+      const existing = prev.maintenanceSummary.trim()
+      const merged = mode === 'overwrite' || !existing ? summary.text : `${existing}\n\n${summary.text}`
+      return { ...prev, maintenanceSummary: merged }
+    })
+    setSummaryOpen(false)
+    flash('월별 시설 보수 자동 요약을 시설 보수 요약에 삽입했습니다.')
   }
 
   const refreshPublished = () =>
@@ -339,8 +444,9 @@ const ResidentNoticeReportPage: React.FC = () => {
             {s.key === 'maintenanceSummary' && (
               <div className="rnr-mnt-import">
                 <Button variant="secondary" onClick={openMntModal}>공개 가능 시설 보수 불러오기</Button>
+                <Button variant="secondary" onClick={openSummary}>월별 시설 보수 자동 요약</Button>
                 <span className="rnr-mnt-note">
-                  시설 보수 내역에서 '입주민 공개 보고서 포함'을 체크한 항목만 불러올 수 있습니다.
+                  시설 보수 내역에서 '입주민 공개 보고서 포함'을 체크한 항목만 불러올 수 있습니다. 자동 요약은 보고월 기준으로 집계합니다.
                 </span>
               </div>
             )}
@@ -545,6 +651,66 @@ const ResidentNoticeReportPage: React.FC = () => {
                 </ul>
               )}
             </div>
+          </div>
+        </div>
+      )}
+      {summaryOpen && summary && (
+        <div className="rnr-modal-backdrop" onClick={() => setSummaryOpen(false)}>
+          <div className="rnr-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="rnr-modal-head">
+              <div>
+                <h3>월별 시설 보수 자동 요약</h3>
+                <div className="rnr-modal-meta"><span>기준 보고월 {summary.ym}</span></div>
+              </div>
+              <button type="button" className="rnr-modal-close" onClick={() => setSummaryOpen(false)} aria-label="닫기">✕</button>
+            </div>
+            <div className="rnr-modal-body">
+              {summary.records.length === 0 ? (
+                <>
+                  <p className="rnr-empty">해당 보고월에 입주민 공개 가능으로 표시된 시설 보수 항목이 없습니다.</p>
+                  <p className="rnr-mnt-note">시설 보수 내역에서 '입주민 공개 보고서 포함'을 체크한 항목만 자동 요약에 포함됩니다.</p>
+                </>
+              ) : (
+                <>
+                  <div className="rnr-sum-stats">
+                    <span>총 {summary.total}건</span>
+                    <span>완료 {summary.completed}건</span>
+                    <span>진행중 {summary.inProgress}건</span>
+                    <span>보류 {summary.hold}건</span>
+                  </div>
+                  {summary.byCategory.length > 0 && (
+                    <div className="rnr-sum-cats">
+                      {summary.byCategory.map((c) => <span key={c.cat}>{c.cat} {c.count}건</span>)}
+                    </div>
+                  )}
+                  <h4>자동 생성 요약 문안</h4>
+                  <div className="rnr-sum-text">{summary.text}</div>
+                  <h4>포함된 항목</h4>
+                  <ul className="rnr-pub-list">
+                    {summary.records.map((r) => (
+                      <li key={r.id}>
+                        <div className="rnr-pub-head">
+                          <strong>{r.facilityName} / {r.issueTitle}</strong>
+                          <span className="rnr-mnt-st">{r.status}</span>
+                        </div>
+                        <div className="rnr-pub-meta">
+                          <span>{r.category}</span>
+                          <span>접수 {r.reportedAt}</span>
+                          {r.completedAt && <span>완료 {r.completedAt}</span>}
+                        </div>
+                        {r.actionTaken?.trim() && <div className="rnr-mnt-action">조치: {r.actionTaken}</div>}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+            {summary.records.length > 0 && (
+              <div className="rnr-mnt-footer">
+                <Button variant="secondary" onClick={() => insertSummary('append')}>기존 내용 아래에 추가</Button>
+                <Button variant="secondary" onClick={() => insertSummary('overwrite')}>기존 내용 대체</Button>
+              </div>
+            )}
           </div>
         </div>
       )}
