@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import Button from '../components/Button'
@@ -271,6 +272,29 @@ const ResidentNoticeReportPage: React.FC = () => {
     flash('월별 시설 보수 자동 요약을 시설 보수 요약에 삽입했습니다.')
   }
 
+  // 안내 보고서 자체 인쇄/PDF (공개 발행 전 내부 검토용). 안내 보고서 필드만 출력.
+  const [printReport, setPrintReport] = useState<ResidentNoticeReport | null>(null)
+
+  const handlePrint = (r: ResidentNoticeReport) => setPrintReport(r)
+
+  // printReport가 설정되면 인쇄 영역만 보이도록 body 클래스를 붙이고 window.print() 실행.
+  // body.rnr-printing 스코프로만 #root를 숨기므로 공개 보고서(#/report) 인쇄에는 영향 없음.
+  useEffect(() => {
+    if (!printReport) return
+    document.body.classList.add('rnr-printing')
+    const cleanup = () => {
+      document.body.classList.remove('rnr-printing')
+      setPrintReport(null)
+    }
+    window.addEventListener('afterprint', cleanup)
+    const t = window.setTimeout(() => window.print(), 80)
+    return () => {
+      window.clearTimeout(t)
+      window.removeEventListener('afterprint', cleanup)
+      document.body.classList.remove('rnr-printing')
+    }
+  }, [printReport])
+
   const refreshPublished = () =>
     setPublishedList(loadPublishedReports().filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId))
 
@@ -509,6 +533,7 @@ const ResidentNoticeReportPage: React.FC = () => {
                     <td>{new Date(r.updatedAt).toLocaleString('ko-KR')}</td>
                     <td className="rnr-row-actions">
                       <button type="button" onClick={() => setPreview(r)}>보기</button>
+                      <button type="button" onClick={() => handlePrint(r)}>인쇄/PDF</button>
                       <button type="button" onClick={() => handleEdit(r)}>수정</button>
                       <button type="button" onClick={() => handlePublish(r)}>입주민 공개용 발행</button>
                       {rel.length > 0 && (
@@ -551,6 +576,9 @@ const ResidentNoticeReportPage: React.FC = () => {
               {SECTIONS.every((s) => !(preview[s.key as keyof ResidentNoticeReport] as string)?.trim()) && (
                 <p className="rnr-empty">작성된 본문 내용이 없습니다.</p>
               )}
+            </div>
+            <div className="rnr-modal-foot">
+              <Button variant="secondary" onClick={() => handlePrint(preview)}>PDF 저장 / 인쇄</Button>
             </div>
           </div>
         </div>
@@ -714,6 +742,36 @@ const ResidentNoticeReportPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* 인쇄/PDF 전용 영역 (화면에서는 숨김, body.rnr-printing 인쇄 시에만 노출). 안내 보고서 필드만 출력 — 내부 메모/업체명/매출/개인정보 미포함 */}
+      {printReport &&
+        createPortal(
+          <div className="rnr-print-area" aria-hidden="true">
+            <article className="rnr-print-doc">
+              <header className="rnr-print-head">
+                <p className="rnr-print-kicker">입주민 안내 보고서</p>
+                <h1>{printReport.title}</h1>
+                <div className="rnr-print-meta">
+                  {printReport.apartmentName && <span>단지명: {printReport.apartmentName}</span>}
+                  {printReport.reportMonth && <span>보고월: {printReport.reportMonth}</span>}
+                  <span>작성일: {new Date(printReport.createdAt).toLocaleDateString('ko-KR')}</span>
+                  <span>수정일: {new Date(printReport.updatedAt).toLocaleDateString('ko-KR')}</span>
+                </div>
+              </header>
+              {SECTIONS.filter((s) => (printReport[s.key as keyof ResidentNoticeReport] as string)?.trim()).map((s) => (
+                <section className="rnr-print-section" key={s.key}>
+                  <h2>{s.label}</h2>
+                  <p>{printReport[s.key as keyof ResidentNoticeReport] as string}</p>
+                </section>
+              ))}
+              {SECTIONS.every((s) => !(printReport[s.key as keyof ResidentNoticeReport] as string)?.trim()) && (
+                <p className="rnr-print-empty">작성된 본문 내용이 없습니다.</p>
+              )}
+              <footer className="rnr-print-footer">본 문서는 입주민 안내 보고서 검토용 자료입니다.</footer>
+            </article>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

@@ -412,3 +412,106 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.rnr-modal-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #eef1f6;
+}
+
+/* 인쇄/PDF 전용 영역 — 화면에서는 항상 숨김 (body.rnr-printing 인쇄 시에만 노출) */
+.rnr-print-area {
+  display: none;
+}
+
+@media print {
+  /* 안내 보고서 인쇄 시에만 앱 화면(#root: 사이드바·목록·버튼·모달)을 숨기고 보고서 본문만 출력.
+     body.rnr-printing 스코프로 한정하므로 공개 보고서(#/report) 인쇄에는 영향 없음. */
+  body.rnr-printing #root {
+    display: none !important;
+  }
+
+  body.rnr-printing {
+    background: #fff !important;
+  }
+
+  body.rnr-printing .rnr-print-area {
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    background: #fff;
+  }
+
+  .rnr-print-doc {
+    color: #1a1a1a;
+    font-size: 12pt;
+    line-height: 1.6;
+  }
+
+  .rnr-print-head {
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #333;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .rnr-print-kicker {
+    margin: 0 0 4px;
+    font-size: 11pt;
+    color: #555;
+  }
+
+  .rnr-print-head h1 {
+    margin: 0 0 8px;
+    font-size: 18pt;
+    color: #111;
+  }
+
+  .rnr-print-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 11pt;
+    color: #444;
+  }
+
+  .rnr-print-section {
+    margin: 14px 0;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .rnr-print-section h2 {
+    margin: 0 0 4px;
+    padding-left: 8px;
+    border-left: 4px solid #333;
+    font-size: 13pt;
+    color: #222;
+  }
+
+  .rnr-print-section p {
+    margin: 0;
+    font-size: 12pt;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .rnr-print-empty {
+    font-size: 12pt;
+    color: #555;
+  }
+
+  .rnr-print-footer {
+    margin-top: 24px;
+    padding-top: 10px;
+    border-top: 1px solid #999;
+    font-size: 10pt;
+    color: #666;
+    text-align: center;
+  }
+}
