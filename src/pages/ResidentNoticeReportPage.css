@@ -38,6 +38,61 @@
   color: #1d4ed8;
 }
 
+.rnr-public-none {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.rnr-pub-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rnr-pub-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid #eef1f6;
+}
+
+.rnr-pub-list li:last-child {
+  border-bottom: none;
+}
+
+.rnr-pub-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #1f2a44;
+}
+
+.rnr-pub-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: #64748b;
+  margin: 3px 0 6px;
+}
+
+.rnr-pub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rnr-pub-actions button {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #1f2a44;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 .rnr-mnt-import {
   display: flex;
   flex-wrap: wrap;

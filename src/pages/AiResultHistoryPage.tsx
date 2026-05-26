@@ -307,14 +307,18 @@ const AiResultHistoryPage: React.FC = () => {
                   <div className="ai-history-card-head">
                     <span className="ai-history-tasktype">입주민 공개</span>
                     <span className="pub-source">출처: {sourceLabel(p.sourceType)}</span>
+                    {p.republishedAt && <span className="pub-updated">갱신됨</span>}
                     <span className={`pub-status pub-status-${p.status}`}>
                       {p.status === 'published' ? '공개중' : '공개중지'}
                     </span>
                   </div>
                   <h4 className="ai-history-title">{p.apartmentName || '입주민 공개 보고서'}</h4>
                   <div className="ai-history-date">
-                    {p.reportMonth ? `보고월 ${p.reportMonth} · ` : ''}발행 {new Date(p.publishedAt).toLocaleString('ko-KR')}
+                    {p.reportMonth ? `보고월 ${p.reportMonth} · ` : ''}최초 발행 {new Date(p.publishedAt).toLocaleString('ko-KR')}
                   </div>
+                  {p.republishedAt && (
+                    <div className="ai-history-date">최근 갱신 {new Date(p.republishedAt).toLocaleString('ko-KR')}</div>
+                  )}
                   <p className="ai-history-preview">{p.sections.map((s) => s.title).join(' · ') || '내용 없음'}</p>
                   <div className="ai-history-actions">
                     <button type="button" onClick={() => copyPublishedLink(p.encodedUrl)}>

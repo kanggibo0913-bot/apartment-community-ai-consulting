@@ -49,6 +49,15 @@
   color: #475569;
 }
 
+.pub-updated {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fdf2e6;
+  color: #b54708;
+}
+
 .ai-history-workfilters {
   display: flex;
   flex-wrap: wrap;

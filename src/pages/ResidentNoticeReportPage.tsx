@@ -3,7 +3,7 @@ import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import Button from '../components/Button'
 import { buildPublishedReport, buildShareUrl } from '../utils/publishedReport'
-import { findPublishedBySource, loadPublishedReports, savePublishedReport, updatePublishedReport } from '../utils/publishedReportStorage'
+import { StoredPublishedReport, findPublishedBySource, loadPublishedReports, savePublishedReport, updatePublishedReport } from '../utils/publishedReportStorage'
 import type { MaintenanceRecord } from './MaintenanceRecordsPage'
 import './ResidentNoticeReportPage.css'
 
@@ -123,12 +123,14 @@ const ResidentNoticeReportPage: React.FC = () => {
   const [query, setQuery] = useState('')
   const [preview, setPreview] = useState<ResidentNoticeReport | null>(null)
   const [msg, setMsg] = useState('')
-  // 이미 공개 발행된 안내 보고서 id 집합 (발행 이력에서 sourceReportId로 추적)
-  const [publishedIds, setPublishedIds] = useState<Set<string>>(
-    () => new Set(loadPublishedReports().filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId).map((p) => p.sourceReportId as string)),
+  // 안내 보고서에서 발행된 공개 보고서 목록 (sourceReportId로 연결)
+  const [publishedList, setPublishedList] = useState<StoredPublishedReport[]>(
+    () => loadPublishedReports().filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId),
   )
   const [lastShareUrl, setLastShareUrl] = useState('')
   const [lastPublishMode, setLastPublishMode] = useState<'new' | 'updated'>('new')
+  const [publishedViewFor, setPublishedViewFor] = useState<ResidentNoticeReport | null>(null)
+  const [pubViewMsg, setPubViewMsg] = useState('')
 
   // 공개 가능 시설 보수 불러오기 모달
   const [mntModalOpen, setMntModalOpen] = useState(false)
@@ -164,10 +166,21 @@ const ResidentNoticeReportPage: React.FC = () => {
     flash(`시설 보수 ${chosen.length}건을 시설 보수 요약에 삽입했습니다.`)
   }
 
-  const refreshPublishedIds = () =>
-    setPublishedIds(
-      new Set(loadPublishedReports().filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId).map((p) => p.sourceReportId as string)),
-    )
+  const refreshPublished = () =>
+    setPublishedList(loadPublishedReports().filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId))
+
+  const relatedPublished = (id: string) => publishedList.filter((p) => p.sourceReportId === id)
+
+  const copyPubLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setPubViewMsg('링크가 복사되었습니다.')
+    } catch {
+      setPubViewMsg('복사에 실패했습니다.')
+    }
+    setTimeout(() => setPubViewMsg(''), 2000)
+  }
+  const openPub = (url: string) => window.open(url, '_blank', 'noopener')
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reports))
@@ -263,7 +276,7 @@ const ResidentNoticeReportPage: React.FC = () => {
       mode = 'new'
     }
 
-    refreshPublishedIds()
+    refreshPublished()
     setLastShareUrl(url)
     setLastPublishMode(mode)
     try {
@@ -369,7 +382,10 @@ const ResidentNoticeReportPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r) => (
+                {filtered.map((r) => {
+                  const rel = relatedPublished(r.id)
+                  const live = rel.filter((p) => p.status === 'published').length
+                  return (
                   <tr key={r.id}>
                     <td>{r.reportMonth}</td>
                     <td>{r.apartmentName || '-'}</td>
@@ -378,17 +394,25 @@ const ResidentNoticeReportPage: React.FC = () => {
                       <span className={`rnr-status ${r.status === 'published' ? 'rnr-published' : 'rnr-draft'}`}>
                         {r.status === 'published' ? '발행완료' : '임시저장'}
                       </span>
-                      {publishedIds.has(r.id) && <span className="rnr-public-badge">공개 발행됨</span>}
+                      {rel.length > 0 ? (
+                        <span className="rnr-public-badge">공개 발행 {rel.length}건 / 공개중 {live}건</span>
+                      ) : (
+                        <span className="rnr-public-none">공개 발행 없음</span>
+                      )}
                     </td>
                     <td>{new Date(r.updatedAt).toLocaleString('ko-KR')}</td>
                     <td className="rnr-row-actions">
                       <button type="button" onClick={() => setPreview(r)}>보기</button>
                       <button type="button" onClick={() => handleEdit(r)}>수정</button>
                       <button type="button" onClick={() => handlePublish(r)}>입주민 공개용 발행</button>
+                      {rel.length > 0 && (
+                        <button type="button" onClick={() => { setPubViewMsg(''); setPublishedViewFor(r) }}>발행본 보기</button>
+                      )}
                       <button type="button" className="danger" onClick={() => handleDelete(r.id)}>삭제</button>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -479,6 +503,48 @@ const ResidentNoticeReportPage: React.FC = () => {
                 <Button variant="primary" onClick={insertMaintenance}>선택 항목 삽입 ({mntSelected.size})</Button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {publishedViewFor && (
+        <div className="rnr-modal-backdrop" onClick={() => setPublishedViewFor(null)}>
+          <div className="rnr-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="rnr-modal-head">
+              <div>
+                <h3>발행본 보기</h3>
+                <div className="rnr-modal-meta"><span>{publishedViewFor.title}</span></div>
+              </div>
+              <button type="button" className="rnr-modal-close" onClick={() => setPublishedViewFor(null)} aria-label="닫기">✕</button>
+            </div>
+            <div className="rnr-modal-body">
+              {pubViewMsg && <p className="rnr-msg">{pubViewMsg}</p>}
+              {relatedPublished(publishedViewFor.id).length === 0 ? (
+                <p className="rnr-empty">발행본이 없습니다.</p>
+              ) : (
+                <ul className="rnr-pub-list">
+                  {relatedPublished(publishedViewFor.id).map((p) => (
+                    <li key={p.id}>
+                      <div className="rnr-pub-head">
+                        <strong>{p.title}</strong>
+                        <span className={`rnr-status ${p.status === 'published' ? 'rnr-published' : 'rnr-draft'}`}>
+                          {p.status === 'published' ? '공개중' : '공개중지'}
+                        </span>
+                      </div>
+                      <div className="rnr-pub-meta">
+                        {p.reportMonth && <span>보고월 {p.reportMonth}</span>}
+                        <span>최초 {new Date(p.publishedAt).toLocaleString('ko-KR')}</span>
+                        {p.republishedAt && <span>갱신 {new Date(p.republishedAt).toLocaleString('ko-KR')}</span>}
+                      </div>
+                      <div className="rnr-pub-actions">
+                        <button type="button" onClick={() => openPub(p.encodedUrl)}>보기</button>
+                        <button type="button" onClick={() => copyPubLink(p.encodedUrl)}>링크 복사</button>
+                        <button type="button" onClick={() => openPub(p.encodedUrl)}>인쇄/PDF</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
       )}
