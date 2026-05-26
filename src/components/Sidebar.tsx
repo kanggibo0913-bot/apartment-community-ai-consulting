@@ -42,6 +42,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { id: 'apartment', label: '단지 기본정보', icon: '🏢' },
       { id: 'facility', label: '시설 정보', icon: '🏛️' },
+      { id: 'maintenance', label: '시설 보수 내역', icon: '🛠️' },
       { id: 'operation', label: '운영 정보', icon: '⚙️' },
       { id: 'cost', label: '현장 인건비/비용', icon: '💰' },
       { id: 'revenue', label: '수익 정보', icon: '📈' },
@@ -49,6 +50,7 @@ const menuGroups: MenuGroup[] = [
       { id: 'agenda', label: '안건 예상', icon: '📌' },
       { id: 'contract-manage', label: '계약 관리', icon: '📋' },
       { id: 'monthly-report', label: '월간 리포트', icon: '📰' },
+      { id: 'resident-notice', label: '입주민 안내 보고서', icon: '📢' },
       { id: 'report', label: '보고서 초안', icon: '📄' },
       { id: 'analysis', label: 'AI 분석 결과', icon: '🤖' },
       { id: 'ai-history', label: 'AI 결과 이력', icon: '🗂️' },

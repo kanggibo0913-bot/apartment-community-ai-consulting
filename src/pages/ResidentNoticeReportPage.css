@@ -1,0 +1,174 @@
+.rnr-msg {
+  font-size: 13px;
+  color: #0a7f3f;
+}
+
+.rnr-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.rnr-filters select,
+.rnr-filters input {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.rnr-filters input {
+  flex: 1 1 200px;
+}
+
+.rnr-empty {
+  padding: 24px;
+  text-align: center;
+  color: #8a93a6;
+}
+
+.rnr-table-wrap {
+  overflow-x: auto;
+}
+
+.rnr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  min-width: 640px;
+}
+
+.rnr-table th,
+.rnr-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #eef1f6;
+  white-space: nowrap;
+}
+
+.rnr-table th {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f9fafb;
+}
+
+.rnr-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
+.rnr-status.rnr-published {
+  background: #e7f6ee;
+  color: #0a7f3f;
+}
+
+.rnr-status.rnr-draft {
+  background: #f1f3f7;
+  color: #64748b;
+}
+
+.rnr-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.rnr-row-actions button {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #1f2a44;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.rnr-row-actions button.danger {
+  border-color: #f0c0c0;
+  color: #b71c1c;
+}
+
+.rnr-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.rnr-modal {
+  background: #fff;
+  border-radius: 10px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
+}
+
+.rnr-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.rnr-modal-head h3 {
+  margin: 6px 0 4px;
+  font-size: 18px;
+  color: #1f2a44;
+}
+
+.rnr-modal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.rnr-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  color: #64748b;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.rnr-modal-body {
+  overflow-y: auto;
+}
+
+.rnr-modal-body section {
+  padding: 10px 0;
+  border-bottom: 1px solid #eef1f6;
+}
+
+.rnr-modal-body section:last-child {
+  border-bottom: none;
+}
+
+.rnr-modal-body h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #475569;
+}
+
+.rnr-modal-body p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #1f2a44;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

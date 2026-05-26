@@ -22,6 +22,8 @@ import TenderNotices from './pages/TenderNotices'
 import EstimateCalculator from './pages/EstimateCalculator'
 import AiResultHistoryPage from './pages/AiResultHistoryPage'
 import PublicReportView from './pages/PublicReportView'
+import MaintenanceRecordsPage from './pages/MaintenanceRecordsPage'
+import ResidentNoticeReportPage from './pages/ResidentNoticeReportPage'
 import { loadProjects, saveProjects } from './utils/storage'
 import {
   ApartmentInfoData,
@@ -44,7 +46,7 @@ import {
   MonthlyReportData,
 } from './types/CommunityData'
 
-type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate' | 'contract-manage' | 'monthly-report' | 'ai-history'
+type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate' | 'contract-manage' | 'monthly-report' | 'ai-history' | 'maintenance' | 'resident-notice'
 
 const defaultFacilityItems: FacilityDetail[] = [
   { id: 1, name: '헬스장', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
@@ -375,6 +377,8 @@ const pageLabels: Record<PageType, string> = {
   'contract-manage': '계약 관리',
   'monthly-report': '월간 운영 리포트',
   'ai-history': 'AI 결과 이력',
+  maintenance: '시설 보수 내역',
+  'resident-notice': '입주민 안내 보고서',
 }
 
 function generateProjectId(): string {
@@ -778,6 +782,10 @@ function App() {
         return <TenderNotices />
       case 'ai-history':
         return <AiResultHistoryPage />
+      case 'maintenance':
+        return <MaintenanceRecordsPage />
+      case 'resident-notice':
+        return <ResidentNoticeReportPage />
       case 'estimate':
         return <EstimateCalculator />
       case 'contract-manage':
