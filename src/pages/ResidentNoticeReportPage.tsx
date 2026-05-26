@@ -3,7 +3,7 @@ import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import Button from '../components/Button'
 import { buildPublishedReport, buildShareUrl } from '../utils/publishedReport'
-import { loadPublishedReports, savePublishedReport } from '../utils/publishedReportStorage'
+import { findPublishedBySource, loadPublishedReports, savePublishedReport, updatePublishedReport } from '../utils/publishedReportStorage'
 import type { MaintenanceRecord } from './MaintenanceRecordsPage'
 import './ResidentNoticeReportPage.css'
 
@@ -128,6 +128,7 @@ const ResidentNoticeReportPage: React.FC = () => {
     () => new Set(loadPublishedReports().filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId).map((p) => p.sourceReportId as string)),
   )
   const [lastShareUrl, setLastShareUrl] = useState('')
+  const [lastPublishMode, setLastPublishMode] = useState<'new' | 'updated'>('new')
 
   // 공개 가능 시설 보수 불러오기 모달
   const [mntModalOpen, setMntModalOpen] = useState(false)
@@ -237,18 +238,37 @@ const ResidentNoticeReportPage: React.FC = () => {
 
   // 입주민 안내 보고서 → 입주민 공개용 보고서 발행 (화이트리스트 매핑만, 민감정보 미포함)
   const handlePublish = async (r: ResidentNoticeReport) => {
-    if (!window.confirm('이 안내 보고서를 입주민 공개용 보고서로 발행하시겠습니까? 발행된 보고서는 공개 링크로 열람할 수 있습니다.')) return
     const sections = PUBLISH_SECTION_MAP.map((m) => ({ title: m.title, body: (r[m.key] as string) || '' })).filter(
       (s) => s.body.trim().length > 0,
     )
     const report = buildPublishedReport({ apartmentName: r.apartmentName, reportMonth: r.reportMonth, title: r.title, sections })
     const url = buildShareUrl(report)
-    savePublishedReport(report, url, { sourceType: 'residentNoticeReport', sourceReportId: r.id })
+
+    const existing = findPublishedBySource('residentNoticeReport', r.id)
+    let mode: 'new' | 'updated'
+    if (existing.length > 0) {
+      // 기존 발행본이 있으면 갱신/새발행/취소 선택
+      if (window.confirm('이 안내 보고서는 이미 공개 발행된 이력이 있습니다. 기존 공개본을 갱신하시겠습니까?')) {
+        updatePublishedReport(existing[0].id, report, url)
+        mode = 'updated'
+      } else if (window.confirm('새 공개본으로 발행하시겠습니까?')) {
+        savePublishedReport(report, url, { sourceType: 'residentNoticeReport', sourceReportId: r.id })
+        mode = 'new'
+      } else {
+        return
+      }
+    } else {
+      if (!window.confirm('이 안내 보고서를 입주민 공개용 보고서로 발행하시겠습니까? 발행된 보고서는 공개 링크로 열람할 수 있습니다.')) return
+      savePublishedReport(report, url, { sourceType: 'residentNoticeReport', sourceReportId: r.id })
+      mode = 'new'
+    }
+
     refreshPublishedIds()
     setLastShareUrl(url)
+    setLastPublishMode(mode)
     try {
       await navigator.clipboard.writeText(url)
-      flash('공개 링크가 생성되어 복사되었습니다. (AI 결과 이력 → 발행 이력 탭에서 확인 가능)')
+      flash(mode === 'updated' ? '기존 공개본이 갱신되어 새 링크가 복사되었습니다.' : '공개 링크가 생성되어 복사되었습니다.')
     } catch {
       flash('공개 링크가 생성되었습니다. 발행 이력 탭에서 복사하세요.')
     }
@@ -272,7 +292,11 @@ const ResidentNoticeReportPage: React.FC = () => {
 
       {lastShareUrl && (
         <div className="rnr-publish-banner">
-          <span>공개 링크가 생성되었습니다.</span>
+          <span>
+            {lastPublishMode === 'updated'
+              ? '기존 공개 보고서가 갱신되어 새 링크가 복사되었습니다.'
+              : '공개 보고서가 새로 발행되어 링크가 복사되었습니다.'}
+          </span>
           <button type="button" onClick={() => window.open(lastShareUrl, '_blank', 'noopener')}>공개 보고서 보기</button>
           <button type="button" onClick={() => navigator.clipboard.writeText(lastShareUrl)}>링크 복사</button>
           <button type="button" onClick={() => setLastShareUrl('')}>닫기</button>

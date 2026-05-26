@@ -24,6 +24,13 @@ const TASK_LABELS: Record<string, string> = {
 
 const taskLabel = (t: string) => TASK_LABELS[t] || '기타'
 
+// 발행 이력 출처 라벨 (sourceType 없으면 하위호환으로 'AI 결과')
+const SOURCE_LABELS: Record<string, string> = {
+  residentNoticeReport: '입주민 안내 보고서',
+  aiResult: 'AI 결과',
+}
+const sourceLabel = (t?: string) => (t ? SOURCE_LABELS[t] || '기타' : 'AI 결과')
+
 // 업무 구분 매핑: 입찰용 taskType, 그 외는 현장 운영
 const BID_TASK_TYPES = ['bidNoticeAnalysis', 'document', 'contractGenerate', 'contractReview']
 const workGroupOf = (taskType: string): 'bid' | 'ops' => (BID_TASK_TYPES.includes(taskType) ? 'bid' : 'ops')
@@ -94,7 +101,7 @@ const AiResultHistoryPage: React.FC = () => {
     setShareUrl(url)
     setShareCopyMsg('')
     // 발행 이력에 저장 (위생처리된 PublishedReport 기준 데이터만)
-    savePublishedReport(report, url)
+    savePublishedReport(report, url, { sourceType: 'aiResult' })
     refreshPublished()
   }
 
@@ -299,6 +306,7 @@ const AiResultHistoryPage: React.FC = () => {
                 <div key={p.id} className="ai-history-card">
                   <div className="ai-history-card-head">
                     <span className="ai-history-tasktype">입주민 공개</span>
+                    <span className="pub-source">출처: {sourceLabel(p.sourceType)}</span>
                     <span className={`pub-status pub-status-${p.status}`}>
                       {p.status === 'published' ? '공개중' : '공개중지'}
                     </span>

@@ -25,6 +25,8 @@ export interface StoredPublishedReport {
   // 발행 출처(옵셔널, 하위호환). 예: 'residentNoticeReport' + 원본 보고서 id
   sourceType?: string
   sourceReportId?: string
+  // 기존 공개본 갱신(재발행) 시각(옵셔널, 하위호환)
+  republishedAt?: string
 }
 
 export function loadPublishedReports(): StoredPublishedReport[] {
@@ -79,4 +81,31 @@ export function updatePublishedReportStatus(id: string, status: PublishedStatus)
 // 발행 이력에서 제거. ⚠️ 삭제해도 이미 복사·공유된 URL 자체는 무효화되지 않는다.
 export function deletePublishedReport(id: string): void {
   persist(loadPublishedReports().filter((r) => r.id !== id))
+}
+
+// 출처 기준으로 기존 발행본 조회 (최신순)
+export function findPublishedBySource(sourceType: string, sourceReportId: string): StoredPublishedReport[] {
+  return loadPublishedReports().filter((r) => r.sourceType === sourceType && r.sourceReportId === sourceReportId)
+}
+
+// 기존 발행본 갱신(재발행). id/shareId/publishedAt/source/status는 유지하고
+// 공개 내용(섹션)·링크만 새로 반영하며 republishedAt을 기록한다.
+export function updatePublishedReport(id: string, report: PublishedReport, encodedUrl: string): StoredPublishedReport | null {
+  const list = loadPublishedReports()
+  let updated: StoredPublishedReport | null = null
+  const next = list.map((r) => {
+    if (r.id !== id) return r
+    updated = {
+      ...r,
+      apartmentName: report.apartmentName,
+      reportMonth: report.reportMonth,
+      title: report.title?.trim() || r.title,
+      sections: report.sections.map((s) => ({ title: s.title, body: s.body })),
+      encodedUrl,
+      republishedAt: new Date().toISOString(),
+    }
+    return updated
+  })
+  if (updated) persist(next)
+  return updated
 }
