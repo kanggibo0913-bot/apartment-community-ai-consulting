@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import Button from '../components/Button'
+import { buildPublishedReport, buildShareUrl } from '../utils/publishedReport'
+import { loadPublishedReports, savePublishedReport } from '../utils/publishedReportStorage'
 import './ResidentNoticeReportPage.css'
 
 type NoticeStatus = 'draft' | 'published'
@@ -41,6 +43,18 @@ const SECTIONS: Array<{ key: keyof FormState; label: string }> = [
   { key: 'contactInfo', label: '문의 안내' },
 ]
 
+// 입주민 공개용 발행 시 PublishedReport 섹션으로 변환할 화이트리스트 매핑 (공개 가능 필드만)
+const PUBLISH_SECTION_MAP: Array<{ key: keyof ResidentNoticeReport; title: string }> = [
+  { key: 'summary', title: '핵심 요약' },
+  { key: 'operationNotice', title: '운영 안내' },
+  { key: 'complaintSummary', title: '민원 처리 현황' },
+  { key: 'maintenanceSummary', title: '시설 보수 내역' },
+  { key: 'completedImprovements', title: '개선 완료 사항' },
+  { key: 'ongoingImprovements', title: '진행 중 조치' },
+  { key: 'residentNotices', title: '이용자 안내사항' },
+  { key: 'contactInfo', title: '문의 안내' },
+]
+
 const loadReports = (): ResidentNoticeReport[] => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
@@ -77,6 +91,16 @@ const ResidentNoticeReportPage: React.FC = () => {
   const [query, setQuery] = useState('')
   const [preview, setPreview] = useState<ResidentNoticeReport | null>(null)
   const [msg, setMsg] = useState('')
+  // 이미 공개 발행된 안내 보고서 id 집합 (발행 이력에서 sourceReportId로 추적)
+  const [publishedIds, setPublishedIds] = useState<Set<string>>(
+    () => new Set(loadPublishedReports().filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId).map((p) => p.sourceReportId as string)),
+  )
+  const [lastShareUrl, setLastShareUrl] = useState('')
+
+  const refreshPublishedIds = () =>
+    setPublishedIds(
+      new Set(loadPublishedReports().filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId).map((p) => p.sourceReportId as string)),
+    )
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reports))
@@ -145,6 +169,25 @@ const ResidentNoticeReportPage: React.FC = () => {
     if (editingId === id) resetForm()
   }
 
+  // 입주민 안내 보고서 → 입주민 공개용 보고서 발행 (화이트리스트 매핑만, 민감정보 미포함)
+  const handlePublish = async (r: ResidentNoticeReport) => {
+    if (!window.confirm('이 안내 보고서를 입주민 공개용 보고서로 발행하시겠습니까? 발행된 보고서는 공개 링크로 열람할 수 있습니다.')) return
+    const sections = PUBLISH_SECTION_MAP.map((m) => ({ title: m.title, body: (r[m.key] as string) || '' })).filter(
+      (s) => s.body.trim().length > 0,
+    )
+    const report = buildPublishedReport({ apartmentName: r.apartmentName, reportMonth: r.reportMonth, title: r.title, sections })
+    const url = buildShareUrl(report)
+    savePublishedReport(report, url, { sourceType: 'residentNoticeReport', sourceReportId: r.id })
+    refreshPublishedIds()
+    setLastShareUrl(url)
+    try {
+      await navigator.clipboard.writeText(url)
+      flash('공개 링크가 생성되어 복사되었습니다. (AI 결과 이력 → 발행 이력 탭에서 확인 가능)')
+    } catch {
+      flash('공개 링크가 생성되었습니다. 발행 이력 탭에서 복사하세요.')
+    }
+  }
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return reports
@@ -160,6 +203,15 @@ const ResidentNoticeReportPage: React.FC = () => {
         title="입주민 안내 보고서"
         description="입주민에게 공개할 월간 안내문/운영 안내 보고서를 직접 작성하고 관리합니다. (민감 정보는 입력하지 마세요)"
       />
+
+      {lastShareUrl && (
+        <div className="rnr-publish-banner">
+          <span>공개 링크가 생성되었습니다.</span>
+          <button type="button" onClick={() => window.open(lastShareUrl, '_blank', 'noopener')}>공개 보고서 보기</button>
+          <button type="button" onClick={() => navigator.clipboard.writeText(lastShareUrl)}>링크 복사</button>
+          <button type="button" onClick={() => setLastShareUrl('')}>닫기</button>
+        </div>
+      )}
 
       <Card title={editingId ? '안내 보고서 수정' : '새 안내 보고서 작성'}>
         <div className="form-row">
@@ -228,11 +280,13 @@ const ResidentNoticeReportPage: React.FC = () => {
                       <span className={`rnr-status ${r.status === 'published' ? 'rnr-published' : 'rnr-draft'}`}>
                         {r.status === 'published' ? '발행완료' : '임시저장'}
                       </span>
+                      {publishedIds.has(r.id) && <span className="rnr-public-badge">공개 발행됨</span>}
                     </td>
                     <td>{new Date(r.updatedAt).toLocaleString('ko-KR')}</td>
                     <td className="rnr-row-actions">
                       <button type="button" onClick={() => setPreview(r)}>보기</button>
                       <button type="button" onClick={() => handleEdit(r)}>수정</button>
+                      <button type="button" onClick={() => handlePublish(r)}>입주민 공개용 발행</button>
                       <button type="button" className="danger" onClick={() => handleDelete(r.id)}>삭제</button>
                     </td>
                   </tr>

@@ -22,6 +22,9 @@ export interface StoredPublishedReport {
   sections: { title: string; body: string }[]
   encodedUrl: string
   status: PublishedStatus
+  // 발행 출처(옵셔널, 하위호환). 예: 'residentNoticeReport' + 원본 보고서 id
+  sourceType?: string
+  sourceReportId?: string
 }
 
 export function loadPublishedReports(): StoredPublishedReport[] {
@@ -40,22 +43,29 @@ function persist(list: StoredPublishedReport[]) {
 }
 
 // PublishedReport(위생처리됨)에서만 발행 이력 레코드를 구성한다.
-export function savePublishedReport(report: PublishedReport, encodedUrl: string): StoredPublishedReport {
+export function savePublishedReport(
+  report: PublishedReport,
+  encodedUrl: string,
+  meta?: { sourceType?: string; sourceReportId?: string },
+): StoredPublishedReport {
   const list = loadPublishedReports()
   // 동일 링크 중복 저장 방지
   const existing = list.find((r) => r.encodedUrl === encodedUrl)
   if (existing) return existing
 
+  const fallbackTitle = `${report.apartmentName || '입주민 공개 보고서'}${report.reportMonth ? ` (${report.reportMonth})` : ''}`
   const record: StoredPublishedReport = {
     id: 'pub-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
     shareId: Math.random().toString(36).slice(2, 10),
     apartmentName: report.apartmentName,
     reportMonth: report.reportMonth,
     publishedAt: report.publishedAt,
-    title: `${report.apartmentName || '입주민 공개 보고서'}${report.reportMonth ? ` (${report.reportMonth})` : ''}`,
+    title: report.title?.trim() || fallbackTitle,
     sections: report.sections.map((s) => ({ title: s.title, body: s.body })),
     encodedUrl,
     status: 'published',
+    ...(meta?.sourceType ? { sourceType: meta.sourceType } : {}),
+    ...(meta?.sourceReportId ? { sourceReportId: meta.sourceReportId } : {}),
   }
   persist([record, ...list].slice(0, 200))
   return record

@@ -3,6 +3,41 @@
   color: #0a7f3f;
 }
 
+.rnr-publish-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #e7f6ee;
+  border: 1px solid #b6e3c8;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #0a7f3f;
+}
+
+.rnr-publish-banner button {
+  font-size: 13px;
+  padding: 5px 12px;
+  border: 1px solid #0a7f3f;
+  background: #fff;
+  color: #0a7f3f;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.rnr-public-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e8f0fe;
+  color: #1d4ed8;
+}
+
 .rnr-filters {
   display: flex;
   flex-wrap: wrap;

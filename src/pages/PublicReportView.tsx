@@ -34,8 +34,9 @@ const PublicReportView: React.FC<PublicReportViewProps> = ({ encoded }) => {
         </div>
         <header className="public-report-head">
           <p className="public-report-kicker">입주민 안내 보고서</p>
-          <h1>{report.apartmentName || '커뮤니티센터'}</h1>
+          <h1>{report.title || report.apartmentName || '커뮤니티센터'}</h1>
           <div className="public-report-meta">
+            {report.title && report.apartmentName && <span>{report.apartmentName}</span>}
             {report.reportMonth && <span>보고 월: {report.reportMonth}</span>}
             {publishedAt && <span>발행일: {publishedAt}</span>}
           </div>

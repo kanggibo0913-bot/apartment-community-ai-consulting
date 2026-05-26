@@ -12,6 +12,7 @@ export interface PublishedReport {
   reportMonth: string
   publishedAt: string
   sections: PublishedSection[]
+  title?: string
 }
 
 // 입주민에게 공개해도 되는 섹션 정의 (편집기/렌더 공용)
@@ -55,7 +56,9 @@ export function buildPublishedReport(input: {
   apartmentName: string
   reportMonth: string
   sections: Array<{ title: string; body: string }>
+  title?: string
 }): PublishedReport {
+  const title = input.title?.trim()
   return {
     v: 1,
     apartmentName: input.apartmentName.trim(),
@@ -64,6 +67,7 @@ export function buildPublishedReport(input: {
     sections: input.sections
       .map((s) => ({ title: s.title, body: s.body.trim() }))
       .filter((s) => s.body.length > 0),
+    ...(title ? { title } : {}),
   }
 }
 
