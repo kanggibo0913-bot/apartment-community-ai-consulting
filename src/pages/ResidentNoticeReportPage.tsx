@@ -4,6 +4,7 @@ import Card from '../components/Card'
 import Button from '../components/Button'
 import { buildPublishedReport, buildShareUrl } from '../utils/publishedReport'
 import { loadPublishedReports, savePublishedReport } from '../utils/publishedReportStorage'
+import type { MaintenanceRecord } from './MaintenanceRecordsPage'
 import './ResidentNoticeReportPage.css'
 
 type NoticeStatus = 'draft' | 'published'
@@ -55,6 +56,37 @@ const PUBLISH_SECTION_MAP: Array<{ key: keyof ResidentNoticeReport; title: strin
   { key: 'contactInfo', title: '문의 안내' },
 ]
 
+// 시설 보수 내역 연계 (입주민 공개 가능 항목만 불러오기)
+const MAINTENANCE_KEY = 'maintenanceRecords'
+const STATUS_PRIORITY: Record<string, number> = { 완료: 0, 보수중: 1, 점검중: 2, 접수: 3, 보류: 4 }
+
+const loadPublicMaintenance = (): MaintenanceRecord[] => {
+  try {
+    const raw = window.localStorage.getItem(MAINTENANCE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return (parsed as MaintenanceRecord[])
+      .filter((r) => r.isPublicVisible === true) // 공개 표시 항목만
+      .sort((a, b) => {
+        const pa = STATUS_PRIORITY[a.status] ?? 9
+        const pb = STATUS_PRIORITY[b.status] ?? 9
+        if (pa !== pb) return pa - pb
+        return a.reportedAt < b.reportedAt ? 1 : a.reportedAt > b.reportedAt ? -1 : 0
+      })
+  } catch {
+    return []
+  }
+}
+
+// 안내문 텍스트 변환 (내부 메모/업체명은 절대 포함하지 않음 — 화이트리스트)
+const formatMaintenance = (r: MaintenanceRecord): string => {
+  const lines = [`- ${r.facilityName} / ${r.issueTitle}`, `  접수일: ${r.reportedAt}`, `  상태: ${r.status}`]
+  if (r.completedAt) lines.push(`  완료일: ${r.completedAt}`)
+  lines.push(`  조치 내용: ${r.actionTaken?.trim() || '확인 중'}`)
+  return lines.join('\n')
+}
+
 const loadReports = (): ResidentNoticeReport[] => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
@@ -96,6 +128,40 @@ const ResidentNoticeReportPage: React.FC = () => {
     () => new Set(loadPublishedReports().filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId).map((p) => p.sourceReportId as string)),
   )
   const [lastShareUrl, setLastShareUrl] = useState('')
+
+  // 공개 가능 시설 보수 불러오기 모달
+  const [mntModalOpen, setMntModalOpen] = useState(false)
+  const [mntCandidates, setMntCandidates] = useState<MaintenanceRecord[]>([])
+  const [mntSelected, setMntSelected] = useState<Set<string>>(new Set())
+  const [mntInsertMode, setMntInsertMode] = useState<'append' | 'overwrite'>('append')
+
+  const openMntModal = () => {
+    setMntCandidates(loadPublicMaintenance())
+    setMntSelected(new Set())
+    setMntInsertMode('append')
+    setMntModalOpen(true)
+  }
+
+  const toggleMntSel = (id: string) =>
+    setMntSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const insertMaintenance = () => {
+    const chosen = mntCandidates.filter((r) => mntSelected.has(r.id))
+    if (chosen.length === 0) return
+    const text = chosen.map(formatMaintenance).join('\n\n')
+    setForm((prev) => {
+      const existing = prev.maintenanceSummary.trim()
+      const merged = mntInsertMode === 'overwrite' || !existing ? text : `${existing}\n\n${text}`
+      return { ...prev, maintenanceSummary: merged }
+    })
+    setMntModalOpen(false)
+    flash(`시설 보수 ${chosen.length}건을 시설 보수 요약에 삽입했습니다.`)
+  }
 
   const refreshPublishedIds = () =>
     setPublishedIds(
@@ -233,6 +299,14 @@ const ResidentNoticeReportPage: React.FC = () => {
         {SECTIONS.map((s) => (
           <div className="form-group" key={s.key}>
             <label>{s.label}</label>
+            {s.key === 'maintenanceSummary' && (
+              <div className="rnr-mnt-import">
+                <Button variant="secondary" onClick={openMntModal}>공개 가능 시설 보수 불러오기</Button>
+                <span className="rnr-mnt-note">
+                  시설 보수 내역에서 '입주민 공개 보고서 포함'을 체크한 항목만 불러올 수 있습니다.
+                </span>
+              </div>
+            )}
             <textarea value={form[s.key] as string} onChange={(e) => update(s.key, e.target.value as FormState[typeof s.key])} rows={2} />
           </div>
         ))}
@@ -324,6 +398,63 @@ const ResidentNoticeReportPage: React.FC = () => {
                 <p className="rnr-empty">작성된 본문 내용이 없습니다.</p>
               )}
             </div>
+          </div>
+        </div>
+      )}
+      {mntModalOpen && (
+        <div className="rnr-modal-backdrop" onClick={() => setMntModalOpen(false)}>
+          <div className="rnr-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="rnr-modal-head">
+              <div>
+                <h3>공개 가능 시설 보수 항목 불러오기</h3>
+                <div className="rnr-modal-meta"><span>입주민 공개로 표시된 항목만 표시됩니다. (내부 메모·업체명 제외)</span></div>
+              </div>
+              <button type="button" className="rnr-modal-close" onClick={() => setMntModalOpen(false)} aria-label="닫기">✕</button>
+            </div>
+            <div className="rnr-modal-body">
+              {mntCandidates.length === 0 ? (
+                <p className="rnr-empty">입주민 공개 가능으로 표시된 시설 보수 항목이 없습니다.</p>
+              ) : (
+                <>
+                  <div className="rnr-mnt-toolbar">
+                    <button type="button" onClick={() => setMntSelected(new Set(mntCandidates.map((r) => r.id)))}>전체 선택</button>
+                    <button type="button" onClick={() => setMntSelected(new Set())}>선택 해제</button>
+                  </div>
+                  <ul className="rnr-mnt-list">
+                    {mntCandidates.map((r) => (
+                      <li key={r.id}>
+                        <label>
+                          <input type="checkbox" checked={mntSelected.has(r.id)} onChange={() => toggleMntSel(r.id)} />
+                          <div className="rnr-mnt-item">
+                            <div className="rnr-mnt-item-head">
+                              <strong>{r.facilityName} / {r.issueTitle}</strong>
+                              <span className="rnr-mnt-cat">{r.category}</span>
+                              <span className="rnr-mnt-st">{r.status}</span>
+                            </div>
+                            <div className="rnr-mnt-item-meta">
+                              <span>접수 {r.reportedAt}</span>
+                              {r.completedAt && <span>완료 {r.completedAt}</span>}
+                            </div>
+                            {r.actionTaken?.trim() && <div className="rnr-mnt-action">조치: {r.actionTaken}</div>}
+                          </div>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+            {mntCandidates.length > 0 && (
+              <div className="rnr-mnt-footer">
+                <label className="rnr-mnt-mode">
+                  <input type="radio" name="mntMode" checked={mntInsertMode === 'append'} onChange={() => setMntInsertMode('append')} /> 기존 내용 아래에 추가
+                </label>
+                <label className="rnr-mnt-mode">
+                  <input type="radio" name="mntMode" checked={mntInsertMode === 'overwrite'} onChange={() => setMntInsertMode('overwrite')} /> 기존 내용 대체
+                </label>
+                <Button variant="primary" onClick={insertMaintenance}>선택 항목 삽입 ({mntSelected.size})</Button>
+              </div>
+            )}
           </div>
         </div>
       )}
