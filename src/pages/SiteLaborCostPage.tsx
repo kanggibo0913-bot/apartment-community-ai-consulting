@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import Button from '../components/Button'
@@ -368,6 +369,94 @@ const SiteLaborCostPage: React.FC = () => {
     return ROLES.filter((role) => map[role]).map((role) => ({ role, ...map[role] }))
   }, [results])
 
+  // PDF/인쇄: 결과 영역만 출력. body.site-labor-printing 스코프로만 #root를 숨겨
+  // 입주민 안내 보고서/공개 보고서 인쇄와 충돌하지 않게 한다.
+  const [printing, setPrinting] = useState(false)
+
+  const handlePrint = () => {
+    if (employees.length === 0) {
+      flash('직원 데이터를 먼저 추가해주세요.')
+      return
+    }
+    setPrinting(true)
+  }
+
+  useEffect(() => {
+    if (!printing) return
+    document.body.classList.add('site-labor-printing')
+    const cleanup = () => {
+      document.body.classList.remove('site-labor-printing')
+      setPrinting(false)
+    }
+    window.addEventListener('afterprint', cleanup)
+    const t = window.setTimeout(() => window.print(), 80)
+    return () => {
+      window.clearTimeout(t)
+      window.removeEventListener('afterprint', cleanup)
+      document.body.classList.remove('site-labor-printing')
+    }
+  }, [printing])
+
+  // CSV 내보내기: 요약 + 직원별 상세. 엑셀 한글 깨짐 방지용 UTF-8 BOM. 금액은 콤마 없는 정수.
+  const csvField = (v: string | number) => {
+    const s = String(v)
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+  }
+  const exportCsv = () => {
+    if (employees.length === 0) {
+      flash('직원 데이터를 먼저 추가해주세요.')
+      return
+    }
+    const r0 = (n: number) => String(Math.round(Number.isFinite(n) ? n : 0))
+    const lines: string[] = []
+    lines.push('[요약]')
+    lines.push(['기준 월', settings.baseMonth || ''].map(csvField).join(','))
+    lines.push(['직원 수', totals.count].map(csvField).join(','))
+    lines.push(['총 월 근로시간', fmtHours(totals.monthlyHours)].map(csvField).join(','))
+    lines.push(['총 기본급', r0(totals.basePay)].map(csvField).join(','))
+    lines.push(['총 주휴수당', r0(totals.holidayPay)].map(csvField).join(','))
+    lines.push(['총 연장수당', r0(totals.overtimePay)].map(csvField).join(','))
+    lines.push(['총 야간수당', r0(totals.nightPay)].map(csvField).join(','))
+    lines.push(['총 직접 인건비', r0(totals.directPay)].map(csvField).join(','))
+    lines.push(['총 4대보험 회사부담', r0(totals.insurance)].map(csvField).join(','))
+    lines.push(['총 퇴직충당', r0(totals.severance)].map(csvField).join(','))
+    lines.push(['총 연차충당', r0(totals.annualLeave)].map(csvField).join(','))
+    lines.push(['총 기타 간접비', r0(totals.otherIndirect)].map(csvField).join(','))
+    lines.push(['월 총 예상 인건비', r0(totals.total)].map(csvField).join(','))
+    lines.push('')
+    lines.push('[직원별 상세]')
+    const header = [
+      '기준 월', '직원명', '직무', '급여 형태', '주 근로시간', '월 근로시간', '기본급', '주휴수당',
+      '연장수당', '야간수당', '직접 인건비', '4대보험 회사부담', '퇴직충당', '연차충당', '기타 간접비', '총 예상 인건비', '메모',
+    ]
+    lines.push(header.map(csvField).join(','))
+    results.forEach(({ emp, r }) => {
+      lines.push(
+        [
+          settings.baseMonth || '', emp.name, emp.role, emp.payType,
+          fmtHours(r.weeklyHours), fmtHours(r.monthlyHours), r0(r.basePay), r0(r.holidayPay),
+          r0(r.overtimePay), r0(r.nightPay), r0(r.directPay), r0(r.insurance), r0(r.severance),
+          r0(r.annualLeave), r0(r.otherIndirect), r0(r.total), emp.memo || '',
+        ]
+          .map(csvField)
+          .join(','),
+      )
+    })
+    const csv = '﻿' + lines.join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = settings.baseMonth ? `site-labor-cost-${settings.baseMonth}.csv` : 'site-labor-cost.csv'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    flash('CSV 파일을 내보냈습니다.')
+  }
+
+  const hasEmployees = employees.length > 0
+
   return (
     <div className="page slc-page">
       <PageHeader
@@ -377,6 +466,13 @@ const SiteLaborCostPage: React.FC = () => {
 
       <div className="slc-info-box">
         이 페이지는 실제 현장 운영비 계산용입니다. 입찰용 산출표는 입찰 공고 조건과 제출 양식에 맞춰 별도 작성해야 합니다.
+      </div>
+
+      <div className="slc-actions">
+        <Button variant="secondary" onClick={handlePrint} disabled={!hasEmployees}>PDF 저장 / 인쇄</Button>
+        <Button variant="secondary" onClick={exportCsv} disabled={!hasEmployees}>CSV 내보내기</Button>
+        {!hasEmployees && <span className="slc-actions-hint">직원 데이터를 먼저 추가해주세요.</span>}
+        {hasEmployees && msg && <span className="slc-msg">{msg}</span>}
       </div>
 
       <Card title="결과 요약" className="slc-summary-card">
@@ -602,6 +698,120 @@ const SiteLaborCostPage: React.FC = () => {
         <p>본 계산은 내부 운영비 검토를 위한 참고 산출값입니다. 실제 급여 지급, 4대보험, 세무·노무 처리는 근로계약, 취업규칙, 최신 법령 및 전문가 검토에 따라 확정해야 합니다.</p>
         <p>입찰 제출용 산출표는 본 페이지가 아니라 입찰용 기능의 산출표 작성 메뉴에서 별도 관리합니다.</p>
       </div>
+
+      {/* PDF/인쇄 전용 영역 (화면 숨김, body.site-labor-printing 인쇄 시에만 노출). 결과 요약·직원별 결과만 출력 — 입력폼/버튼/사이드바 제외 */}
+      {printing &&
+        createPortal(
+          <div className="slc-print-area" aria-hidden="true">
+            <article className="slc-print-doc">
+              <header className="slc-print-head">
+                <h1>현장 인건비 산출</h1>
+                <div className="slc-print-month">기준 월: {settings.baseMonth || '-'}</div>
+              </header>
+
+              <section className="slc-print-section">
+                <h2>계산 기준</h2>
+                <div className="slc-print-kv">
+                  <span>월 환산 주수: {settings.weeksPerMonth}</span>
+                  {settings.minWage > 0 && <span>최저시급: {fmtWon(settings.minWage)}원</span>}
+                  <span>연장 배율: {settings.overtimeMultiplier}</span>
+                  <span>야간 배율: {settings.nightMultiplier}</span>
+                  <span>휴일 배율: {settings.holidayMultiplier}</span>
+                  <span>4대보험 회사부담: {settings.insuranceRate}%</span>
+                  <span>퇴직충당: {settings.severanceRate}%</span>
+                  <span>연차충당: {settings.annualLeaveRate}%</span>
+                  <span>기타 간접비: {settings.otherIndirectRate}%</span>
+                </div>
+              </section>
+
+              <section className="slc-print-section">
+                <h2>총 인건비 요약</h2>
+                <div className="slc-print-kv">
+                  <span>직원 수: {totals.count}명</span>
+                  <span>총 월 근로시간: {fmtHours(totals.monthlyHours)}h</span>
+                  <span>총 기본급: {fmtWon(totals.basePay)}원</span>
+                  <span>총 주휴수당: {fmtWon(totals.holidayPay)}원</span>
+                  <span>총 연장수당: {fmtWon(totals.overtimePay)}원</span>
+                  <span>총 야간수당: {fmtWon(totals.nightPay)}원</span>
+                  <span>총 직접 인건비: {fmtWon(totals.directPay)}원</span>
+                  <span>총 회사부담(4대보험): {fmtWon(totals.insurance)}원</span>
+                  <span>총 퇴직충당: {fmtWon(totals.severance)}원</span>
+                  <span>총 연차충당: {fmtWon(totals.annualLeave)}원</span>
+                  <span>총 기타 간접비: {fmtWon(totals.otherIndirect)}원</span>
+                  <span className="slc-print-grand">월 총 예상 인건비: {fmtWon(totals.total)}원</span>
+                </div>
+              </section>
+
+              {byRole.length > 0 && (
+                <section className="slc-print-section">
+                  <h2>직무별 합계</h2>
+                  <div className="slc-print-kv">
+                    {byRole.map((b) => (
+                      <span key={b.role}>{b.role} {b.count}명 · {fmtWon(b.total)}원</span>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              <section className="slc-print-section">
+                <h2>직원별 결과</h2>
+                <table className="slc-print-table">
+                  <thead>
+                    <tr>
+                      <th>직원명</th>
+                      <th>직무</th>
+                      <th>주</th>
+                      <th>월</th>
+                      <th>기본급</th>
+                      <th>주휴</th>
+                      <th>연장</th>
+                      <th>야간</th>
+                      <th>직접</th>
+                      <th>간접</th>
+                      <th>총액</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.map(({ emp, r }) => (
+                      <tr key={emp.id}>
+                        <td>{emp.name || '(미입력)'}</td>
+                        <td>{emp.role}</td>
+                        <td>{fmtHours(r.weeklyHours)}</td>
+                        <td>{fmtHours(r.monthlyHours)}</td>
+                        <td>{fmtWon(r.basePay)}</td>
+                        <td>{fmtWon(r.holidayPay)}</td>
+                        <td>{fmtWon(r.overtimePay)}</td>
+                        <td>{fmtWon(r.nightPay)}</td>
+                        <td>{fmtWon(r.directPay)}</td>
+                        <td>{fmtWon(r.indirectTotal)}</td>
+                        <td>{fmtWon(r.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={2}>합계</td>
+                      <td>-</td>
+                      <td>{fmtHours(totals.monthlyHours)}</td>
+                      <td>{fmtWon(totals.basePay)}</td>
+                      <td>{fmtWon(totals.holidayPay)}</td>
+                      <td>{fmtWon(totals.overtimePay)}</td>
+                      <td>{fmtWon(totals.nightPay)}</td>
+                      <td>{fmtWon(totals.directPay)}</td>
+                      <td>{fmtWon(totals.indirectTotal)}</td>
+                      <td>{fmtWon(totals.total)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </section>
+
+              <footer className="slc-print-footer">
+                본 산출 결과는 내부 운영비 검토를 위한 참고 자료입니다. 실제 급여 지급 및 노무 처리는 근로계약, 취업규칙, 최신 법령 및 전문가 검토에 따라 확정해야 합니다.
+              </footer>
+            </article>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
