@@ -1,0 +1,276 @@
+.slc-info-box {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #eef4ff;
+  border: 1px solid #c7dbff;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1d4ed8;
+}
+
+.slc-summary-card .card-content {
+  padding-top: 4px;
+}
+
+.slc-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.slc-sum-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e3e8ef;
+  border-radius: 8px;
+}
+
+.slc-sum-item span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.slc-sum-item strong {
+  font-size: 16px;
+  color: #1f2a44;
+}
+
+.slc-sum-total {
+  background: #1f2a44;
+  border-color: #1f2a44;
+}
+
+.slc-sum-total span {
+  color: #cbd5e1;
+}
+
+.slc-sum-total strong {
+  color: #fff;
+}
+
+.slc-byrole {
+  margin-top: 14px;
+}
+
+.slc-byrole h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.slc-byrole-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.slc-byrole-item {
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #e8f0fe;
+  color: #1d4ed8;
+}
+
+.slc-note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #64748b;
+}
+
+.slc-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.slc-settings-grid label,
+.slc-emp-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.slc-settings-grid input,
+.slc-emp-card input[type='text'],
+.slc-emp-card input[type='number'],
+.slc-emp-card input[type='time'],
+.slc-emp-card select {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.slc-emp-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.slc-msg {
+  font-size: 13px;
+  color: #0a7f3f;
+}
+
+.slc-empty {
+  padding: 24px;
+  text-align: center;
+  color: #8a93a6;
+}
+
+.slc-emp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.slc-emp-card {
+  border: 1px solid #e3e8ef;
+  border-radius: 10px;
+  padding: 14px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.slc-emp-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.slc-emp-row label {
+  flex: 1 1 140px;
+}
+
+.slc-emp-row .slc-f-name {
+  flex: 2 1 200px;
+}
+
+.slc-emp-days {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.slc-days-label {
+  font-size: 13px;
+  color: #475569;
+  margin-right: 4px;
+}
+
+.slc-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #64748b;
+}
+
+.slc-day.on {
+  background: #e8f0fe;
+  border-color: #1d4ed8;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.slc-emp-flags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+  padding-top: 8px;
+  border-top: 1px solid #eef1f6;
+}
+
+.slc-emp-flags > label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.slc-emp-flags .slc-f-memo {
+  flex: 1 1 200px;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.slc-result-wrap {
+  overflow-x: auto;
+}
+
+.slc-result-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 880px;
+}
+
+.slc-result-table th,
+.slc-result-table td {
+  padding: 9px 10px;
+  text-align: left;
+  border-bottom: 1px solid #eef1f6;
+  white-space: nowrap;
+}
+
+.slc-result-table th {
+  background: #f9fafb;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.slc-result-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.slc-total-cell {
+  font-weight: 700;
+  color: #1f2a44;
+}
+
+.slc-result-table tfoot td {
+  background: #f4f6f9;
+  font-weight: 600;
+  color: #1f2a44;
+  border-top: 2px solid #e3e8ef;
+}
+
+.slc-disclaimer {
+  margin-top: 16px;
+  padding: 14px;
+  background: #fff8ed;
+  border: 1px solid #f3d5ad;
+  border-radius: 8px;
+}
+
+.slc-disclaimer p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #92500e;
+}
+
+.slc-disclaimer p:last-child {
+  margin-bottom: 0;
+}
