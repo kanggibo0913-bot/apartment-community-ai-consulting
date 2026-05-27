@@ -276,6 +276,37 @@ const computeEmployee = (emp: Employee, st: CalcSettings): EmpResult => {
 const fmtWon = (n: number) => Math.round(Number.isFinite(n) ? n : 0).toLocaleString('ko-KR')
 const fmtHours = (n: number) => (Number.isFinite(n) ? n : 0).toFixed(1)
 
+// ─── 저장본(스냅샷) 관리 ───────────────────────────────────────────────────────
+// 현재 산출(siteLaborCostData)을 단지명/기준월/저장명 기준으로 별도 key에 보관한다.
+// ⚠️ 기존 siteLaborCostData 구조는 변경하지 않는다. 저장본은 별도 key(siteLaborCostSnapshots)로만 관리.
+const SNAPSHOT_KEY = 'siteLaborCostSnapshots'
+
+export interface LaborCostSnapshot {
+  id: string
+  title: string
+  apartmentName: string
+  baseMonth: string
+  savedAt: string
+  updatedAt?: string
+  data: SiteLaborCostData
+}
+
+const loadSnapshots = (): LaborCostSnapshot[] => {
+  try {
+    const raw = window.localStorage.getItem(SNAPSHOT_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as LaborCostSnapshot[]) : []
+  } catch {
+    return []
+  }
+}
+
+// 저장본 요약치(목록 표시·정렬용). computeEmployee 재사용 — 방어적으로 누락 필드 처리.
+const snapshotEmpCount = (data: SiteLaborCostData): number => data?.employees?.length ?? 0
+const snapshotMonthlyTotal = (data: SiteLaborCostData): number =>
+  (data?.employees ?? []).reduce((sum, emp) => sum + computeEmployee(emp, data.settings).total, 0)
+
 const SiteLaborCostPage: React.FC = () => {
   const initial = loadData()
   const [settings, setSettings] = useState<CalcSettings>(initial.settings)
@@ -457,6 +488,96 @@ const SiteLaborCostPage: React.FC = () => {
 
   const hasEmployees = employees.length > 0
 
+  // ─── 저장본 관리 ───────────────────────────────────────────────────────────
+  const [snapshots, setSnapshots] = useState<LaborCostSnapshot[]>(loadSnapshots)
+  const [saveOpen, setSaveOpen] = useState(false)
+  const [saveTitle, setSaveTitle] = useState('')
+  const [saveApt, setSaveApt] = useState('')
+  const [saveMonth, setSaveMonth] = useState('')
+  const [snapQuery, setSnapQuery] = useState('')
+  const [snapSort, setSnapSort] = useState<'latest' | 'oldest' | 'month' | 'apartment' | 'totalDesc' | 'totalAsc'>('latest')
+
+  useEffect(() => {
+    window.localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshots))
+  }, [snapshots])
+
+  const openSaveModal = () => {
+    setSaveTitle(`${settings.baseMonth || ''} 현장 인건비 산출`.trim())
+    setSaveApt('')
+    setSaveMonth(settings.baseMonth || '')
+    setSaveOpen(true)
+  }
+
+  const doSave = () => {
+    const now = new Date().toISOString()
+    const month = saveMonth.trim() || settings.baseMonth
+    const snap: LaborCostSnapshot = {
+      id: 'slc-snap-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      title: saveTitle.trim() || `${month || ''} 현장 인건비 산출`.trim() || '현장 인건비 산출',
+      apartmentName: saveApt.trim(),
+      baseMonth: month,
+      savedAt: now,
+      data: { settings, employees },
+    }
+    setSnapshots((prev) => [snap, ...prev])
+    setSaveOpen(false)
+    flash('현재 산출이 저장본으로 저장되었습니다.')
+  }
+
+  const loadSnapshot = (snap: LaborCostSnapshot) => {
+    if (!window.confirm('현재 입력 중인 내용이 저장본으로 대체됩니다. 불러오시겠습니까?')) return
+    setSettings({ ...defaultSettings, ...snap.data.settings })
+    setEmployees(snap.data.employees ?? [])
+    flash(`"${snap.title}" 저장본을 불러왔습니다.`)
+  }
+
+  const overwriteSnapshot = (id: string) => {
+    if (!window.confirm('현재 입력 중인 내용으로 이 저장본을 덮어쓰시겠습니까?')) return
+    const now = new Date().toISOString()
+    setSnapshots((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, data: { settings, employees }, baseMonth: settings.baseMonth || s.baseMonth, updatedAt: now } : s,
+      ),
+    )
+    flash('저장본을 현재 내용으로 덮어썼습니다.')
+  }
+
+  const deleteSnapshot = (id: string) => {
+    if (!window.confirm('이 저장본을 삭제하시겠습니까?')) return
+    setSnapshots((prev) => prev.filter((s) => s.id !== id))
+    flash('저장본을 삭제했습니다.')
+  }
+
+  const visibleSnapshots = useMemo(() => {
+    const q = snapQuery.trim().toLowerCase()
+    const withMeta = snapshots.map((s) => ({
+      s,
+      total: snapshotMonthlyTotal(s.data),
+      count: snapshotEmpCount(s.data),
+    }))
+    const filtered = withMeta.filter(
+      ({ s }) => !q || [s.title, s.apartmentName, s.baseMonth].filter(Boolean).join(' ').toLowerCase().includes(q),
+    )
+    const dv = (x?: string) => (x ? new Date(x).getTime() || 0 : 0)
+    return filtered.slice().sort((a, b) => {
+      switch (snapSort) {
+        case 'oldest':
+          return dv(a.s.savedAt) - dv(b.s.savedAt)
+        case 'month':
+          return (b.s.baseMonth || '').localeCompare(a.s.baseMonth || '', 'ko')
+        case 'apartment':
+          return (a.s.apartmentName || '').localeCompare(b.s.apartmentName || '', 'ko')
+        case 'totalDesc':
+          return b.total - a.total
+        case 'totalAsc':
+          return a.total - b.total
+        case 'latest':
+        default:
+          return dv(b.s.savedAt) - dv(a.s.savedAt)
+      }
+    })
+  }, [snapshots, snapQuery, snapSort])
+
   return (
     <div className="page slc-page">
       <PageHeader
@@ -469,10 +590,11 @@ const SiteLaborCostPage: React.FC = () => {
       </div>
 
       <div className="slc-actions">
+        <Button variant="primary" onClick={openSaveModal}>현재 산출 저장</Button>
         <Button variant="secondary" onClick={handlePrint} disabled={!hasEmployees}>PDF 저장 / 인쇄</Button>
         <Button variant="secondary" onClick={exportCsv} disabled={!hasEmployees}>CSV 내보내기</Button>
-        {!hasEmployees && <span className="slc-actions-hint">직원 데이터를 먼저 추가해주세요.</span>}
-        {hasEmployees && msg && <span className="slc-msg">{msg}</span>}
+        {!hasEmployees && !msg && <span className="slc-actions-hint">직원 데이터를 먼저 추가해주세요.</span>}
+        {msg && <span className="slc-msg">{msg}</span>}
       </div>
 
       <Card title="결과 요약" className="slc-summary-card">
@@ -694,10 +816,104 @@ const SiteLaborCostPage: React.FC = () => {
         )}
       </Card>
 
+      <Card title={`저장본 관리 (${snapshots.length})`}>
+        <div className="slc-snap-tools">
+          <input
+            type="search"
+            className="slc-snap-search"
+            placeholder="저장명·단지명·기준월 검색"
+            value={snapQuery}
+            onChange={(e) => setSnapQuery(e.target.value)}
+          />
+          <select className="slc-snap-sort" value={snapSort} onChange={(e) => setSnapSort(e.target.value as typeof snapSort)} aria-label="정렬">
+            <option value="latest">최신 저장순</option>
+            <option value="oldest">오래된 저장순</option>
+            <option value="month">기준월순</option>
+            <option value="apartment">단지명순</option>
+            <option value="totalDesc">총 인건비 높은순</option>
+            <option value="totalAsc">총 인건비 낮은순</option>
+          </select>
+          <span className="slc-snap-count">총 {snapshots.length}건 / 표시 {visibleSnapshots.length}건</span>
+        </div>
+
+        {snapshots.length === 0 ? (
+          <p className="slc-empty">저장된 산출본이 없습니다. 상단 "현재 산출 저장"으로 현재 계산을 저장하세요.</p>
+        ) : visibleSnapshots.length === 0 ? (
+          <p className="slc-empty">검색 조건에 맞는 저장본이 없습니다.</p>
+        ) : (
+          <div className="slc-snap-wrap">
+            <table className="slc-snap-table">
+              <thead>
+                <tr>
+                  <th>저장명</th>
+                  <th>단지명</th>
+                  <th>기준월</th>
+                  <th>저장일</th>
+                  <th>직원 수</th>
+                  <th>월 총 예상 인건비</th>
+                  <th>관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleSnapshots.map(({ s, total, count }) => (
+                  <tr key={s.id}>
+                    <td>{s.title}</td>
+                    <td>{s.apartmentName || '-'}</td>
+                    <td>{s.baseMonth || '-'}</td>
+                    <td>
+                      {new Date(s.savedAt).toLocaleString('ko-KR')}
+                      {s.updatedAt && <span className="slc-snap-updated"> · 수정 {new Date(s.updatedAt).toLocaleString('ko-KR')}</span>}
+                    </td>
+                    <td className="num">{count}명</td>
+                    <td className="num">{fmtWon(total)}원</td>
+                    <td className="slc-snap-actions">
+                      <button type="button" onClick={() => loadSnapshot(s)}>불러오기</button>
+                      <button type="button" onClick={() => overwriteSnapshot(s.id)}>덮어쓰기</button>
+                      <button type="button" className="danger" onClick={() => deleteSnapshot(s.id)}>삭제</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="slc-note">저장본은 현재 브라우저의 localStorage에 저장됩니다. 다른 기기 또는 다른 브라우저와 공유하려면 추후 서버 저장 방식으로 전환이 필요합니다.</p>
+      </Card>
+
       <div className="slc-disclaimer">
         <p>본 계산은 내부 운영비 검토를 위한 참고 산출값입니다. 실제 급여 지급, 4대보험, 세무·노무 처리는 근로계약, 취업규칙, 최신 법령 및 전문가 검토에 따라 확정해야 합니다.</p>
         <p>입찰 제출용 산출표는 본 페이지가 아니라 입찰용 기능의 산출표 작성 메뉴에서 별도 관리합니다.</p>
       </div>
+
+      {saveOpen && (
+        <div className="slc-modal-backdrop" onClick={() => setSaveOpen(false)}>
+          <div className="slc-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="slc-modal-head">
+              <h3>현재 산출 저장</h3>
+              <button type="button" className="slc-modal-close" onClick={() => setSaveOpen(false)} aria-label="닫기">✕</button>
+            </div>
+            <div className="slc-modal-body">
+              <label>
+                저장명
+                <input type="text" value={saveTitle} onChange={(e) => setSaveTitle(e.target.value)} placeholder="예: 2026-05 현장 인건비 산출" />
+              </label>
+              <label>
+                단지명
+                <input type="text" value={saveApt} onChange={(e) => setSaveApt(e.target.value)} placeholder="예: 행복아파트" />
+              </label>
+              <label>
+                기준월
+                <input type="month" value={saveMonth} onChange={(e) => setSaveMonth(e.target.value)} />
+              </label>
+              <p className="slc-modal-hint">현재 직원 {employees.length}명 / 계산 기준이 저장본으로 보관됩니다.</p>
+            </div>
+            <div className="slc-modal-foot">
+              <Button variant="secondary" onClick={() => setSaveOpen(false)}>취소</Button>
+              <Button variant="primary" onClick={doSave}>저장</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PDF/인쇄 전용 영역 (화면 숨김, body.site-labor-printing 인쇄 시에만 노출). 결과 요약·직원별 결과만 출력 — 입력폼/버튼/사이드바 제외 */}
       {printing &&

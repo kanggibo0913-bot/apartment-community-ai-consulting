@@ -22,6 +22,177 @@
   color: #8a93a6;
 }
 
+/* 저장본 관리 도구/표 */
+.slc-snap-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.slc-snap-search {
+  flex: 1 1 220px;
+  min-width: 180px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.slc-snap-sort {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  color: #1f2a44;
+  cursor: pointer;
+}
+
+.slc-snap-count {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.slc-snap-wrap {
+  overflow-x: auto;
+}
+
+.slc-snap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 720px;
+}
+
+.slc-snap-table th,
+.slc-snap-table td {
+  padding: 9px 10px;
+  text-align: left;
+  border-bottom: 1px solid #eef1f6;
+  white-space: nowrap;
+}
+
+.slc-snap-table th {
+  background: #f9fafb;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.slc-snap-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.slc-snap-updated {
+  color: #b54708;
+  font-size: 12px;
+}
+
+.slc-snap-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.slc-snap-actions button {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #1f2a44;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.slc-snap-actions button.danger {
+  border-color: #f0c0c0;
+  color: #b71c1c;
+}
+
+/* 저장 모달 */
+.slc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.slc-modal {
+  background: #fff;
+  border-radius: 10px;
+  width: 100%;
+  max-width: 460px;
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
+}
+
+.slc-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.slc-modal-head h3 {
+  margin: 0;
+  font-size: 17px;
+  color: #1f2a44;
+}
+
+.slc-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  color: #64748b;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.slc-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.slc-modal-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.slc-modal-body input {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.slc-modal-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.slc-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 .slc-summary-card .card-content {
   padding-top: 4px;
 }
