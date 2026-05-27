@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
@@ -548,6 +548,71 @@ const SiteLaborCostPage: React.FC = () => {
     flash('저장본을 삭제했습니다.')
   }
 
+  // JSON 백업/가져오기 (저장본이 0개여도 백업 가능, 가져오기는 병합)
+  const importInputRef = useRef<HTMLInputElement>(null)
+
+  const backupSnapshotsJson = () => {
+    const payload = {
+      backupVersion: 1,
+      backupType: 'siteLaborCostSnapshots',
+      exportedAt: new Date().toISOString(),
+      source: 'HOMEBASE AI',
+      count: snapshots.length,
+      items: snapshots,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `site-labor-cost-snapshots-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    flash(`저장본 ${snapshots.length}건을 JSON으로 백업했습니다.`)
+  }
+
+  const importSnapshotsJson = (file: File) => {
+    if (!window.confirm('선택한 JSON 저장본을 현재 저장본 목록에 병합합니다. 기존 저장본은 삭제되지 않습니다. 가져오시겠습니까?')) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(String(reader.result))
+      } catch {
+        flash('JSON 파일을 읽을 수 없습니다.')
+        return
+      }
+      const obj = parsed as { backupType?: string; items?: unknown }
+      if (!obj || typeof obj !== 'object' || !Array.isArray(obj.items)) {
+        flash('올바른 저장본 백업 파일이 아닙니다.')
+        return
+      }
+      if (obj.backupType !== 'siteLaborCostSnapshots') {
+        flash('현재 페이지와 다른 종류의 백업 파일입니다.')
+        return
+      }
+      const now = new Date().toISOString()
+      const imported: LaborCostSnapshot[] = (obj.items as LaborCostSnapshot[])
+        .filter((it) => it && typeof it === 'object' && it.data && Array.isArray(it.data.employees))
+        .map((it) => ({
+          ...it,
+          id: 'slc-snap-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+          title: `${it.title || '저장본'} (가져옴)`,
+          savedAt: it.savedAt || now,
+          updatedAt: now,
+        }))
+      if (imported.length === 0) {
+        flash('가져올 수 있는 저장본이 없습니다.')
+        return
+      }
+      setSnapshots((prev) => [...prev, ...imported])
+      flash(`${imported.length}개의 저장본을 가져왔습니다.`)
+    }
+    reader.onerror = () => flash('JSON 파일을 읽을 수 없습니다.')
+    reader.readAsText(file)
+  }
+
   const visibleSnapshots = useMemo(() => {
     const q = snapQuery.trim().toLowerCase()
     const withMeta = snapshots.map((s) => ({
@@ -833,6 +898,19 @@ const SiteLaborCostPage: React.FC = () => {
             <option value="totalDesc">총 인건비 높은순</option>
             <option value="totalAsc">총 인건비 낮은순</option>
           </select>
+          <Button variant="secondary" onClick={backupSnapshotsJson}>JSON 백업</Button>
+          <Button variant="secondary" onClick={() => importInputRef.current?.click()}>JSON 가져오기</Button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) importSnapshotsJson(f)
+              e.target.value = ''
+            }}
+          />
           <span className="slc-snap-count">총 {snapshots.length}건 / 표시 {visibleSnapshots.length}건</span>
         </div>
 
@@ -877,7 +955,7 @@ const SiteLaborCostPage: React.FC = () => {
             </table>
           </div>
         )}
-        <p className="slc-note">저장본은 현재 브라우저의 localStorage에 저장됩니다. 다른 기기 또는 다른 브라우저와 공유하려면 추후 서버 저장 방식으로 전환이 필요합니다.</p>
+        <p className="slc-note">저장본은 현재 브라우저에 저장됩니다. JSON 백업을 내려받아두면 다른 PC 또는 브라우저에서 다시 가져올 수 있습니다.</p>
       </Card>
 
       <div className="slc-disclaimer">

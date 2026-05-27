@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import FormGroup from '../components/FormGroup'
@@ -473,6 +473,71 @@ const EstimateCalculator = () => {
     if (!window.confirm('이 저장본을 삭제하시겠습니까?')) return
     setBidSnapshots((prev) => prev.filter((s) => s.id !== id))
     flashSnap('저장본을 삭제했습니다.')
+  }
+
+  // JSON 백업/가져오기 (저장본 0개여도 백업 가능, 가져오기는 병합)
+  const snapImportRef = useRef<HTMLInputElement>(null)
+
+  const backupBidSnapshotsJson = () => {
+    const payload = {
+      backupVersion: 1,
+      backupType: 'bidCalculationSnapshots',
+      exportedAt: new Date().toISOString(),
+      source: 'HOMEBASE AI',
+      count: bidSnapshots.length,
+      items: bidSnapshots,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `bid-calculation-snapshots-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    flashSnap(`저장본 ${bidSnapshots.length}건을 JSON으로 백업했습니다.`)
+  }
+
+  const importBidSnapshotsJson = (file: File) => {
+    if (!window.confirm('선택한 JSON 저장본을 현재 저장본 목록에 병합합니다. 기존 저장본은 삭제되지 않습니다. 가져오시겠습니까?')) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(String(reader.result))
+      } catch {
+        flashSnap('JSON 파일을 읽을 수 없습니다.')
+        return
+      }
+      const obj = parsed as { backupType?: string; items?: unknown }
+      if (!obj || typeof obj !== 'object' || !Array.isArray(obj.items)) {
+        flashSnap('올바른 저장본 백업 파일이 아닙니다.')
+        return
+      }
+      if (obj.backupType !== 'bidCalculationSnapshots') {
+        flashSnap('현재 페이지와 다른 종류의 백업 파일입니다.')
+        return
+      }
+      const now = new Date().toISOString()
+      const imported: BidCalculationSnapshot[] = (obj.items as BidCalculationSnapshot[])
+        .filter((it) => it && typeof it === 'object' && it.data)
+        .map((it) => ({
+          ...it,
+          id: 'bid-snap-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+          title: `${it.title || '저장본'} (가져옴)`,
+          savedAt: it.savedAt || now,
+          updatedAt: now,
+        }))
+      if (imported.length === 0) {
+        flashSnap('가져올 수 있는 저장본이 없습니다.')
+        return
+      }
+      setBidSnapshots((prev) => [...prev, ...imported])
+      flashSnap(`${imported.length}개의 저장본을 가져왔습니다.`)
+    }
+    reader.onerror = () => flashSnap('JSON 파일을 읽을 수 없습니다.')
+    reader.readAsText(file)
   }
 
   const visibleBidSnapshots = useMemo(() => {
@@ -1009,6 +1074,19 @@ const EstimateCalculator = () => {
             <option value="totalDesc">총액 높은순</option>
             <option value="totalAsc">총액 낮은순</option>
           </select>
+          <Button type="button" variant="secondary" onClick={backupBidSnapshotsJson}>JSON 백업</Button>
+          <Button type="button" variant="secondary" onClick={() => snapImportRef.current?.click()}>JSON 가져오기</Button>
+          <input
+            ref={snapImportRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) importBidSnapshotsJson(f)
+              e.target.value = ''
+            }}
+          />
           <span className="bid-snap-count">총 {bidSnapshots.length}건 / 표시 {visibleBidSnapshots.length}건</span>
         </div>
 
@@ -1055,7 +1133,7 @@ const EstimateCalculator = () => {
             </table>
           </div>
         )}
-        <p className="bid-snap-note">저장본은 현재 브라우저의 localStorage에 저장됩니다. 다른 기기 또는 다른 브라우저와 공유하려면 추후 서버 저장 방식으로 전환이 필요합니다.</p>
+        <p className="bid-snap-note">저장본은 현재 브라우저에 저장됩니다. JSON 백업을 내려받아두면 입찰별 산출 이력을 별도로 보관할 수 있습니다.</p>
       </Card>
 
       {snapSaveOpen && (
