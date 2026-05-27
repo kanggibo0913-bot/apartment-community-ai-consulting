@@ -303,8 +303,9 @@ const loadSnapshots = (): LaborCostSnapshot[] => {
 }
 
 // 저장본 요약치(목록 표시·정렬용). computeEmployee 재사용 — 방어적으로 누락 필드 처리.
-const snapshotEmpCount = (data: SiteLaborCostData): number => data?.employees?.length ?? 0
-const snapshotMonthlyTotal = (data: SiteLaborCostData): number =>
+// 월간 리포트 연동에서도 재사용하므로 export (계산 로직 변경 없음, export만 추가).
+export const snapshotEmpCount = (data: SiteLaborCostData): number => data?.employees?.length ?? 0
+export const snapshotMonthlyTotal = (data: SiteLaborCostData): number =>
   (data?.employees ?? []).reduce((sum, emp) => sum + computeEmployee(emp, data.settings).total, 0)
 
 const SiteLaborCostPage: React.FC = () => {

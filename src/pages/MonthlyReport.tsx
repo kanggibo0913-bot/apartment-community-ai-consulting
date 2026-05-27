@@ -4,7 +4,108 @@ import Button from '../components/Button'
 import Card from '../components/Card'
 import AIResultPanel from '../components/AIResultPanel'
 import { callAI } from '../utils/aiClient'
+import { LaborCostSnapshot, snapshotEmpCount, snapshotMonthlyTotal } from './SiteLaborCostPage'
 import './Pages.css'
+
+// ─── 저장본 데이터 연동 (참고자료) ─────────────────────────────────────────────
+// 현장 인건비/입찰 산출표 저장본을 월간 리포트 초안에 "요약"으로만 반영한다.
+// ⚠️ 저장본 raw JSON·직원 개인정보(직원명 등)는 프롬프트/본문에 넣지 않는다 (합계·인원 중심).
+const SITE_SNAP_KEY = 'siteLaborCostSnapshots'
+const BID_SNAP_KEY = 'bidCalculationSnapshots'
+
+// 입찰 저장본은 EstimateCalculator에서 summary를 저장해두므로 읽기 전용 최소 타입으로 사용.
+interface BidSnapshotLite {
+  id: string
+  title: string
+  apartmentName: string
+  baseMonth?: string
+  bidDate?: string
+  savedAt: string
+  updatedAt?: string
+  summary?: {
+    bidAmount: number
+    monthlyTrustTotal: number
+    activeRoleCount: number
+    totalDirectLabor: number
+    totalIndirectLabor: number
+    monthlyFee: number
+  }
+}
+
+const loadSiteSnapshots = (): LaborCostSnapshot[] => {
+  try {
+    const raw = window.localStorage.getItem(SITE_SNAP_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? (parsed as LaborCostSnapshot[]) : []
+  } catch {
+    return []
+  }
+}
+
+const loadBidSnapshots = (): BidSnapshotLite[] => {
+  try {
+    const raw = window.localStorage.getItem(BID_SNAP_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? (parsed as BidSnapshotLite[]) : []
+  } catch {
+    return []
+  }
+}
+
+const formatCurrency = (v: number) => '₩' + Math.round(Number.isFinite(v) ? v : 0).toLocaleString('ko-KR')
+const formatDate = (s?: string) => {
+  if (!s) return '-'
+  const d = new Date(s)
+  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString('ko-KR')
+}
+
+// 현장 인건비 저장본 요약 (직원 개인정보 제외 — 인원수/합계/요율 중심)
+const getSiteLaborSnapshotSummary = (snap: LaborCostSnapshot): string => {
+  const count = snapshotEmpCount(snap.data)
+  const total = snapshotMonthlyTotal(snap.data)
+  const st = snap.data?.settings
+  const lines = [
+    '【현장 인건비 산출 참고자료】',
+    `- 저장명: ${snap.title}`,
+    `- 단지명: ${snap.apartmentName || '-'}`,
+    `- 기준월: ${snap.baseMonth || '-'}`,
+    `- 직원 수: ${count}명`,
+    `- 월 총 예상 인건비: ${formatCurrency(total)}`,
+    `- 저장일: ${formatDate(snap.savedAt)}${snap.updatedAt ? ` (수정 ${formatDate(snap.updatedAt)})` : ''}`,
+  ]
+  if (st) {
+    lines.push(`- 적용 요율: 4대보험 ${st.insuranceRate}% / 퇴직 ${st.severanceRate}% / 연차 ${st.annualLeaveRate}% / 기타 ${st.otherIndirectRate}%`)
+  }
+  lines.push('본 자료는 현장 인건비 산출 저장본을 기반으로 한 참고자료입니다. (직원 개인정보 제외, 합계·인원수 중심)')
+  return lines.join('\n')
+}
+
+// 입찰 산출표 저장본 요약 (summary 중심 — 상세 행 제외)
+const getBidCalculationSnapshotSummary = (snap: BidSnapshotLite): string => {
+  const s = snap.summary
+  const lines = [
+    '【입찰 산출표 참고자료】',
+    `- 저장명: ${snap.title}`,
+    `- 단지명: ${snap.apartmentName || '-'}`,
+    `- 기준월/입찰일: ${snap.bidDate || snap.baseMonth || '-'}`,
+    `- 입찰가액: ${formatCurrency(s?.bidAmount ?? 0)}`,
+    `- 월간 위탁 총계: ${formatCurrency(s?.monthlyTrustTotal ?? 0)}`,
+    `- 적용 인원 수: ${s?.activeRoleCount ?? 0}명`,
+    `- 직접노무비 합계: ${formatCurrency(s?.totalDirectLabor ?? 0)}`,
+    `- 간접노무비 합계: ${formatCurrency(s?.totalIndirectLabor ?? 0)}`,
+    `- 월 위탁수수료: ${formatCurrency(s?.monthlyFee ?? 0)}`,
+    `- 저장일: ${formatDate(snap.savedAt)}${snap.updatedAt ? ` (수정 ${formatDate(snap.updatedAt)})` : ''}`,
+    '본 자료는 입찰 산출표 저장본을 기반으로 한 참고자료입니다. (요약 중심, 상세 행 제외)',
+  ]
+  return lines.join('\n')
+}
+
+const buildSnapshotReportContext = (site: LaborCostSnapshot | null, bid: BidSnapshotLite | null): string => {
+  const parts: string[] = []
+  if (site) parts.push(getSiteLaborSnapshotSummary(site))
+  if (bid) parts.push(getBidCalculationSnapshotSummary(bid))
+  return parts.join('\n\n')
+}
 
 interface MonthlyReportProps {
   data: CommunityData
@@ -28,6 +129,15 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData: reportD
   const [aiLoading, setAiLoading] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
   const [aiError, setAiError] = useState('')
+
+  // 저장본 연동: 선택은 페이지 상태로만 유지(기존 localStorage 구조/키 미변경)
+  const [siteSnapshots] = useState<LaborCostSnapshot[]>(loadSiteSnapshots)
+  const [bidSnapshots] = useState<BidSnapshotLite[]>(loadBidSnapshots)
+  const [selectedSiteId, setSelectedSiteId] = useState('')
+  const [selectedBidId, setSelectedBidId] = useState('')
+  const selectedSite = siteSnapshots.find((s) => s.id === selectedSiteId) ?? null
+  const selectedBid = bidSnapshots.find((s) => s.id === selectedBidId) ?? null
+  const snapshotContext = buildSnapshotReportContext(selectedSite, selectedBid)
 
   // 보고 월이 비어 있으면 현재 월로 안전하게 초기화 (reportMonth 누락 방어)
   useEffect(() => {
@@ -116,7 +226,7 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
 이번 달 커뮤니티센터는 ${data.apartmentInfo.name || '단지'}의 주요 시설 운영을 담당하여 관리사무소 및 입주자분들에게 서비스를 제공하였습니다.
 전체적인 운영 현황은 양호하며, 월간 예상 손익은 ₩${(totalRevenue - totalCost).toLocaleString()}입니다.
 주요 검토사항으로는 ${contractsExpiring > 0 ? `${contractsExpiring}건의 만료 예정 계약 갱신` : '특별한 사항 없음'}이 있습니다.
-
+${snapshotContext ? `\n${snapshotContext}\n` : ''}
 ---
 생성일시: ${new Date().toLocaleString('ko-KR')}`
 
@@ -165,6 +275,8 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
       }).length,
       keyIssues: reportData.keyIssues,
       improvementPlan: reportData.improvementPlan,
+      // 선택한 저장본 요약(합계·인원 중심, 직원 개인정보·raw JSON 제외). 미선택 시 필드 생략.
+      ...(snapshotContext ? { snapshotReference: snapshotContext } : {}),
     }
 
     try {
@@ -274,6 +386,83 @@ ${reportData.improvementPlan ? reportData.improvementPlan : '(입력된 계획 �
             {statusMessage}
           </div>
         )}
+      </Card>
+
+      <Card>
+        <h3 style={{ marginTop: 0 }}>저장본 데이터 연동</h3>
+        <p style={{ marginTop: 0, fontSize: '13px', color: '#667085', lineHeight: 1.6 }}>
+          현장 인건비 산출 또는 입찰 산출표 저장본을 선택하면, 월간 리포트 초안 생성 시 해당 데이터 요약이 함께 반영됩니다.
+        </p>
+
+        <div className="form-group">
+          <label>현장 인건비 저장본</label>
+          {siteSnapshots.length === 0 ? (
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#8a93a6' }}>
+              현장 인건비 저장본이 없습니다. 현장 인건비 산출 화면에서 먼저 저장본을 생성하세요.
+            </p>
+          ) : (
+            <select value={selectedSiteId} onChange={(e) => setSelectedSiteId(e.target.value)}>
+              <option value="">선택 안 함</option>
+              {siteSnapshots.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {`${s.baseMonth || '-'} ${s.apartmentName || '-'} - ${s.title} / 월 예상 인건비 ${formatCurrency(snapshotMonthlyTotal(s.data))}`}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div className="form-group">
+          <label>입찰 산출표 저장본</label>
+          {bidSnapshots.length === 0 ? (
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#8a93a6' }}>
+              입찰 산출표 저장본이 없습니다. 입찰 산출표 작성 화면에서 먼저 저장본을 생성하세요.
+            </p>
+          ) : (
+            <select value={selectedBidId} onChange={(e) => setSelectedBidId(e.target.value)}>
+              <option value="">선택 안 함</option>
+              {bidSnapshots.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {`${s.bidDate || s.baseMonth || '-'} ${s.apartmentName || '-'} - ${s.title} / 입찰가액 ${formatCurrency(s.summary?.bidAmount ?? 0)}`}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {(selectedSite || selectedBid) && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginTop: '8px' }}>
+            {selectedSite && (
+              <div style={{ border: '1px solid #e3e8ef', borderRadius: '8px', padding: '12px', fontSize: '13px', lineHeight: 1.7, background: '#f8fafc' }}>
+                <strong>현장 인건비 미리보기</strong>
+                <div>저장명: {selectedSite.title}</div>
+                <div>단지명: {selectedSite.apartmentName || '-'}</div>
+                <div>기준월: {selectedSite.baseMonth || '-'}</div>
+                <div>직원 수: {snapshotEmpCount(selectedSite.data)}명</div>
+                <div>월 총 예상 인건비: {formatCurrency(snapshotMonthlyTotal(selectedSite.data))}</div>
+                <div>저장일: {formatDate(selectedSite.savedAt)}</div>
+                {selectedSite.updatedAt && <div>수정일: {formatDate(selectedSite.updatedAt)}</div>}
+              </div>
+            )}
+            {selectedBid && (
+              <div style={{ border: '1px solid #e3e8ef', borderRadius: '8px', padding: '12px', fontSize: '13px', lineHeight: 1.7, background: '#f8fafc' }}>
+                <strong>입찰 산출표 미리보기</strong>
+                <div>저장명: {selectedBid.title}</div>
+                <div>단지명: {selectedBid.apartmentName || '-'}</div>
+                <div>기준월/입찰일: {selectedBid.bidDate || selectedBid.baseMonth || '-'}</div>
+                <div>입찰가액: {formatCurrency(selectedBid.summary?.bidAmount ?? 0)}</div>
+                <div>월간 위탁 총계: {formatCurrency(selectedBid.summary?.monthlyTrustTotal ?? 0)}</div>
+                <div>인원 수: {selectedBid.summary?.activeRoleCount ?? 0}명</div>
+                <div>저장일: {formatDate(selectedBid.savedAt)}</div>
+                {selectedBid.updatedAt && <div>수정일: {formatDate(selectedBid.updatedAt)}</div>}
+              </div>
+            )}
+          </div>
+        )}
+
+        <p style={{ marginTop: '12px', marginBottom: 0, fontSize: '12px', color: '#667085', lineHeight: 1.6 }}>
+          선택한 저장본은 월간 리포트 본문에 참고 데이터로 포함됩니다. 원본 저장본은 수정되지 않습니다.
+        </p>
       </Card>
 
       <AIResultPanel
