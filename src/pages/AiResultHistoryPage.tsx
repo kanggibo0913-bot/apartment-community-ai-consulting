@@ -31,6 +31,23 @@ const SOURCE_LABELS: Record<string, string> = {
 }
 const sourceLabel = (t?: string) => (t ? SOURCE_LABELS[t] || '기타' : 'AI 결과')
 
+// 발행 이력 출처 그룹: residentNoticeReport / aiResult(=없음 포함) / etc(그 외 레거시)
+type SourceGroup = 'aiResult' | 'residentNoticeReport' | 'etc'
+const sourceGroupOf = (sourceType?: string): SourceGroup => {
+  if (sourceType === 'residentNoticeReport') return 'residentNoticeReport'
+  if (!sourceType || sourceType === 'aiResult') return 'aiResult'
+  return 'etc'
+}
+
+// 날짜 문자열 → 정렬용 timestamp. 없거나 잘못된 값은 0으로 방어 처리.
+const dateVal = (s?: string): number => {
+  if (!s) return 0
+  const t = new Date(s).getTime()
+  return Number.isNaN(t) ? 0 : t
+}
+
+const statusLabelOf = (status: PublishedStatus) => (status === 'published' ? '공개중' : '공개중지')
+
 // 업무 구분 매핑: 입찰용 taskType, 그 외는 현장 운영
 const BID_TASK_TYPES = ['bidNoticeAnalysis', 'document', 'contractGenerate', 'contractReview']
 const workGroupOf = (taskType: string): 'bid' | 'ops' => (BID_TASK_TYPES.includes(taskType) ? 'bid' : 'ops')
@@ -78,6 +95,12 @@ const AiResultHistoryPage: React.FC = () => {
   const [view, setView] = useState<'ai' | 'published'>('ai')
   const [published, setPublished] = useState<StoredPublishedReport[]>(() => loadPublishedReports())
   const [pubListMsg, setPubListMsg] = useState('')
+
+  // 발행 이력 검색/필터/정렬
+  const [pubQuery, setPubQuery] = useState('')
+  const [pubStatusFilter, setPubStatusFilter] = useState<'all' | PublishedStatus>('all')
+  const [pubSourceFilter, setPubSourceFilter] = useState<'all' | SourceGroup>('all')
+  const [pubSort, setPubSort] = useState<'latest' | 'oldest' | 'updated' | 'apartment' | 'reportMonth'>('latest')
 
   const refresh = () => setItems(loadAiResults())
   const refreshPublished = () => setPublished(loadPublishedReports())
@@ -131,6 +154,45 @@ const AiResultHistoryPage: React.FC = () => {
       .slice()
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
   }, [items, filter, query, workFilter])
+
+  // 발행 이력: 검색 → 상태 필터 → 출처 필터 → 정렬 (모두 동시 적용)
+  const filteredPublished = useMemo(() => {
+    const q = pubQuery.trim().toLowerCase()
+    const list = published.filter((p) => {
+      if (pubStatusFilter !== 'all' && p.status !== pubStatusFilter) return false
+      if (pubSourceFilter !== 'all' && sourceGroupOf(p.sourceType) !== pubSourceFilter) return false
+      if (q) {
+        const haystack = [
+          p.apartmentName,
+          p.reportMonth,
+          p.title,
+          sourceLabel(p.sourceType),
+          statusLabelOf(p.status),
+          (p.sections || []).map((s) => `${s.title} ${s.body}`).join(' '),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
+      return true
+    })
+    return list.slice().sort((a, b) => {
+      switch (pubSort) {
+        case 'oldest':
+          return dateVal(a.publishedAt) - dateVal(b.publishedAt)
+        case 'updated':
+          return dateVal(b.republishedAt || b.publishedAt) - dateVal(a.republishedAt || a.publishedAt)
+        case 'apartment':
+          return (a.apartmentName || '').localeCompare(b.apartmentName || '', 'ko')
+        case 'reportMonth':
+          return (b.reportMonth || '').localeCompare(a.reportMonth || '', 'ko')
+        case 'latest':
+        default:
+          return dateVal(b.publishedAt) - dateVal(a.publishedAt)
+      }
+    })
+  }, [published, pubQuery, pubStatusFilter, pubSourceFilter, pubSort])
 
   const handleDelete = (id: string) => {
     if (!window.confirm('이 AI 결과 이력을 삭제하시겠습니까?')) return
@@ -301,8 +363,64 @@ const AiResultHistoryPage: React.FC = () => {
               아직 발행한 입주민 공개 보고서가 없습니다. "AI 결과 이력" 탭에서 "입주민 공개용 발행"으로 링크를 생성하면 이곳에 기록됩니다.
             </div>
           ) : (
-            <div className="ai-history-list">
-              {published.map((p) => (
+            <>
+              <div className="pub-tools">
+                <input
+                  type="search"
+                  className="pub-tools-search"
+                  placeholder="단지명, 제목, 보고월, 내용으로 검색"
+                  value={pubQuery}
+                  onChange={(e) => setPubQuery(e.target.value)}
+                />
+                <select
+                  className="pub-tools-select"
+                  value={pubStatusFilter}
+                  onChange={(e) => setPubStatusFilter(e.target.value as 'all' | PublishedStatus)}
+                  aria-label="상태 필터"
+                >
+                  <option value="all">상태: 전체</option>
+                  <option value="published">공개중</option>
+                  <option value="disabled">공개중지</option>
+                </select>
+                <select
+                  className="pub-tools-select"
+                  value={pubSourceFilter}
+                  onChange={(e) => setPubSourceFilter(e.target.value as 'all' | SourceGroup)}
+                  aria-label="출처 필터"
+                >
+                  <option value="all">출처: 전체</option>
+                  <option value="aiResult">AI 결과</option>
+                  <option value="residentNoticeReport">입주민 안내 보고서</option>
+                  <option value="etc">기타</option>
+                </select>
+                <select
+                  className="pub-tools-select"
+                  value={pubSort}
+                  onChange={(e) => setPubSort(e.target.value as typeof pubSort)}
+                  aria-label="정렬"
+                >
+                  <option value="latest">최신 발행순</option>
+                  <option value="oldest">오래된 발행순</option>
+                  <option value="updated">최근 갱신순</option>
+                  <option value="apartment">단지명순</option>
+                  <option value="reportMonth">보고월순</option>
+                </select>
+                <span className="pub-tools-count">총 {published.length}건 / 표시 {filteredPublished.length}건</span>
+              </div>
+
+              {filteredPublished.length === 0 ? (
+                <div className="ai-history-empty">
+                  {pubQuery.trim()
+                    ? '검색어에 해당하는 발행 이력이 없습니다.'
+                    : pubStatusFilter === 'published'
+                      ? '공개중인 보고서가 없습니다.'
+                      : pubStatusFilter === 'disabled'
+                        ? '공개중지된 보고서가 없습니다.'
+                        : '조건에 맞는 공개 보고서가 없습니다.'}
+                </div>
+              ) : (
+                <div className="ai-history-list">
+                  {filteredPublished.map((p) => (
                 <div key={p.id} className="ai-history-card">
                   <div className="ai-history-card-head">
                     <span className="ai-history-tasktype">입주민 공개</span>
@@ -338,8 +456,10 @@ const AiResultHistoryPage: React.FC = () => {
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </>
       )}

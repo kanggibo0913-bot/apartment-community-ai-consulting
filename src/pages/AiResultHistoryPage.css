@@ -58,6 +58,52 @@
   color: #b54708;
 }
 
+/* 발행 이력 관리 도구 (검색/상태·출처 필터/정렬/결과 개수) */
+.pub-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e3e8ef;
+  border-radius: 8px;
+}
+
+.pub-tools-search {
+  flex: 1 1 220px;
+  min-width: 180px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.pub-tools-select {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  color: #1f2a44;
+  cursor: pointer;
+}
+
+.pub-tools-count {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .pub-tools-count {
+    margin-left: 0;
+  }
+}
+
 .ai-history-workfilters {
   display: flex;
   flex-wrap: wrap;
