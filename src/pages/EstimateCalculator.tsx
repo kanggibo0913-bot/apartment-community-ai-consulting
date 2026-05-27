@@ -178,6 +178,44 @@ const computeContractMonths = (start: string, end: string): number => {
   return Math.max(1, Math.ceil(diffDays / 30))
 }
 
+// ─── 입찰 산출표 저장본(스냅샷) 관리 ────────────────────────────────────────────
+// 현재 산출표(EstimateSheet)를 저장명/단지명/기준월·입찰일 기준으로 별도 key에 보관한다.
+// ⚠️ 기존 estimateSheets 구조/키는 변경하지 않는다. 저장본은 bidCalculationSnapshots로만 관리.
+// ⚠️ 계산 로직을 새로 만들지 않는다. 요약값은 저장/덮어쓰기 시점에 화면 산출값을 캡처해 보관.
+const BID_SNAPSHOT_KEY = 'bidCalculationSnapshots'
+
+interface BidCalculationSummary {
+  bidAmount: number
+  monthlyTrustTotal: number
+  activeRoleCount: number
+  totalDirectLabor: number
+  totalIndirectLabor: number
+  monthlyFee: number
+}
+
+interface BidCalculationSnapshot {
+  id: string
+  title: string
+  apartmentName: string
+  baseMonth?: string
+  bidDate?: string
+  savedAt: string
+  updatedAt?: string
+  data: EstimateSheet
+  summary: BidCalculationSummary
+}
+
+const loadBidSnapshots = (): BidCalculationSnapshot[] => {
+  try {
+    const raw = window.localStorage.getItem(BID_SNAPSHOT_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as BidCalculationSnapshot[]) : []
+  } catch {
+    return []
+  }
+}
+
 const EstimateCalculator = () => {
   const [tenderNotices, setTenderNotices] = useState<TenderNotice[]>([])
   const [sheets, setSheets] = useState<EstimateSheet[]>([])
@@ -353,6 +391,119 @@ const EstimateCalculator = () => {
   const monthlyTrustTotal = applyTruncation(overallSubtotal + monthlyFee, currentSheet.roundingUnit)
   const bidAmount = applyTruncation(monthlyTrustTotal * contractMonths, currentSheet.roundingUnit)
 
+  // ─── 저장본(스냅샷) 관리 ───────────────────────────────────────────────────
+  const [bidSnapshots, setBidSnapshots] = useState<BidCalculationSnapshot[]>(loadBidSnapshots)
+  const [snapSaveOpen, setSnapSaveOpen] = useState(false)
+  const [snapTitle, setSnapTitle] = useState('')
+  const [snapApt, setSnapApt] = useState('')
+  const [snapMonth, setSnapMonth] = useState('')
+  const [snapBidDate, setSnapBidDate] = useState('')
+  const [snapQuery, setSnapQuery] = useState('')
+  const [snapSort, setSnapSort] = useState<
+    'latest' | 'oldest' | 'periodDesc' | 'periodAsc' | 'apartment' | 'totalDesc' | 'totalAsc'
+  >('latest')
+  const [snapMsg, setSnapMsg] = useState('')
+
+  useEffect(() => {
+    window.localStorage.setItem(BID_SNAPSHOT_KEY, JSON.stringify(bidSnapshots))
+  }, [bidSnapshots])
+
+  const flashSnap = (m: string) => {
+    setSnapMsg(m)
+    window.setTimeout(() => setSnapMsg(''), 2500)
+  }
+
+  // 저장/덮어쓰기 시점의 화면 산출값을 그대로 캡처(별도 계산 로직 없음)
+  const currentSummary = (): BidCalculationSummary => ({
+    bidAmount,
+    monthlyTrustTotal,
+    activeRoleCount,
+    totalDirectLabor,
+    totalIndirectLabor,
+    monthlyFee,
+  })
+
+  const openSnapSave = () => {
+    const apt = currentSheet.siteName || ''
+    setSnapTitle(`${apt ? apt + ' ' : ''}입찰 산출표${currentSheet.estimateMonth ? ` (${currentSheet.estimateMonth})` : ''}`.trim())
+    setSnapApt(apt)
+    setSnapMonth(currentSheet.estimateMonth || '')
+    setSnapBidDate(currentSheet.contractStartDate || '')
+    setSnapSaveOpen(true)
+  }
+
+  const doSnapSave = () => {
+    const now = new Date().toISOString()
+    const snap: BidCalculationSnapshot = {
+      id: 'bid-snap-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      title: snapTitle.trim() || `${snapApt.trim() || '입찰'} 산출표`,
+      apartmentName: snapApt.trim(),
+      baseMonth: snapMonth.trim() || undefined,
+      bidDate: snapBidDate.trim() || undefined,
+      savedAt: now,
+      data: JSON.parse(JSON.stringify(currentSheet)) as EstimateSheet, // 참조 공유 방지 깊은 복사
+      summary: currentSummary(),
+    }
+    setBidSnapshots((prev) => [snap, ...prev])
+    setSnapSaveOpen(false)
+    flashSnap('현재 산출표가 저장본으로 저장되었습니다.')
+  }
+
+  const loadBidSnapshot = (snap: BidCalculationSnapshot) => {
+    if (!window.confirm('현재 입력 중인 산출표가 저장본 데이터로 변경됩니다. 불러오시겠습니까?')) return
+    // 기존 입력 상태 변경 로직(setCurrentSheet + normalize) 재사용
+    setCurrentSheet(normalizeEstimateSheet(snap.data))
+    flashSnap(`"${snap.title}" 저장본을 불러왔습니다.`)
+  }
+
+  const overwriteBidSnapshot = (id: string) => {
+    if (!window.confirm('이 저장본을 현재 산출표로 덮어쓰시겠습니까?')) return
+    const now = new Date().toISOString()
+    const data = JSON.parse(JSON.stringify(currentSheet)) as EstimateSheet
+    const summary = currentSummary()
+    setBidSnapshots((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, data, summary, baseMonth: currentSheet.estimateMonth || s.baseMonth, updatedAt: now } : s,
+      ),
+    )
+    flashSnap('저장본을 현재 산출표로 덮어썼습니다.')
+  }
+
+  const deleteBidSnapshot = (id: string) => {
+    if (!window.confirm('이 저장본을 삭제하시겠습니까?')) return
+    setBidSnapshots((prev) => prev.filter((s) => s.id !== id))
+    flashSnap('저장본을 삭제했습니다.')
+  }
+
+  const visibleBidSnapshots = useMemo(() => {
+    const q = snapQuery.trim().toLowerCase()
+    const filtered = bidSnapshots.filter(
+      (s) => !q || [s.title, s.apartmentName, s.baseMonth, s.bidDate].filter(Boolean).join(' ').toLowerCase().includes(q),
+    )
+    const dv = (x?: string) => (x ? new Date(x).getTime() || 0 : 0)
+    const periodKey = (s: BidCalculationSnapshot) => s.bidDate || s.baseMonth || ''
+    const totalOf = (s: BidCalculationSnapshot) => s.summary?.bidAmount ?? 0
+    return filtered.slice().sort((a, b) => {
+      switch (snapSort) {
+        case 'oldest':
+          return dv(a.savedAt) - dv(b.savedAt)
+        case 'periodDesc':
+          return periodKey(b).localeCompare(periodKey(a), 'ko')
+        case 'periodAsc':
+          return periodKey(a).localeCompare(periodKey(b), 'ko')
+        case 'apartment':
+          return (a.apartmentName || '').localeCompare(b.apartmentName || '', 'ko')
+        case 'totalDesc':
+          return totalOf(b) - totalOf(a)
+        case 'totalAsc':
+          return totalOf(a) - totalOf(b)
+        case 'latest':
+        default:
+          return dv(b.savedAt) - dv(a.savedAt)
+      }
+    })
+  }, [bidSnapshots, snapQuery, snapSort])
+
   return (
     <div className="estimate-page">
       <PageHeader
@@ -383,6 +534,10 @@ const EstimateCalculator = () => {
           <Button type="button" variant="danger" onClick={deleteCurrentSheet}>
             삭제
           </Button>
+          <Button type="button" variant="secondary" onClick={openSnapSave}>
+            현재 산출 저장
+          </Button>
+          {snapMsg && <span className="bid-snap-msg">{snapMsg}</span>}
         </div>
       </div>
 
@@ -835,6 +990,107 @@ const EstimateCalculator = () => {
           <li>산출내역서의 합산 금액과 입찰서 기재금액이 불일치할 경우 무효 처리될 수 있음.</li>
         </ol>
       </Card>
+
+      <Card title={`입찰 산출표 저장본 관리 (${bidSnapshots.length})`}>
+        <div className="bid-snap-tools">
+          <input
+            type="search"
+            className="bid-snap-search"
+            placeholder="저장명·단지명·기준월/입찰일 검색"
+            value={snapQuery}
+            onChange={(e) => setSnapQuery(e.target.value)}
+          />
+          <select className="bid-snap-sort" value={snapSort} onChange={(e) => setSnapSort(e.target.value as typeof snapSort)} aria-label="정렬">
+            <option value="latest">최신 저장순</option>
+            <option value="oldest">오래된 저장순</option>
+            <option value="periodDesc">기준월/입찰일 최신순</option>
+            <option value="periodAsc">기준월/입찰일 오래된순</option>
+            <option value="apartment">단지명 가나다순</option>
+            <option value="totalDesc">총액 높은순</option>
+            <option value="totalAsc">총액 낮은순</option>
+          </select>
+          <span className="bid-snap-count">총 {bidSnapshots.length}건 / 표시 {visibleBidSnapshots.length}건</span>
+        </div>
+
+        {bidSnapshots.length === 0 ? (
+          <p className="bid-snap-empty">저장된 산출표 저장본이 없습니다. 상단 "현재 산출 저장"으로 현재 산출표를 저장하세요.</p>
+        ) : visibleBidSnapshots.length === 0 ? (
+          <p className="bid-snap-empty">검색 조건에 맞는 저장본이 없습니다.</p>
+        ) : (
+          <div className="bid-snap-wrap">
+            <table className="bid-snap-table">
+              <thead>
+                <tr>
+                  <th>저장명</th>
+                  <th>단지명</th>
+                  <th>기준월/입찰일</th>
+                  <th>저장일</th>
+                  <th>입찰가액</th>
+                  <th>월간위탁총계</th>
+                  <th>인원</th>
+                  <th>관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleBidSnapshots.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.title}</td>
+                    <td>{s.apartmentName || '-'}</td>
+                    <td>{s.bidDate || s.baseMonth || '-'}</td>
+                    <td>
+                      {new Date(s.savedAt).toLocaleString('ko-KR')}
+                      {s.updatedAt && <span className="bid-snap-updated"> · 수정 {new Date(s.updatedAt).toLocaleString('ko-KR')}</span>}
+                    </td>
+                    <td className="num">{formatMoney(s.summary?.bidAmount ?? 0)}</td>
+                    <td className="num">{formatMoney(s.summary?.monthlyTrustTotal ?? 0)}</td>
+                    <td className="num">{s.summary?.activeRoleCount ?? 0}</td>
+                    <td className="bid-snap-actions">
+                      <button type="button" onClick={() => loadBidSnapshot(s)}>불러오기</button>
+                      <button type="button" onClick={() => overwriteBidSnapshot(s.id)}>덮어쓰기</button>
+                      <button type="button" className="danger" onClick={() => deleteBidSnapshot(s.id)}>삭제</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="bid-snap-note">저장본은 현재 브라우저의 localStorage에 저장됩니다. 다른 기기 또는 다른 브라우저와 공유하려면 추후 서버 저장 방식으로 전환이 필요합니다.</p>
+      </Card>
+
+      {snapSaveOpen && (
+        <div className="bid-modal-backdrop" onClick={() => setSnapSaveOpen(false)}>
+          <div className="bid-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="bid-modal-head">
+              <h3>현재 산출 저장</h3>
+              <button type="button" className="bid-modal-close" onClick={() => setSnapSaveOpen(false)} aria-label="닫기">✕</button>
+            </div>
+            <div className="bid-modal-body">
+              <label>
+                저장명
+                <input type="text" value={snapTitle} onChange={(e) => setSnapTitle(e.target.value)} placeholder="예: 행복아파트 입찰 산출표" />
+              </label>
+              <label>
+                단지명
+                <input type="text" value={snapApt} onChange={(e) => setSnapApt(e.target.value)} placeholder="예: 행복아파트" />
+              </label>
+              <label>
+                기준월
+                <input type="month" value={snapMonth} onChange={(e) => setSnapMonth(e.target.value)} />
+              </label>
+              <label>
+                입찰 기준일 (선택)
+                <input type="date" value={snapBidDate} onChange={(e) => setSnapBidDate(e.target.value)} />
+              </label>
+              <p className="bid-modal-hint">현재 입찰가액 {formatMoney(bidAmount)} · 적용 인원 {activeRoleCount}명이 저장본으로 보관됩니다.</p>
+            </div>
+            <div className="bid-modal-foot">
+              <Button type="button" variant="secondary" onClick={() => setSnapSaveOpen(false)}>취소</Button>
+              <Button type="button" variant="primary" onClick={doSnapSave}>저장</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
