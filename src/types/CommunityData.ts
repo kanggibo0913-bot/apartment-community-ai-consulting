@@ -445,6 +445,9 @@ export interface MonthlyReportData {
   improvementPlan: string
   memo: string
   generatedReport: string
+  // 저장본 연동 선택값(선택, 기존 데이터 호환). 페이지 상태 대신 영속화하여 새로고침 후에도 유지.
+  selectedSiteLaborSnapshotId?: string
+  selectedBidCalculationSnapshotId?: string
 }
 
 export interface CommunityData {

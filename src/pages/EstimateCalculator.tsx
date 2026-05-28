@@ -191,6 +191,13 @@ interface BidCalculationSummary {
   totalDirectLabor: number
   totalIndirectLabor: number
   monthlyFee: number
+  // 확장 필드(모두 optional — 기존 저장본 호환). 현재 화면이 산출하는 값만 캡처.
+  overallSubtotal?: number // 직접+간접 합 (총괄 소계)
+  contractMonths?: number  // 계약개월수
+  // 아래는 EstimateCalculator가 현재 산출하지 않음 → undefined로 저장(향후 확장 대비 자리).
+  generalManagementFee?: number
+  profit?: number
+  vat?: number
 }
 
 interface BidCalculationSnapshot {
@@ -413,7 +420,9 @@ const EstimateCalculator = () => {
     window.setTimeout(() => setSnapMsg(''), 2500)
   }
 
-  // 저장/덮어쓰기 시점의 화면 산출값을 그대로 캡처(별도 계산 로직 없음)
+  // 저장/덮어쓰기 시점의 화면 산출값을 그대로 캡처(별도 계산 로직 없음).
+  // 확장: 화면이 이미 계산한 overallSubtotal·contractMonths도 함께 저장.
+  // 일반관리비/이윤/부가세는 현재 화면이 산출하지 않으므로 캡처하지 않음(향후 확장 대비 자리만 유지).
   const currentSummary = (): BidCalculationSummary => ({
     bidAmount,
     monthlyTrustTotal,
@@ -421,6 +430,8 @@ const EstimateCalculator = () => {
     totalDirectLabor,
     totalIndirectLabor,
     monthlyFee,
+    overallSubtotal,
+    contractMonths,
   })
 
   const openSnapSave = () => {

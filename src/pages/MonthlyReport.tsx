@@ -4,7 +4,7 @@ import Button from '../components/Button'
 import Card from '../components/Card'
 import AIResultPanel from '../components/AIResultPanel'
 import { callAI } from '../utils/aiClient'
-import { LaborCostSnapshot, snapshotEmpCount, snapshotMonthlyTotal } from './SiteLaborCostPage'
+import { LaborCostSnapshot, snapshotEmpCount, snapshotMonthlyTotal } from '../utils/siteLaborSnapshots'
 import './Pages.css'
 
 // ─── 저장본 데이터 연동 (참고자료) ─────────────────────────────────────────────
@@ -29,6 +29,12 @@ interface BidSnapshotLite {
     totalDirectLabor: number
     totalIndirectLabor: number
     monthlyFee: number
+    // 확장(선택, 기존 저장본 호환). 값이 있을 때만 참고자료에 표시.
+    overallSubtotal?: number
+    contractMonths?: number
+    generalManagementFee?: number
+    profit?: number
+    vat?: number
   }
 }
 
@@ -81,6 +87,7 @@ const getSiteLaborSnapshotSummary = (snap: LaborCostSnapshot): string => {
 }
 
 // 입찰 산출표 저장본 요약 (summary 중심 — 상세 행 제외)
+// 확장 필드(overallSubtotal/contractMonths/일반관리비/이윤/부가세)는 값이 있을 때만 출력.
 const getBidCalculationSnapshotSummary = (snap: BidSnapshotLite): string => {
   const s = snap.summary
   const lines = [
@@ -94,9 +101,14 @@ const getBidCalculationSnapshotSummary = (snap: BidSnapshotLite): string => {
     `- 직접노무비 합계: ${formatCurrency(s?.totalDirectLabor ?? 0)}`,
     `- 간접노무비 합계: ${formatCurrency(s?.totalIndirectLabor ?? 0)}`,
     `- 월 위탁수수료: ${formatCurrency(s?.monthlyFee ?? 0)}`,
-    `- 저장일: ${formatDate(snap.savedAt)}${snap.updatedAt ? ` (수정 ${formatDate(snap.updatedAt)})` : ''}`,
-    '본 자료는 입찰 산출표 저장본을 기반으로 한 참고자료입니다. (요약 중심, 상세 행 제외)',
   ]
+  if (s?.overallSubtotal !== undefined) lines.push(`- 총괄 소계(직접+간접): ${formatCurrency(s.overallSubtotal)}`)
+  if (s?.contractMonths !== undefined) lines.push(`- 계약개월수: ${s.contractMonths}개월`)
+  if (s?.generalManagementFee !== undefined) lines.push(`- 일반관리비: ${formatCurrency(s.generalManagementFee)}`)
+  if (s?.profit !== undefined) lines.push(`- 이윤: ${formatCurrency(s.profit)}`)
+  if (s?.vat !== undefined) lines.push(`- 부가세: ${formatCurrency(s.vat)}`)
+  lines.push(`- 저장일: ${formatDate(snap.savedAt)}${snap.updatedAt ? ` (수정 ${formatDate(snap.updatedAt)})` : ''}`)
+  lines.push('본 자료는 입찰 산출표 저장본을 기반으로 한 참고자료입니다. (요약 중심, 상세 행 제외)')
   return lines.join('\n')
 }
 
@@ -130,14 +142,25 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData: reportD
   const [statusMessage, setStatusMessage] = useState('')
   const [aiError, setAiError] = useState('')
 
-  // 저장본 연동: 선택은 페이지 상태로만 유지(기존 localStorage 구조/키 미변경)
+  // 저장본 연동: 선택값은 MonthlyReportData에 영속(communityAiProjects key는 그대로, 필드만 optional 추가)
   const [siteSnapshots] = useState<LaborCostSnapshot[]>(loadSiteSnapshots)
   const [bidSnapshots] = useState<BidSnapshotLite[]>(loadBidSnapshots)
-  const [selectedSiteId, setSelectedSiteId] = useState('')
-  const [selectedBidId, setSelectedBidId] = useState('')
+  const selectedSiteId = reportData.selectedSiteLaborSnapshotId ?? ''
+  const selectedBidId = reportData.selectedBidCalculationSnapshotId ?? ''
   const selectedSite = siteSnapshots.find((s) => s.id === selectedSiteId) ?? null
   const selectedBid = bidSnapshots.find((s) => s.id === selectedBidId) ?? null
   const snapshotContext = buildSnapshotReportContext(selectedSite, selectedBid)
+
+  // 저장된 선택 id가 더 이상 존재하지 않으면(타 페이지에서 삭제됨) 안전하게 정리.
+  useEffect(() => {
+    if (selectedSiteId && !siteSnapshots.some((s) => s.id === selectedSiteId)) {
+      onChange({ selectedSiteLaborSnapshotId: '' })
+    }
+    if (selectedBidId && !bidSnapshots.some((s) => s.id === selectedBidId)) {
+      onChange({ selectedBidCalculationSnapshotId: '' })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 보고 월이 비어 있으면 현재 월로 안전하게 초기화 (reportMonth 누락 방어)
   useEffect(() => {
@@ -401,7 +424,7 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
               현장 인건비 저장본이 없습니다. 현장 인건비 산출 화면에서 먼저 저장본을 생성하세요.
             </p>
           ) : (
-            <select value={selectedSiteId} onChange={(e) => setSelectedSiteId(e.target.value)}>
+            <select value={selectedSiteId} onChange={(e) => onChange({ selectedSiteLaborSnapshotId: e.target.value })}>
               <option value="">선택 안 함</option>
               {siteSnapshots.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -419,7 +442,7 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
               입찰 산출표 저장본이 없습니다. 입찰 산출표 작성 화면에서 먼저 저장본을 생성하세요.
             </p>
           ) : (
-            <select value={selectedBidId} onChange={(e) => setSelectedBidId(e.target.value)}>
+            <select value={selectedBidId} onChange={(e) => onChange({ selectedBidCalculationSnapshotId: e.target.value })}>
               <option value="">선택 안 함</option>
               {bidSnapshots.map((s) => (
                 <option key={s.id} value={s.id}>
