@@ -203,3 +203,36 @@ export function deleteAiResult(id: string): void {
   const list = loadAiResults().filter((e) => e.id !== id)
   window.localStorage.setItem(AI_RESULTS_STORAGE_KEY, JSON.stringify(list))
 }
+
+/**
+ * AI 호출 실패 시 오류 이력을 안전하게 저장한다.
+ * - 내부에서 try/catch로 감싸므로 호출부 UX를 절대 깨뜨리지 않는다(저장 실패 시 console.warn).
+ * - content는 빈 문자열, status는 'error'로 고정. prompt/error는 safeString으로 길이 제한.
+ * - 호출부는 prompt에 API Key/.env/원문 전체/저장본 raw JSON/직원 개인정보를 넣지 않도록 책임진다.
+ */
+export function saveAiErrorResult(input: {
+  title: string
+  taskType: string
+  error: string
+  prompt?: string
+  sourcePage?: string
+  provider?: string
+  meta?: Record<string, unknown>
+}): void {
+  try {
+    saveAiResult({
+      title: input.title,
+      taskType: input.taskType,
+      content: '',
+      status: 'error',
+      provider: input.provider || 'netlify',
+      ...(input.prompt ? { prompt: input.prompt } : {}),
+      error: input.error,
+      ...(input.sourcePage ? { sourcePage: input.sourcePage } : {}),
+      ...(input.meta ? { meta: input.meta } : {}),
+    })
+  } catch (e) {
+    // 이력 저장이 실패해도 AI 호출 UX는 유지한다. 콘솔 경고만 남긴다.
+    console.warn('[saveAiErrorResult] failed to persist error history:', e)
+  }
+}

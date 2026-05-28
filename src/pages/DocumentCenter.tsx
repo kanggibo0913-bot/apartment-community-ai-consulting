@@ -6,7 +6,7 @@ import Button from '../components/Button'
 import { DocumentCenterData, DocumentType } from '../types/CommunityData'
 import { generateDocumentDraft } from '../utils/localDraftGenerators'
 import { callAiFunction } from '../utils/aiClient'
-import { saveAiResult } from '../utils/storage'
+import { saveAiResult, saveAiErrorResult } from '../utils/storage'
 import './Pages.css'
 
 interface DocumentCenterProps {
@@ -38,7 +38,16 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ data, onChange }) => {
       onChange({ generatedDocument: response.result })
       saveAiResult({ title: data.title?.trim() || `${data.documentType} 문서`, taskType: 'document', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'document' })
     } else {
-      setAiError(response.error || 'AI 생성 중 오류가 발생했습니다.')
+      const errMsg = response.error || 'AI 생성 중 오류가 발생했습니다.'
+      setAiError(errMsg)
+      // 오류 이력 저장 (본문/요청내용 원문은 저장하지 않고 문서 종류·제목만)
+      saveAiErrorResult({
+        title: `${data.title?.trim() || `${data.documentType} 문서`} 생성 오류`,
+        taskType: 'document',
+        error: errMsg,
+        prompt: `문서 종류: ${data.documentType || '-'} / 제목: ${data.title || '-'}`,
+        sourcePage: 'document',
+      })
     }
     setAiLoading(false)
   }

@@ -6,7 +6,7 @@ import Button from '../components/Button'
 import { AgendaPredictorData, SourceType, AgendaFacility } from '../types/CommunityData'
 import { predictAgenda } from '../utils/localDraftGenerators'
 import { callAiFunction } from '../utils/aiClient'
-import { saveAiResult } from '../utils/storage'
+import { saveAiResult, saveAiErrorResult } from '../utils/storage'
 import './Pages.css'
 
 interface AgendaPredictorProps {
@@ -41,7 +41,16 @@ const AgendaPredictor: React.FC<AgendaPredictorProps> = ({ data, onChange }) => 
       onChange({ generatedAgenda: response.result })
       saveAiResult({ title: `${data.apartmentName?.trim() || '입대의'} 안건 예상`, taskType: 'agendaPredict', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'agenda' })
     } else {
-      setAiError(response.error || 'AI 안건 예측 중 오류가 발생했습니다.')
+      const errMsg = response.error || 'AI 안건 예측 중 오류가 발생했습니다.'
+      setAiError(errMsg)
+      // 오류 이력 저장 (개인정보 보호: 원문 sourceText 전체는 저장하지 않고 단지명·시설·긴급도 요약만)
+      saveAiErrorResult({
+        title: `${data.apartmentName?.trim() || '입대의'} 안건 예상 오류`,
+        taskType: 'agendaPredict',
+        error: errMsg,
+        prompt: `단지명: ${data.apartmentName || '-'} / 시설: ${data.relatedFacility || '-'} / 출처유형: ${data.sourceType || '-'} / 긴급도: ${data.urgency || '-'}`,
+        sourcePage: 'agenda',
+      })
     }
     setAiLoading(false)
   }

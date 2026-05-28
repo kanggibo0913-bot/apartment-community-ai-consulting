@@ -6,7 +6,7 @@ import Button from '../components/Button'
 import { ContractGeneratorData, ContractDocumentType } from '../types/CommunityData'
 import { generateContractDraft } from '../utils/localDraftGenerators'
 import { callAiFunction } from '../utils/aiClient'
-import { saveAiResult } from '../utils/storage'
+import { saveAiResult, saveAiErrorResult } from '../utils/storage'
 import './Pages.css'
 
 interface ContractGeneratorProps {
@@ -45,7 +45,16 @@ const ContractGenerator: React.FC<ContractGeneratorProps> = ({ data, onChange })
       onChange({ generatedContract: response.result })
       saveAiResult({ title: data.contractTitle?.trim() || data.contractType, taskType: 'contractGenerate', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'contract' })
     } else {
-      setAiError(response.error || 'AI 생성 중 오류가 발생했습니다.')
+      const errMsg = response.error || 'AI 생성 중 오류가 발생했습니다.'
+      setAiError(errMsg)
+      // 오류 이력 저장 (계약서 본문/메모/금액 등 원문은 저장하지 않고 종류·제목 요약만)
+      saveAiErrorResult({
+        title: `${data.contractTitle?.trim() || data.contractType} 생성 오류`,
+        taskType: 'contractGenerate',
+        error: errMsg,
+        prompt: `계약 종류: ${data.contractType || '-'} / 제목: ${data.contractTitle || '-'}`,
+        sourcePage: 'contract',
+      })
     }
     setAiLoading(false)
   }

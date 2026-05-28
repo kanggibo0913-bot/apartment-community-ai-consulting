@@ -4,6 +4,7 @@ import Button from '../components/Button'
 import Card from '../components/Card'
 import AIResultPanel from '../components/AIResultPanel'
 import { callAI } from '../utils/aiClient'
+import { saveAiErrorResult } from '../utils/storage'
 import { LaborCostSnapshot, snapshotEmpCount, snapshotMonthlyTotal } from '../utils/siteLaborSnapshots'
 import './Pages.css'
 
@@ -304,20 +305,29 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
 
     try {
       const result = await callAI('monthlyReport', payload)
+      // 오류 이력 저장용 안전 프롬프트 요약 (snapshotReference·raw 데이터는 저장하지 않음)
+      const promptSummary = `보고월: ${reportData.reportMonth || '-'} / 요약메모: ${(reportData.summaryMemo || '').slice(0, 120)} / 주요이슈: ${(reportData.keyIssues || '').slice(0, 120)}`
       if (result.ok) {
         const text = (result.result || '').trim()
         if (!text) {
-          setAiError('AI가 빈 응답을 반환했습니다. 잠시 후 다시 시도해주세요.')
+          const errMsg = 'AI가 빈 응답을 반환했습니다. 잠시 후 다시 시도해주세요.'
+          setAiError(errMsg)
+          saveAiErrorResult({ title: `${reportData.reportMonth || ''} 월간 리포트 오류`.trim(), taskType: 'monthlyReport', error: errMsg, prompt: promptSummary, sourcePage: 'monthly-report' })
         } else {
           onChange({ generatedReport: text })
           showMessage('AI 리포트 생성이 완료되었습니다.')
         }
       } else {
-        setAiError(result.error || 'AI 응답 생성 중 알 수 없는 오류가 발생했습니다.')
+        const errMsg = result.error || 'AI 응답 생성 중 알 수 없는 오류가 발생했습니다.'
+        setAiError(errMsg)
+        saveAiErrorResult({ title: `${reportData.reportMonth || ''} 월간 리포트 오류`.trim(), taskType: 'monthlyReport', error: errMsg, prompt: promptSummary, sourcePage: 'monthly-report' })
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
-      setAiError(msg || 'AI 응답 생성 중 알 수 없는 오류가 발생했습니다.')
+      const errMsg = msg || 'AI 응답 생성 중 알 수 없는 오류가 발생했습니다.'
+      setAiError(errMsg)
+      const promptSummary = `보고월: ${reportData.reportMonth || '-'} / 요약메모: ${(reportData.summaryMemo || '').slice(0, 120)} / 주요이슈: ${(reportData.keyIssues || '').slice(0, 120)}`
+      saveAiErrorResult({ title: `${reportData.reportMonth || ''} 월간 리포트 오류`.trim(), taskType: 'monthlyReport', error: errMsg, prompt: promptSummary, sourcePage: 'monthly-report' })
     } finally {
       setAiLoading(false)
     }

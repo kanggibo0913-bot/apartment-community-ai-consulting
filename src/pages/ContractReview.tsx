@@ -6,7 +6,7 @@ import Button from '../components/Button'
 import { ContractReviewData } from '../types/CommunityData'
 import { generateContractReviewResult } from '../utils/localDraftGenerators'
 import { callAiFunction } from '../utils/aiClient'
-import { saveAiResult } from '../utils/storage'
+import { saveAiResult, saveAiErrorResult } from '../utils/storage'
 import './Pages.css'
 
 interface ContractReviewProps {
@@ -55,7 +55,16 @@ const ContractReview: React.FC<ContractReviewProps> = ({ data, onChange }) => {
       onChange({ reviewResult: response.result })
       saveAiResult({ title: `${data.uploadedFileName?.trim() || '계약서'} 검토 결과`, taskType: 'contractReview', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'review' })
     } else {
-      setAiError(response.error || 'AI 검토 중 오류가 발생했습니다.')
+      const errMsg = response.error || 'AI 검토 중 오류가 발생했습니다.'
+      setAiError(errMsg)
+      // 오류 이력 저장 (업로드 계약서 원문/금액은 절대 저장 금지 — 파일명·길이만 메타로)
+      saveAiErrorResult({
+        title: `${data.uploadedFileName?.trim() || '계약서'} 검토 오류`,
+        taskType: 'contractReview',
+        error: errMsg,
+        prompt: `파일명: ${data.uploadedFileName || '-'} / 본문 길이: ${(data.contractText || '').length}자 (원문은 저장하지 않음)`,
+        sourcePage: 'review',
+      })
     }
     setAiLoading(false)
   }
