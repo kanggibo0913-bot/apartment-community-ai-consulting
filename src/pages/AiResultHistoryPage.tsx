@@ -75,12 +75,23 @@ const previewText = (content: string) =>
     .join(' ')
     .slice(0, 160)
 
+// 메타데이터 안전 추출(구버전 데이터 호환 — status/provider 없으면 fallback).
+const statusOf = (it: AiResultEntry): 'success' | 'error' => {
+  if (it.status === 'error') return 'error'
+  if (it.status === 'success') return 'success'
+  return it.error ? 'error' : 'success'
+}
+const providerOf = (it: AiResultEntry): string => it.provider || 'unknown'
+const statusLabel = (s: 'success' | 'error') => (s === 'success' ? '성공' : '오류')
+
 const AiResultHistoryPage: React.FC = () => {
   const [items, setItems] = useState<AiResultEntry[]>(() => loadAiResults())
   const [workFilter, setWorkFilter] = useState<'all' | 'bid' | 'ops'>('all')
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
   const [aiSort, setAiSort] = useState<'latest' | 'oldest' | 'taskType'>('latest')
+  const [aiStatusFilter, setAiStatusFilter] = useState<'all' | 'success' | 'error'>('all')
+  const [aiProviderFilter, setAiProviderFilter] = useState<string>('all')
   const [selected, setSelected] = useState<AiResultEntry | null>(null)
   const [copyMsg, setCopyMsg] = useState('')
 
@@ -145,13 +156,24 @@ const AiResultHistoryPage: React.FC = () => {
     return items
       .filter((it) => workFilter === 'all' || workGroupOf(it.taskType) === workFilter)
       .filter((it) => active.match(it.taskType))
-      .filter(
-        (it) =>
-          !q ||
-          it.title.toLowerCase().includes(q) ||
-          it.content.toLowerCase().includes(q) ||
-          taskLabel(it.taskType).toLowerCase().includes(q),
-      )
+      .filter((it) => aiStatusFilter === 'all' || statusOf(it) === aiStatusFilter)
+      .filter((it) => aiProviderFilter === 'all' || providerOf(it) === aiProviderFilter)
+      .filter((it) => {
+        if (!q) return true
+        const haystack = [
+          it.title,
+          it.content,
+          taskLabel(it.taskType),
+          providerOf(it),
+          statusLabel(statusOf(it)),
+          it.prompt || '',
+          it.error || '',
+          it.sourcePage || '',
+        ]
+          .join(' ')
+          .toLowerCase()
+        return haystack.includes(q)
+      })
       .slice()
       .sort((a, b) => {
         switch (aiSort) {
@@ -164,15 +186,22 @@ const AiResultHistoryPage: React.FC = () => {
             return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0
         }
       })
-  }, [items, filter, query, workFilter, aiSort])
+  }, [items, filter, query, workFilter, aiSort, aiStatusFilter, aiProviderFilter])
 
-  // 통합 화면 요약 (전체/주요 taskType 개수/최근 생성일). 현재 AiResultEntry에 provider/error 필드가
-  // 없어 성공·오류·provider 분리 통계는 산출하지 않는다(데이터 구조 변경 금지 정책).
+  // provider 옵션은 데이터에서 동적 추출 (없으면 'unknown' fallback 포함)
+  const providerOptions = useMemo(() => {
+    const set = new Set<string>(items.map(providerOf))
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [items])
+
+  // 통합 화면 요약. 메타데이터 확장 후 성공/오류 카운트도 산출(구버전 데이터는 fallback으로 분류).
   const aiSummary = useMemo(() => {
     const total = items.length
     const distinctTaskTypes = new Set(items.map((it) => it.taskType)).size
     const latest = items.reduce<string>((acc, it) => (it.createdAt > acc ? it.createdAt : acc), '')
-    return { total, distinctTaskTypes, latest }
+    const successCount = items.filter((it) => statusOf(it) === 'success').length
+    const errorCount = items.filter((it) => statusOf(it) === 'error').length
+    return { total, distinctTaskTypes, latest, successCount, errorCount }
   }, [items])
 
   // AI 이력 JSON 백업 (저장본 백업 패턴과 동일, backupType만 aiResultHistory)
@@ -326,6 +355,14 @@ const AiResultHistoryPage: React.FC = () => {
             <strong>{aiSummary.distinctTaskTypes}종</strong>
           </div>
           <div className="ai-summary-item">
+            <span>성공</span>
+            <strong>{aiSummary.successCount}건</strong>
+          </div>
+          <div className="ai-summary-item">
+            <span>오류</span>
+            <strong>{aiSummary.errorCount}건</strong>
+          </div>
+          <div className="ai-summary-item">
             <span>최근 생성일</span>
             <strong>{aiSummary.latest ? new Date(aiSummary.latest).toLocaleString('ko-KR') : '-'}</strong>
           </div>
@@ -365,6 +402,27 @@ const AiResultHistoryPage: React.FC = () => {
         </div>
         <select
           className="ai-history-sort"
+          value={aiStatusFilter}
+          onChange={(e) => setAiStatusFilter(e.target.value as typeof aiStatusFilter)}
+          aria-label="상태 필터"
+        >
+          <option value="all">상태: 전체</option>
+          <option value="success">성공</option>
+          <option value="error">오류</option>
+        </select>
+        <select
+          className="ai-history-sort"
+          value={aiProviderFilter}
+          onChange={(e) => setAiProviderFilter(e.target.value)}
+          aria-label="provider 필터"
+        >
+          <option value="all">provider: 전체</option>
+          {providerOptions.map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </select>
+        <select
+          className="ai-history-sort"
           value={aiSort}
           onChange={(e) => setAiSort(e.target.value as typeof aiSort)}
           aria-label="정렬"
@@ -398,16 +456,19 @@ const AiResultHistoryPage: React.FC = () => {
         </div>
       ) : (
         <div className="ai-history-list">
-          {filtered.map((it) => (
+          {filtered.map((it) => {
+            const st = statusOf(it)
+            return (
             <div key={it.id} className="ai-history-card">
               <div className="ai-history-card-head">
                 <span className="ai-history-tasktype">{taskLabel(it.taskType)}</span>
                 <span className={`work-badge work-${workGroupOf(it.taskType)}`}>{workGroupLabel(it.taskType)}</span>
-                <span className="ai-history-status">완료</span>
+                <span className={`ai-history-status ai-history-status-${st}`}>{statusLabel(st)}</span>
+                <span className="ai-history-provider">{providerOf(it)}</span>
               </div>
               <h4 className="ai-history-title">{it.title}</h4>
               <div className="ai-history-date">{new Date(it.createdAt).toLocaleString('ko-KR')}</div>
-              <p className="ai-history-preview">{previewText(it.content)}</p>
+              <p className="ai-history-preview">{st === 'error' && it.error ? `오류: ${previewText(it.error)}` : previewText(it.content)}</p>
               <div className="ai-history-actions">
                 <button type="button" onClick={() => setSelected(it)}>
                   열기
@@ -420,7 +481,8 @@ const AiResultHistoryPage: React.FC = () => {
                 </button>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
         </>
@@ -541,6 +603,8 @@ const AiResultHistoryPage: React.FC = () => {
             <div className="ai-history-modal-head">
               <div>
                 <span className="ai-history-tasktype">{taskLabel(selected.taskType)}</span>
+                <span className={`ai-history-status ai-history-status-${statusOf(selected)}`}>{statusLabel(statusOf(selected))}</span>
+                <span className="ai-history-provider">{providerOf(selected)}</span>
                 <h3>{selected.title}</h3>
                 <div className="ai-history-date">{new Date(selected.createdAt).toLocaleString('ko-KR')}</div>
               </div>
@@ -548,9 +612,32 @@ const AiResultHistoryPage: React.FC = () => {
                 ✕
               </button>
             </div>
-            <div className="ai-history-modal-body">{selected.content}</div>
+            {(selected.sourcePage || selected.prompt || selected.error) && (
+              <div className="ai-history-meta">
+                {selected.sourcePage && <div><strong>출처 페이지:</strong> {selected.sourcePage}</div>}
+                {selected.prompt && (
+                  <details>
+                    <summary><strong>요청/프롬프트</strong></summary>
+                    <pre className="ai-history-prompt">{selected.prompt}</pre>
+                  </details>
+                )}
+                {selected.error && (
+                  <div className="ai-history-error-block">
+                    <strong>오류 내용:</strong>
+                    <pre className="ai-history-prompt">{selected.error}</pre>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="ai-history-modal-body">
+              {selected.content
+                ? selected.content
+                : statusOf(selected) === 'error'
+                  ? '(결과 본문 없음 — 오류 이력)'
+                  : ''}
+            </div>
             <div className="ai-history-actions">
-              <button type="button" onClick={() => handleCopy(selected.content)}>
+              <button type="button" onClick={() => handleCopy(selected.content || selected.error || '')}>
                 복사
               </button>
               <button type="button" className="danger" onClick={() => handleDelete(selected.id)}>

@@ -39,7 +39,7 @@ const AgendaPredictor: React.FC<AgendaPredictorProps> = ({ data, onChange }) => 
     const response = await callAiFunction('agendaPredict', data)
     if (response.success && response.result) {
       onChange({ generatedAgenda: response.result })
-      saveAiResult({ title: `${data.apartmentName?.trim() || '입대의'} 안건 예상`, taskType: 'agendaPredict', content: response.result })
+      saveAiResult({ title: `${data.apartmentName?.trim() || '입대의'} 안건 예상`, taskType: 'agendaPredict', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'agenda' })
     } else {
       setAiError(response.error || 'AI 안건 예측 중 오류가 발생했습니다.')
     }

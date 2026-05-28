@@ -53,7 +53,7 @@ const ContractReview: React.FC<ContractReviewProps> = ({ data, onChange }) => {
     })
     if (response.success && response.result) {
       onChange({ reviewResult: response.result })
-      saveAiResult({ title: `${data.uploadedFileName?.trim() || '계약서'} 검토 결과`, taskType: 'contractReview', content: response.result })
+      saveAiResult({ title: `${data.uploadedFileName?.trim() || '계약서'} 검토 결과`, taskType: 'contractReview', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'review' })
     } else {
       setAiError(response.error || 'AI 검토 중 오류가 발생했습니다.')
     }

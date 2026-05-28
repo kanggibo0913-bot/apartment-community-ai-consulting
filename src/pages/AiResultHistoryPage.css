@@ -64,6 +64,70 @@
   cursor: pointer;
 }
 
+/* 상태/provider 배지 (메타데이터 확장) */
+.ai-history-status-success {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e7f6ee;
+  color: #0a7f3f;
+}
+
+.ai-history-status-error {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fde7e7;
+  color: #b71c1c;
+}
+
+.ai-history-provider {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #eef2f7;
+  color: #475569;
+}
+
+.ai-history-meta {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e3e8ef;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1f2a44;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-history-meta summary {
+  cursor: pointer;
+  color: #1f2a44;
+}
+
+.ai-history-prompt {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #eceff3;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #334155;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ai-history-error-block {
+  color: #b71c1c;
+}
+
 .ai-history-tab {
   font-size: 14px;
   padding: 8px 14px;

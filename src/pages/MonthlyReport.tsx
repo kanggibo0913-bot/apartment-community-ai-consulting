@@ -491,6 +491,7 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
       <AIResultPanel
         title="생성된 월간 리포트"
         taskType="monthlyReport"
+        sourcePage="monthly-report"
         loading={aiLoading}
         loadingText="AI가 월간 운영 데이터를 분석 중입니다."
         error={aiError}

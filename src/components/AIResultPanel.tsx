@@ -13,6 +13,8 @@ interface AIResultPanelProps {
   onClear?: () => void
   onLoadSaved?: (content: string) => void
   showHistory?: boolean
+  // 통합 이력 메타데이터(옵셔널, 기존 사용처 미변경)
+  sourcePage?: string
 }
 
 const AIResultPanel: React.FC<AIResultPanelProps> = ({
@@ -26,6 +28,7 @@ const AIResultPanel: React.FC<AIResultPanelProps> = ({
   onClear,
   onLoadSaved,
   showHistory = false,
+  sourcePage,
 }) => {
   const [statusMsg, setStatusMsg] = useState('')
   const [history, setHistory] = useState<AiResultEntry[]>([])
@@ -55,7 +58,15 @@ const AIResultPanel: React.FC<AIResultPanelProps> = ({
 
   const handleSave = () => {
     if (!hasResult) return
-    saveAiResult({ title, taskType, content: result })
+    // 이 앱의 AI 호출은 모두 Netlify Function(/.netlify/functions/ai)을 통해 이루어지므로 provider='netlify'로 기록.
+    saveAiResult({
+      title,
+      taskType,
+      content: result,
+      status: 'success',
+      provider: 'netlify',
+      ...(sourcePage ? { sourcePage } : {}),
+    })
     refreshHistory()
     flash('저장되었습니다.')
   }

@@ -133,6 +133,14 @@ export interface AiResultEntry {
   taskType: string
   createdAt: string
   content: string
+  // ─── 메타데이터(모두 optional, 기존 데이터 하위 호환) ────────────────────────
+  // 기존 aiResultHistory 항목(이 필드들이 없는 구버전)은 그대로 작동해야 한다.
+  status?: 'success' | 'error'
+  provider?: string
+  prompt?: string
+  error?: string
+  sourcePage?: string
+  meta?: Record<string, unknown>
 }
 
 export function loadAiResults(): AiResultEntry[] {
@@ -146,13 +154,45 @@ export function loadAiResults(): AiResultEntry[] {
   }
 }
 
-export function saveAiResult(entry: { title: string; taskType: string; content: string }): AiResultEntry {
+// prompt 등 사용자 입력은 길어질 수 있어 저장 전 안전한 길이로 자른다(개인정보 누출 방지·용량 보호).
+const MAX_PROMPT_LEN = 2000
+const safeString = (v: unknown, max = MAX_PROMPT_LEN): string | undefined => {
+  if (v === undefined || v === null) return undefined
+  const s = typeof v === 'string' ? v : String(v)
+  if (!s.trim()) return undefined
+  return s.length > max ? s.slice(0, max) + '…(잘림)' : s
+}
+
+export interface SaveAiResultInput {
+  title: string
+  taskType: string
+  content: string
+  // 모두 optional — 기존 호출부가 그대로 동작
+  status?: 'success' | 'error'
+  provider?: string
+  prompt?: string
+  error?: string
+  sourcePage?: string
+  meta?: Record<string, unknown>
+}
+
+export function saveAiResult(entry: SaveAiResultInput): AiResultEntry {
+  // 상태가 명시되지 않은 경우 안전한 추론:
+  // - error가 있으면 'error', content가 있으면 'success', 둘 다 없으면 'success'(기존 호환).
+  const inferredStatus: 'success' | 'error' =
+    entry.status ?? (entry.error ? 'error' : 'success')
   const full: AiResultEntry = {
     id: 'ai-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
     title: entry.title,
     taskType: entry.taskType,
     createdAt: new Date().toISOString(),
     content: entry.content,
+    status: inferredStatus,
+    ...(entry.provider ? { provider: entry.provider } : {}),
+    ...(safeString(entry.prompt) ? { prompt: safeString(entry.prompt) } : {}),
+    ...(safeString(entry.error, 1000) ? { error: safeString(entry.error, 1000) } : {}),
+    ...(entry.sourcePage ? { sourcePage: entry.sourcePage } : {}),
+    ...(entry.meta ? { meta: entry.meta } : {}),
   }
   const next = [full, ...loadAiResults()].slice(0, 100) // 최대 100개 보관
   window.localStorage.setItem(AI_RESULTS_STORAGE_KEY, JSON.stringify(next))

@@ -36,7 +36,7 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ data, onChange }) => {
     const response = await callAiFunction('document', data)
     if (response.success && response.result) {
       onChange({ generatedDocument: response.result })
-      saveAiResult({ title: data.title?.trim() || `${data.documentType} 문서`, taskType: 'document', content: response.result })
+      saveAiResult({ title: data.title?.trim() || `${data.documentType} 문서`, taskType: 'document', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'document' })
     } else {
       setAiError(response.error || 'AI 생성 중 오류가 발생했습니다.')
     }
