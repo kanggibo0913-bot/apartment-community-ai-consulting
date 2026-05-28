@@ -54,6 +54,13 @@
   white-space: nowrap;
 }
 
+.ai-summary-msg {
+  align-self: center;
+  font-size: 13px;
+  color: #1d4ed8;
+  padding-left: 4px;
+}
+
 .ai-history-sort {
   padding: 8px 10px;
   border: 1px solid #cbd5e1;

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { AiResultEntry, deleteAiResult, loadAiResults } from '../utils/storage'
 import { RESIDENT_SECTIONS, buildPublishedReport, buildShareUrl } from '../utils/publishedReport'
@@ -227,6 +227,94 @@ const AiResultHistoryPage: React.FC = () => {
     setTimeout(() => setCopyMsg(''), 2500)
   }
 
+  // ─── AI 이력 JSON 가져오기 (병합) ────────────────────────────────────────────
+  // - 기존 이력은 삭제하지 않고 뒤에 병합한다.
+  // - 항목마다 새 id 부여(id 충돌 방지), createdAt 원본 유지, meta.imported=true 표시.
+  // - status/provider 등은 정규화하며, content 없고 error도 없는 빈 항목은 제외한다.
+  // - localStorage 100개 상한은 save 시점이 아니라 합쳐서 잘라 그대로 유지.
+  const importInputRef = useRef<HTMLInputElement>(null)
+
+  const importAiHistoryJson = (file: File) => {
+    if (!window.confirm('선택한 AI 이력 백업 파일을 현재 이력 목록에 병합합니다. 기존 이력은 삭제되지 않습니다. 가져오시겠습니까?')) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(String(reader.result))
+      } catch {
+        setCopyMsg('JSON 파일을 읽을 수 없습니다.')
+        setTimeout(() => setCopyMsg(''), 2500)
+        return
+      }
+      const obj = parsed as { backupType?: string; items?: unknown }
+      if (!obj || typeof obj !== 'object' || !Array.isArray(obj.items)) {
+        setCopyMsg('올바른 AI 이력 백업 파일이 아닙니다.')
+        setTimeout(() => setCopyMsg(''), 2500)
+        return
+      }
+      if (obj.backupType !== 'aiResultHistory') {
+        setCopyMsg('현재 페이지와 다른 종류의 백업 파일입니다.')
+        setTimeout(() => setCopyMsg(''), 2500)
+        return
+      }
+      const now = new Date().toISOString()
+      const isStr = (v: unknown): v is string => typeof v === 'string'
+      const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+      const normalized: AiResultEntry[] = (obj.items as unknown[])
+        .filter((it): it is Record<string, unknown> => isObj(it))
+        .map((it): AiResultEntry | null => {
+          const title = isStr(it.title) ? it.title : ''
+          const taskType = isStr(it.taskType) && it.taskType.trim() ? it.taskType : 'unknown'
+          const content = isStr(it.content) ? it.content : ''
+          const errorVal = isStr(it.error) ? it.error : ''
+          // content와 error 모두 빈 항목은 의미 없는 데이터로 간주해 제외
+          if (!title && !content && !errorVal) return null
+          const inferredStatus: 'success' | 'error' =
+            it.status === 'error' || it.status === 'success'
+              ? it.status
+              : errorVal
+                ? 'error'
+                : 'success'
+          const provider = isStr(it.provider) && it.provider.trim() ? it.provider : 'unknown'
+          const createdAt = isStr(it.createdAt) && it.createdAt ? it.createdAt : now
+          const prompt = isStr(it.prompt) ? it.prompt : undefined
+          const sourcePage = isStr(it.sourcePage) ? it.sourcePage : undefined
+          const importedMeta: Record<string, unknown> = { ...(isObj(it.meta) ? it.meta : {}), imported: true, importedAt: now }
+          return {
+            id: 'ai-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+            title: title || '(제목 없음)',
+            taskType,
+            createdAt,
+            content,
+            status: inferredStatus,
+            provider,
+            ...(prompt ? { prompt } : {}),
+            ...(errorVal ? { error: errorVal } : {}),
+            ...(sourcePage ? { sourcePage } : {}),
+            meta: importedMeta,
+          }
+        })
+        .filter((it): it is AiResultEntry => it !== null)
+
+      if (normalized.length === 0) {
+        setCopyMsg('가져올 수 있는 AI 이력이 없습니다.')
+        setTimeout(() => setCopyMsg(''), 2500)
+        return
+      }
+      // 기존 + 신규 병합, 최대 100건 유지(기존 save 정책과 동일).
+      const merged = [...items, ...normalized].slice(0, 100)
+      window.localStorage.setItem('aiResultHistory', JSON.stringify(merged))
+      setItems(loadAiResults())
+      setCopyMsg(`${normalized.length}개의 AI 이력을 가져왔습니다.`)
+      setTimeout(() => setCopyMsg(''), 2500)
+    }
+    reader.onerror = () => {
+      setCopyMsg('JSON 파일을 읽을 수 없습니다.')
+      setTimeout(() => setCopyMsg(''), 2500)
+    }
+    reader.readAsText(file)
+  }
+
   // 발행 이력: 검색 → 상태 필터 → 출처 필터 → 정렬 (모두 동시 적용)
   const filteredPublished = useMemo(() => {
     const q = pubQuery.trim().toLowerCase()
@@ -368,6 +456,19 @@ const AiResultHistoryPage: React.FC = () => {
           </div>
         </div>
         <button type="button" className="ai-summary-backup" onClick={backupAiResultsJson}>AI 이력 JSON 백업</button>
+        <button type="button" className="ai-summary-backup" onClick={() => importInputRef.current?.click()}>AI 이력 JSON 가져오기</button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) importAiHistoryJson(f)
+            e.target.value = ''
+          }}
+        />
+        {copyMsg && <span className="ai-summary-msg">{copyMsg}</span>}
       </div>
 
       <div className="ai-history-workfilters">
