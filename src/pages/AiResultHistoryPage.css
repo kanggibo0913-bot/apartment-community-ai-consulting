@@ -6,6 +6,64 @@
   border-bottom: 1px solid #e3e8ef;
 }
 
+/* AI 이력 통합 요약 + 백업 (AI 탭 상단) */
+.ai-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.ai-summary-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 auto;
+}
+
+.ai-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #e3e8ef;
+  border-radius: 8px;
+  min-width: 140px;
+}
+
+.ai-summary-item span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.ai-summary-item strong {
+  font-size: 15px;
+  color: #1f2a44;
+}
+
+.ai-summary-backup {
+  font-size: 13px;
+  padding: 8px 14px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #1f2a44;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ai-history-sort {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  color: #1f2a44;
+  cursor: pointer;
+}
+
 .ai-history-tab {
   font-size: 14px;
   padding: 8px 14px;

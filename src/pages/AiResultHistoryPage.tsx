@@ -80,6 +80,7 @@ const AiResultHistoryPage: React.FC = () => {
   const [workFilter, setWorkFilter] = useState<'all' | 'bid' | 'ops'>('all')
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
+  const [aiSort, setAiSort] = useState<'latest' | 'oldest' | 'taskType'>('latest')
   const [selected, setSelected] = useState<AiResultEntry | null>(null)
   const [copyMsg, setCopyMsg] = useState('')
 
@@ -152,8 +153,50 @@ const AiResultHistoryPage: React.FC = () => {
           taskLabel(it.taskType).toLowerCase().includes(q),
       )
       .slice()
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
-  }, [items, filter, query, workFilter])
+      .sort((a, b) => {
+        switch (aiSort) {
+          case 'oldest':
+            return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0
+          case 'taskType':
+            return (taskLabel(a.taskType) || '').localeCompare(taskLabel(b.taskType) || '', 'ko')
+          case 'latest':
+          default:
+            return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0
+        }
+      })
+  }, [items, filter, query, workFilter, aiSort])
+
+  // 통합 화면 요약 (전체/주요 taskType 개수/최근 생성일). 현재 AiResultEntry에 provider/error 필드가
+  // 없어 성공·오류·provider 분리 통계는 산출하지 않는다(데이터 구조 변경 금지 정책).
+  const aiSummary = useMemo(() => {
+    const total = items.length
+    const distinctTaskTypes = new Set(items.map((it) => it.taskType)).size
+    const latest = items.reduce<string>((acc, it) => (it.createdAt > acc ? it.createdAt : acc), '')
+    return { total, distinctTaskTypes, latest }
+  }, [items])
+
+  // AI 이력 JSON 백업 (저장본 백업 패턴과 동일, backupType만 aiResultHistory)
+  const backupAiResultsJson = () => {
+    const payload = {
+      backupVersion: 1,
+      backupType: 'aiResultHistory',
+      exportedAt: new Date().toISOString(),
+      source: 'HOMEBASE AI',
+      count: items.length,
+      items,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ai-result-history-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    setCopyMsg(`AI 이력 ${items.length}건을 JSON으로 백업했습니다.`)
+    setTimeout(() => setCopyMsg(''), 2500)
+  }
 
   // 발행 이력: 검색 → 상태 필터 → 출처 필터 → 정렬 (모두 동시 적용)
   const filteredPublished = useMemo(() => {
@@ -272,6 +315,24 @@ const AiResultHistoryPage: React.FC = () => {
 
       {view === 'ai' && (
         <>
+      <div className="ai-summary">
+        <div className="ai-summary-grid">
+          <div className="ai-summary-item">
+            <span>전체 이력</span>
+            <strong>{aiSummary.total}건</strong>
+          </div>
+          <div className="ai-summary-item">
+            <span>주요 taskType</span>
+            <strong>{aiSummary.distinctTaskTypes}종</strong>
+          </div>
+          <div className="ai-summary-item">
+            <span>최근 생성일</span>
+            <strong>{aiSummary.latest ? new Date(aiSummary.latest).toLocaleString('ko-KR') : '-'}</strong>
+          </div>
+        </div>
+        <button type="button" className="ai-summary-backup" onClick={backupAiResultsJson}>AI 이력 JSON 백업</button>
+      </div>
+
       <div className="ai-history-workfilters">
         {([
           { key: 'all', label: '전체' },
@@ -302,6 +363,16 @@ const AiResultHistoryPage: React.FC = () => {
             </button>
           ))}
         </div>
+        <select
+          className="ai-history-sort"
+          value={aiSort}
+          onChange={(e) => setAiSort(e.target.value as typeof aiSort)}
+          aria-label="정렬"
+        >
+          <option value="latest">최신순</option>
+          <option value="oldest">오래된순</option>
+          <option value="taskType">taskType순</option>
+        </select>
         <input
           type="search"
           className="ai-history-search"
