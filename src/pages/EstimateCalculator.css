@@ -1,7 +1,8 @@
 .estimate-page {
   width: 100%;
-  max-width: none;
-  overflow-x: auto;
+  max-width: 1600px;
+  margin: 0 auto;
+  /* 페이지 자체에 overflow-x를 두지 않는다. 가로 스크롤은 넓은 산출표(.estimate-table-container)에만 적용. */
   padding: 24px;
   box-sizing: border-box;
 }
@@ -29,10 +30,10 @@
 
 .estimate-settings-grid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
+  /* 화면 폭에 따라 자동으로 2열 ↔ 1열 전환. 1200px 고정 폭을 강제하지 않는다. */
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 24px;
   width: 100%;
-  min-width: 1200px;
   margin-bottom: 24px;
 }
 
@@ -42,6 +43,14 @@
   gap: 18px;
 }
 
+/* 카드 내부 폼 입력이 그리드 셀을 넘기지 않도록 보호 */
+.estimate-form-grid input,
+.estimate-form-grid select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .estimate-job-name-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 16px;
@@ -49,10 +58,10 @@
 
 .estimate-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* 결과 카드 그리드: 화면 폭에 맞춰 4→3→2→1열 자동 전환. */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 18px;
   width: 100%;
-  min-width: 1200px;
   margin-bottom: 24px;
 }
 
@@ -161,20 +170,8 @@
   margin-bottom: 10px;
 }
 
-@media (max-width: 1400px) {
-  .estimate-settings-grid,
-  .estimate-summary-grid,
-  .estimate-sheet-wrapper {
-    min-width: 1200px;
-  }
-}
-
+/* 좁은 화면에서 버튼 줄을 가로로 채워 정렬 (그리드는 auto-fit이 알아서 1열로 내려간다) */
 @media (max-width: 1080px) {
-  .estimate-settings-grid,
-  .estimate-summary-grid {
-    grid-template-columns: 1fr;
-  }
-
   .estimate-sheet-buttons {
     justify-content: stretch;
   }
