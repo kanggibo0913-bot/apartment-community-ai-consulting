@@ -417,6 +417,14 @@
   text-overflow: ellipsis;
 }
 
+/* 캘린더 카드 상단 시간 표시. 시간 미정도 같은 위치에 노출. */
+.calendar-event-card-time {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #0d3b66;
+  font-variant-numeric: tabular-nums;
+}
+
 .calendar-event-card-meta {
   color: #475569;
   font-size: 10.5px;

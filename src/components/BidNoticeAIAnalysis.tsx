@@ -343,18 +343,25 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
     }
     const out: { label: string; value: string; disabledReason?: string }[] = []
 
+    // 후보 표시용 관리소 전화번호: 후보가 전화번호를 가지고 있으면 우선 사용, 없으면 단지 전체 전화번호로 폴백.
+    const topPhone = parsed.managementOfficePhone || ''
+    const phoneSuffix = (phone?: string) => {
+      const p = (phone || topPhone || '').trim()
+      return p ? ` / 관리소 ${p}` : ' / 관리소 전화번호 확인 필요'
+    }
+
     // 1) 현장확인/개별방문 또는 현장확인 여부 미확정은 날짜가 없어도 후보로 노출한다.
     //    자동 등록 대신 "일자 수동 입력 필요" 안내를 붙인다.
     if (parsed.siteBriefingStatus === 'individualVisit') {
       out.push({
         label: '현장확인/개별방문',
-        value: '일자 수동 입력 필요',
+        value: '일자 수동 입력 필요' + phoneSuffix(),
         disabledReason: '단체 현장설명회 없음 / 개별 방문 일자를 직접 등록해주세요.',
       })
     } else if (parsed.siteBriefingStatus === 'unknown') {
       out.push({
         label: '현장확인 여부',
-        value: '확인 필요 / 일자 수동 입력',
+        value: '확인 필요 / 일자 수동 입력' + phoneSuffix(),
         disabledReason: '공고문에 현장설명회 미개최만 언급되어 있음. 현장확인 일자를 직접 등록해주세요.',
       })
     }
@@ -367,9 +374,11 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
           if (ev.time) parts.push(ev.time)
           if (ev.location) parts.push(ev.location)
           const valueBase = ev.date
+          const head =
+            parts.length > 0 ? `${valueBase} (${parts.join(' · ')})` : `${valueBase}${ev.time ? '' : ' · 시간 미정'}`
           out.push({
             label: ev.eventTypeLabel || ev.eventType,
-            value: parts.length > 0 ? `${valueBase} (${parts.join(' · ')})` : `${valueBase}${ev.time ? '' : ' · 시간 미정'}`,
+            value: head + phoneSuffix(ev.managementOfficePhone),
           })
         })
       return out
@@ -377,9 +386,9 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
 
     // 2) Fallback: 단일 키 응답
     if (parsed.siteBriefingDate && parsed.siteBriefingStatus !== 'individualVisit') {
-      out.push({ label: '현장설명회', value: fmt(parsed.siteBriefingDate) })
+      out.push({ label: '현장설명회', value: fmt(parsed.siteBriefingDate) + phoneSuffix() })
     }
-    if (parsed.bidDeadline) out.push({ label: '입찰마감', value: fmt(parsed.bidDeadline) })
+    if (parsed.bidDeadline) out.push({ label: '입찰마감', value: fmt(parsed.bidDeadline) + phoneSuffix() })
     if (parsed.businessPresentationDate) {
       const extras: string[] = []
       if (parsed.businessPresentationTime) extras.push(parsed.businessPresentationTime)
@@ -387,7 +396,7 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
       const base = fmt(parsed.businessPresentationDate)
       out.push({
         label: '사업설명회/PT',
-        value: extras.length > 0 ? `${base} (${extras.join(' · ')})` : base,
+        value: (extras.length > 0 ? `${base} (${extras.join(' · ')})` : base) + phoneSuffix(),
       })
     }
     return out

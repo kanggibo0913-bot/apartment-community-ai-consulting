@@ -29,6 +29,8 @@ export interface BidAnalysisParsed {
   complexName: string
   region: string
   bidMethod: string
+  // 단지 전반의 관리소 전화번호 (담당자 연락처/문의처 포함). 정규화 후 저장.
+  managementOfficePhone: string
   siteBriefingDate: string
   siteBriefingTime: string
   // 현장설명회 진행 방식:
@@ -236,11 +238,37 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
   const siteBriefingTimeOut =
     siteBriefingStatus === 'individualVisit' ? '' : toTimeInput(rawSiteTime)
 
+  // 단지 전반의 관리소 전화번호: 다양한 별칭을 1순위로 흡수하고 한국식으로 정규화.
+  // AI/공고문이 어떤 키로 응답해도 받을 수 있도록 폭넓게 매핑한다.
+  const rawTopPhone =
+    asString(
+      o.managementOfficePhone ??
+        o.officePhone ??
+        o.managementPhone ??
+        o.apartmentPhone ??
+        o.contactPhone ??
+        o.contactNumber ??
+        o.managerPhone ??
+        o.phone ??
+        o.tel ??
+        o.telephone ??
+        o.contact ??
+        o['관리소전화번호'] ??
+        o['관리사무소전화번호'] ??
+        o['담당자연락처'] ??
+        o['문의처'] ??
+        o['입찰문의'] ??
+        o['연락처'] ??
+        '',
+    ).trim()
+  const managementOfficePhoneTop = normalizePhone(rawTopPhone)
+
   return {
     summary: asString(o.summary),
     complexName: asString(o.complexName),
     region: asString(o.region),
     bidMethod: asString(o.bidMethod),
+    managementOfficePhone: managementOfficePhoneTop,
     siteBriefingDate: siteBriefingDateOut,
     siteBriefingTime: siteBriefingTimeOut,
     siteBriefingStatus,
@@ -312,6 +340,22 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
           const extractedFromDate = toTimeInput(rawDate)
           const extractedFromContent = toTimeInput(asString(it.content ?? it.memo ?? it.description ?? ''))
           const time = toTimeInput(rawTime) || extractedFromDate || extractedFromContent
+          const rawItemPhone =
+            asString(
+              it.managementOfficePhone ??
+                it.officePhone ??
+                it.managementPhone ??
+                it.apartmentPhone ??
+                it.contactPhone ??
+                it.contactNumber ??
+                it.managerPhone ??
+                it.phone ??
+                it.tel ??
+                it.telephone ??
+                it.contact ??
+                '',
+            ).trim()
+          const itemPhone = normalizePhone(rawItemPhone) || managementOfficePhoneTop
           return [
             {
               eventType,
@@ -323,7 +367,7 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
               apartmentName: asString(it.apartmentName ?? it.complexName ?? '').trim(),
               households: asNumberOrNull(it.households ?? it.totalUnits),
               calculatedStaffCount: asNumberOrNull(it.calculatedStaffCount ?? it.staffCount),
-              managementOfficePhone: asString(it.managementOfficePhone ?? it.officePhone ?? '').trim(),
+              managementOfficePhone: itemPhone,
             },
           ]
         },
@@ -464,6 +508,26 @@ export function toTimeInput(text: string): string {
 // 입력 예: "2026-06-04 10:00", "2026.06.12. 17:00까지", "2026년 6월 16일 오후 2시"
 export function splitDateTime(text: string): { date: string; time: string } {
   return { date: toDateInput(text), time: toTimeInput(text) }
+}
+
+// 자유 텍스트에서 한국 전화번호를 추출해 "지역코드-국번-끝번호" 형태로 정규화.
+// 처리 형식:
+//   "02-1234-5678", "02)1234-5678", "02.1234.5678", "02 1234 5678",
+//   "031-000-0000", "010-1234-5678" 등.
+// - 자릿수 조합이 한국 번호 패턴(2~4 + 3~4 + 4)일 때만 하이픈으로 통일.
+// - 그 외에는 원문을 trim해서 보존(추정·임의 보정 금지).
+// - 빈 문자열이거나 숫자를 전혀 못 찾으면 빈 문자열 반환.
+export function normalizePhone(text: string): string {
+  if (!text) return ''
+  const raw = text.trim()
+  if (!raw) return ''
+  // 흔한 한국 전화번호 패턴: 02 / 0XX / 010 등 시작 + 3~4자리 + 4자리
+  const m = raw.match(/(0\d{1,2})\s*(?:-|\)|\.|\s|＿)?\s*(\d{3,4})\s*(?:-|\.|\s|＿)?\s*(\d{4})/)
+  if (m) {
+    return `${m[1]}-${m[2]}-${m[3]}`
+  }
+  // 한국 번호 패턴이 안 맞으면 그대로 트림하여 보존 (애매할 때 추정하지 않음)
+  return raw
 }
 
 // "A ~ B" 형태 계약기간을 시작/종료 date input으로 분리.

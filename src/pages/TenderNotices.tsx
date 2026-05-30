@@ -1023,7 +1023,8 @@ const TenderNotices = () => {
         location: c.location,
         households: c.households,
         calculatedStaffCount: c.calculatedStaffCount,
-        managementOfficePhone: c.managementOfficePhone,
+        // 우선순위: 후보(scheduleEvent) 전화번호 → parsed 단지 전체 전화번호 → 빈 문자열
+        managementOfficePhone: c.managementOfficePhone || parsed.managementOfficePhone || '',
       })
     })
 
@@ -1200,7 +1201,7 @@ const TenderNotices = () => {
                       <table className="agenda-table">
                         <thead>
                           <tr>
-                            <th>시간</th>
+                            <th>일시</th>
                             <th>항목</th>
                             <th>단지명</th>
                             <th>세대수</th>
@@ -1211,10 +1212,16 @@ const TenderNotices = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {group.items.map((item) => (
+                          {group.items.map((item) => {
+                            // 일시 표시: YYYY.MM.DD HH:mm 또는 YYYY.MM.DD 시간 미정
+                            const dotDate = group.date.replace(/-/g, '.')
+                            const dateTimeLabel = item.time
+                              ? `${dotDate} ${item.time}`
+                              : `${dotDate} 시간 미정`
+                            return (
                             <tr key={item.uid}>
                               <td className={item.time ? 'agenda-time' : 'agenda-time agenda-time-empty'}>
-                                {item.time || '시간 미정'}
+                                {dateTimeLabel}
                               </td>
                               <td>
                                 <span className={`event-badge ${item.badge}`}>{item.label}</span>
@@ -1248,7 +1255,8 @@ const TenderNotices = () => {
                                 </span>
                               </td>
                             </tr>
-                          ))}
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -1290,10 +1298,13 @@ const TenderNotices = () => {
                     const metaParts: string[] = []
                     if (item.households) metaParts.push(`${formatNumber(item.households)}세대`)
                     if (item.calculatedStaffCount) metaParts.push(`산출 ${item.calculatedStaffCount}명`)
+                    // 카드 상단 시간 표시: 'HH:mm' 또는 '시간 미정'
+                    const timeLabel = item.time || '시간 미정'
                     return (
                       <div key={item.uid} className={`calendar-event-card ${item.badge}`}>
                         <span className={`event-badge ${item.badge}`}>{item.label}</span>
                         <div className="calendar-event-card-body">
+                          <div className="calendar-event-card-time">{timeLabel}</div>
                           <div className="calendar-event-card-title">{item.title || '(미입력 단지)'}</div>
                           {metaParts.length > 0 && (
                             <div className="calendar-event-card-meta">{metaParts.join(' · ')}</div>
