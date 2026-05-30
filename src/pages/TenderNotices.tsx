@@ -1332,67 +1332,86 @@ const TenderNotices = () => {
               </span>
             </div>
             <div className="bid-board-grid-wrap">
-              <div className="bid-board-grid">
-                {boardColumns.map((col) => {
-                  // 요일별 헤더 클래스: 토(파란) / 일(빨간) / 평일(노란)
-                  const headerCls =
-                    col.weekdayIndex === 0
-                      ? 'bid-board-header bid-board-header--sun'
-                      : col.weekdayIndex === 6
-                      ? 'bid-board-header bid-board-header--sat'
-                      : 'bid-board-header'
+              {/* 1주차(오늘 ~ +6) · 2주차(+7 ~ +13)로 분리해 2줄로 누적. 달력 주차 기준이 아님. */}
+              <div className="bid-board-weeks">
+                {([
+                  { label: '1주차', cols: boardColumns.slice(0, 7) },
+                  { label: '2주차', cols: boardColumns.slice(7, 14) },
+                ] as const).map((week) => {
+                  const first = week.cols[0]?.date
+                  const last = week.cols[week.cols.length - 1]?.date
+                  const range = first && last ? `${first.replace(/-/g, '.')} ~ ${last.replace(/-/g, '.')}` : ''
                   return (
-                    <div key={col.date} className="bid-board-column">
-                      <div className={headerCls}>
-                        <div className="bid-board-header-date">
-                          {col.date.replace(/-/g, '.')}
-                        </div>
-                        <div className="bid-board-header-weekday">{formatWeekday(col.date)}</div>
-                      </div>
-                      <div className="bid-board-cell">
-                        {col.items.length === 0 ? (
-                          <div className="bid-board-empty">·</div>
-                        ) : (
-                          col.items.map((item) => {
-                            const colorCls = colorClassByType(item.eventType, item.label)
-                            const label = boardLabelByType(item.eventType, item.label)
-                            const timeText = item.time || '시간 미정'
-                            const householdsText = item.households
-                              ? `${formatNumber(item.households)}세대`
-                              : '세대수 확인 필요'
-                            // 산출인원 우선순위 fallback (calculatedStaffCount → requiredStaffCount → staffCount → requiredPersonnel → staffingCount → staffCountText)
-                            const staff = pickStaffDisplay(
-                              item.calculatedStaffCount,
-                              item.requiredStaffCount,
-                              item.staffCount,
-                              item.requiredPersonnel,
-                              item.staffingCount,
-                              item.staffCountText,
-                            )
-                            const staffText = staff.num
-                              ? `산출 ${staff.num}명`
-                              : staff.text
-                              ? staff.text
-                              : '산출인원 확인 필요'
-                            const phoneText = item.managementOfficePhone
-                              ? item.managementOfficePhone
-                              : '전화번호 확인 필요'
-                            return (
-                              <div key={item.uid} className={`bid-board-item ${colorCls}`}>
-                                <div className="bid-board-item-title">{item.title || '단지명 확인 필요'}</div>
-                                <div className="bid-board-item-meta">
-                                  ({householdsText}) / {staffText}
+                    <section key={week.label} className="bid-board-week">
+                      <h4 className="bid-board-week-title">
+                        <span>{week.label}</span>
+                        {range && <span className="bid-board-week-range">· {range}</span>}
+                      </h4>
+                      <div className="bid-board-week-grid">
+                        {week.cols.map((col) => {
+                          // 요일별 헤더 클래스: 토(파랑) / 일(빨강) / 평일(노랑)
+                          const headerCls =
+                            col.weekdayIndex === 0
+                              ? 'bid-board-header bid-board-header--sun'
+                              : col.weekdayIndex === 6
+                              ? 'bid-board-header bid-board-header--sat'
+                              : 'bid-board-header'
+                          return (
+                            <div key={col.date} className="bid-board-column">
+                              <div className={headerCls}>
+                                <div className="bid-board-header-date">
+                                  {col.date.replace(/-/g, '.')}
                                 </div>
-                                <div className="bid-board-item-kind">
-                                  {label} {timeText}
-                                </div>
-                                <div className="bid-board-item-phone">{phoneText}</div>
+                                <div className="bid-board-header-weekday">{formatWeekday(col.date)}</div>
                               </div>
-                            )
-                          })
-                        )}
+                              <div className="bid-board-cell">
+                                {col.items.length === 0 ? (
+                                  <div className="bid-board-empty">·</div>
+                                ) : (
+                                  col.items.map((item) => {
+                                    const colorCls = colorClassByType(item.eventType, item.label)
+                                    const label = boardLabelByType(item.eventType, item.label)
+                                    const timeText = item.time || '시간 미정'
+                                    const householdsText = item.households
+                                      ? `${formatNumber(item.households)}세대`
+                                      : '세대수 확인 필요'
+                                    // 산출인원 우선순위 fallback (calculatedStaffCount → requiredStaffCount → staffCount → requiredPersonnel → staffingCount → staffCountText)
+                                    const staff = pickStaffDisplay(
+                                      item.calculatedStaffCount,
+                                      item.requiredStaffCount,
+                                      item.staffCount,
+                                      item.requiredPersonnel,
+                                      item.staffingCount,
+                                      item.staffCountText,
+                                    )
+                                    const staffText = staff.num
+                                      ? `산출 ${staff.num}명`
+                                      : staff.text
+                                      ? staff.text
+                                      : '산출인원 확인 필요'
+                                    const phoneText = item.managementOfficePhone
+                                      ? item.managementOfficePhone
+                                      : '전화번호 확인 필요'
+                                    return (
+                                      <div key={item.uid} className={`bid-board-item ${colorCls}`}>
+                                        <div className="bid-board-item-title">{item.title || '단지명 확인 필요'}</div>
+                                        <div className="bid-board-item-meta">
+                                          ({householdsText}) / {staffText}
+                                        </div>
+                                        <div className="bid-board-item-kind">
+                                          {label} {timeText}
+                                        </div>
+                                        <div className="bid-board-item-phone">{phoneText}</div>
+                                      </div>
+                                    )
+                                  })
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
-                    </div>
+                    </section>
                   )
                 })}
               </div>

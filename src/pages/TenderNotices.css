@@ -848,14 +848,52 @@
 .bid-board-grid-wrap {
   width: 100%;
   overflow-x: auto;
+  /* 보더는 .bid-board-week-grid가 직접 갖는다. wrap은 가로 스크롤만 담당. */
+}
+
+/* 2주 보드: 1주차/2주차로 분리해 7컬럼 × 2줄로 렌더한다. 1줄 14컬럼보다 가로 스크롤 부담이 작다. */
+.bid-board-weeks {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bid-board-week {
+  display: flex;
+  flex-direction: column;
+}
+
+.bid-board-week-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0d3b66;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.bid-board-week-range {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.bid-board-week-grid {
+  display: grid;
+  /* 7컬럼. 1366px 화면에서 한 줄에 들어오도록 minmax 폭을 작게 설정. */
+  grid-template-columns: repeat(7, minmax(140px, 1fr));
+  min-width: 1050px;
   border: 1px solid #94a3b8;
   border-radius: 4px;
+  overflow: hidden;
   background: #ffffff;
 }
 
+/* 레거시 14컬럼 그리드(현재는 사용 안 함, 외부 참조 대비 유지) */
 .bid-board-grid {
   display: grid;
-  /* 14개 컬럼 고정 폭(가로 스크롤 허용). 엑셀 느낌의 경계선. */
   grid-template-columns: repeat(14, minmax(150px, 1fr));
   min-width: 2100px;
 }
