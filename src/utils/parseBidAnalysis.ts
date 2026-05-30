@@ -277,9 +277,14 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
     o.totalHouseholds ??
     o.units ??
     o.unitCount ??
+    // TenderNotice 폼이 사용하는 키와 같은 이름. AI가 이 이름을 그대로 답할 수 있어 흡수.
+    o.totalUnits ??
+    o.numberOfHouseholds ??
+    o.numUnits ??
     o['세대수'] ??
     o['총세대수'] ??
     o['단지세대수'] ??
+    o['가구수'] ??
     null
   let householdsTop = extractHouseholds(rawHouseholdsTop)
   if (!householdsTop) {

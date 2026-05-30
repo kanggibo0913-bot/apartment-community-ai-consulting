@@ -7,6 +7,8 @@ import {
   BidAnalysisParsed,
   GRADE_LABEL,
   categorizeRisk,
+  extractHouseholds,
+  normalizePhone,
   parseBidAnalysis,
   toDateInput,
 } from '../utils/parseBidAnalysis'
@@ -329,7 +331,25 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
     }, 50)
   }
 
-  const parsed = useMemo(() => parseBidAnalysis(result), [result])
+  // parsed는 single source of truth. analyze() 또는 onLoadSaved에서 한 번 만들어 화면 표시/폼 반영/스케줄러 후보 모두에 동일 객체 사용.
+  // 사용자 인풋(noticeText) 기반 gap-fill을 적용한 결과를 그대로 보관해, 화면과 폼이 다르게 보이는 일을 방지한다.
+  const [parsed, setParsed] = useState<BidAnalysisParsed | null>(null)
+
+  // AI 결과가 결손한 필드만 noticeText에서 보충하는 헬퍼.
+  // 전체 재파싱이 아니라 households/managementOfficePhone 두 필드만 안전한 정규식으로 보강한다.
+  const enrichParsedFromNoticeText = (p: BidAnalysisParsed, noticeText: string): BidAnalysisParsed => {
+    const out = { ...p }
+    if (out.households == null && noticeText) {
+      const fromNotice = extractHouseholds(noticeText)
+      if (fromNotice) out.households = fromNotice
+    }
+    if (!out.managementOfficePhone && noticeText) {
+      // 한국 전화번호 패턴: 0xx-xxxx-xxxx (구분자: -, ), ., 공백)
+      const m = noticeText.match(/(0\d{1,2})\s*(?:-|\)|\.|\s)\s*(\d{3,4})\s*(?:-|\.|\s)\s*(\d{4})/)
+      if (m) out.managementOfficePhone = normalizePhone(`${m[1]}-${m[2]}-${m[3]}`)
+    }
+    return out
+  }
 
   // 버튼3(일정만 추가)에 표시할 마일스톤 후보.
   // 1순위: AI가 반환한 scheduleEvents[] (시간 포함). 2순위: 단일 키 fallback.
@@ -448,12 +468,15 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
           setError('AI가 빈 응답을 반환했습니다. 잠시 후 다시 시도해주세요.')
         } else {
           setResult(text)
-          // 분석 완료 직후 공고 등록 폼에 자동 반영(빈 항목만, 사용자 입력 보호).
-          // 이력 로드(onLoadSaved) 경로에서는 noticeText 전달이 없어 자동 반영하지 않으므로 분석 전용 흐름.
-          const parsedNow = parseBidAnalysis(text)
-          if (parsedNow && onApplyToForm) {
+          // 분석 완료 직후: AI 응답 한 번 파싱 → noticeText 기반 gap-fill → 동일 객체를 표시/폼/스케줄러에 사용.
+          // 절대 noticeText를 다시 parseBidAnalysis하지 않는다(원본 텍스트 재파싱 금지 정책).
+          const parsedRaw = parseBidAnalysis(text)
+          const parsedEnriched = parsedRaw ? enrichParsedFromNoticeText(parsedRaw, form.noticeText) : null
+          setParsed(parsedEnriched)
+          // 동일 객체를 폼 반영에도 전달 → 화면 표시값과 폼 값이 어긋나지 않음.
+          if (parsedEnriched && onApplyToForm) {
             try {
-              onApplyToForm(parsedNow, false, form.noticeText)
+              onApplyToForm(parsedEnriched, false, form.noticeText)
               setApplyMsg('AI 분석 결과가 공고 등록 폼에 반영되었습니다. 공고 목록·관리 탭에서 확인 후 등록하세요.')
               setTimeout(() => setApplyMsg(''), 9000)
             } catch {
@@ -859,8 +882,15 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
         error={error}
         result={result}
         downloadFileName={`bid-notice-analysis-${new Date().toISOString().slice(0, 10)}.txt`}
-        onClear={() => setResult('')}
-        onLoadSaved={(content) => setResult(content)}
+        onClear={() => {
+          setResult('')
+          setParsed(null)
+        }}
+        onLoadSaved={(content) => {
+          setResult(content)
+          // 이력 로드에는 원본 noticeText가 없으므로 gap-fill 없이 AI 응답만으로 parsed 생성.
+          setParsed(parseBidAnalysis(content))
+        }}
         showHistory
       />
     </Card>
