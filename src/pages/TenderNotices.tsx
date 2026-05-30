@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { formatNumber } from '../utils/formatUtils'
 import {
   TenderNotice,
+  TenderNoticeAiScheduleEvent,
   TenderNoticeParticipation,
   TenderNoticeRiskLevel,
   TenderNoticeStatus,
@@ -642,6 +643,12 @@ const TenderNotices = () => {
   const [bidPageTab, setBidPageTab] = useState<'analysis' | 'scheduler' | 'list'>('analysis')
   // 일정표 기준 기간: 2주(14일) / 3주(21일, 기본) / 전체.
   const [agendaRange, setAgendaRange] = useState<'2w' | '3w' | 'all'>('3w')
+  // AI 분석에서 추출한 정규화된 scheduleEvents 스냅샷.
+  // handleApplyAiToForm에서 채워지고, 공고 등록 시 TenderNotice.aiScheduleEvents에 그대로 보존된다.
+  // 폼의 date input은 날짜만 담으므로 이 스냅샷이 time/phone/households/calculatedStaffCount의 source가 된다.
+  const [aiScheduleSnapshot, setAiScheduleSnapshot] = useState<TenderNoticeAiScheduleEvent[] | null>(null)
+  // 공고 등록 직후 표시되는 안내문 (스케줄러로 이동 버튼 노출 트리거).
+  const [registerMsg, setRegisterMsg] = useState('')
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(notices))
@@ -671,7 +678,48 @@ const TenderNotices = () => {
         phoneByName[n.siteName] = n.managementOfficePhone
       }
     })
+    // ParsedScheduleEvent의 타입을 내부 ScheduleEventType으로 매핑.
+    // 'contract'는 스케줄러 차단 대상이므로 contractStart로 매핑 후 isSchedulerVisible에서 자동 제외.
+    const mapAiType = (t: TenderNoticeAiScheduleEvent['eventType']): ScheduleEventType => {
+      if (t === 'contract') return 'contractStart'
+      return t as ScheduleEventType
+    }
     notices.forEach((notice) => {
+      // 우선순위 1: AI 추출 일정(aiScheduleEvents)이 있으면 그대로 사용해 time/phone/households/staff 보존.
+      if (notice.aiScheduleEvents && notice.aiScheduleEvents.length > 0) {
+        notice.aiScheduleEvents.forEach((ev) => {
+          if (!ev.date) return
+          const eventType = mapAiType(ev.eventType)
+          // 스케줄러 차단: 계약·운영 일정은 일정표·캘린더에 노출하지 않는다.
+          if (!isSchedulerVisible(eventType, ev.eventTypeLabel)) return
+          const badge = scheduleBadgeByType[eventType] || 'schedule-deadline'
+          map[ev.date] = map[ev.date] || []
+          map[ev.date].push({
+            uid: `n-${notice.id}-ai-${ev.eventType}-${ev.date}-${ev.time || ''}`,
+            // parseBidAnalysis가 DEFAULT_SCHEDULE_LABEL로 채우므로 ev.eventTypeLabel은 거의 항상 존재.
+            // 레거시 데이터 안전망으로 '기타' fallback.
+            label: ev.eventTypeLabel || '기타',
+            badge,
+            title: notice.siteName || ev.apartmentName || '',
+            kind: 'notice',
+            notice,
+            // AI 일정의 households/calculatedStaffCount/managementOfficePhone를 우선 사용,
+            // 없으면 notice 필드로 폴백.
+            households: ev.households ?? notice.totalUnits ?? undefined,
+            calculatedStaffCount: ev.calculatedStaffCount ?? notice.estimatedStaff ?? undefined,
+            staffCountText: ev.staffCountText || undefined,
+            content: ev.content || notice.title || undefined,
+            managementOfficePhone: ev.managementOfficePhone || notice.managementOfficePhone || undefined,
+            time: ev.time || '',
+            location: ev.location || undefined,
+            source: 'AI 분석',
+            eventType,
+          })
+        })
+        // 우선순위 1을 사용한 공고는 fallback(date-only)을 추가하지 않는다.
+        return
+      }
+      // 우선순위 2: AI 추출 일정이 없으면 기존 date-only 필드 fallback.
       eventDefinitions.forEach((eventDef) => {
         const value = notice[eventDef.field]
         if (!value) return
@@ -970,6 +1018,11 @@ const TenderNotices = () => {
     // 공고명: AI가 별도 키로 주지 않으므로 단지명 기반 자동 생성("○○ 입찰 공고 (AI 분석)").
     const generatedTitle = parsed.complexName ? `${parsed.complexName} 입찰 공고 (AI 분석)` : ''
 
+    // 산출인원: scheduleEvents 항목에서 첫 유효 calculatedStaffCount를 폼의 estimatedStaff로 폴백.
+    const aiStaff =
+      parsed.scheduleEvents.find((ev) => ev.calculatedStaffCount != null && ev.calculatedStaffCount > 0)
+        ?.calculatedStaffCount ?? null
+
     setForm((prev) => ({
       ...prev,
       siteName: pick(prev.siteName, parsed.complexName),
@@ -988,71 +1041,16 @@ const TenderNotices = () => {
       riskLevel: g ? g.r : prev.riskLevel,
       reviewMemo: pick(prev.reviewMemo, aiMemo),
       managementOfficePhone: pick(prev.managementOfficePhone || '', parsed.managementOfficePhone || ''),
+      // 예상 필요 인력: AI 산출인원이 있으면 빈 항목에 채운다. (덮어쓰기 모드에서도 0이면 채움)
+      estimatedStaff: pickNum(prev.estimatedStaff, aiStaff),
       // 공고문 원문도 함께 반영(없으면 그대로). 이력 로드시에는 noticeText 미전달이므로 prev 유지.
       fullText: noticeText ? pick(prev.fullText, noticeText) : prev.fullText,
     }))
-  }
 
-  // AI 분석 결과로 공고(TenderNotice) 1건을 등록한다. (버튼: "AI 분석 결과로 공고 등록")
-  // 등록된 공고는 공고 목록과 캘린더 양쪽에 표시된다.
-  const handleRegisterAiNotice = (parsed: BidAnalysisParsed): { added: number; duplicate: boolean } => {
-    const sv = toDateInput(parsed.siteBriefingDate)
-    const dl = toDateInput(parsed.bidDeadline)
-    const { start, end } = splitContractPeriod(parsed.contractPeriod)
-    const addedCount = [sv, dl, start, end].filter(Boolean).length
-    if (addedCount === 0) return { added: 0, duplicate: false }
-
-    const siteName = parsed.complexName || '(미입력 단지)'
-    const signature = [siteName, sv, dl, start, end].join('|')
-    const isDup = notices.some(
-      (n) => [n.siteName, n.siteVisitDate, n.deadlineDate, n.contractStartDate, n.contractEndDate].join('|') === signature,
-    )
-    if (isDup) return { added: 0, duplicate: true }
-
-    const gradeMap: Record<string, { p: TenderNoticeParticipation; r: TenderNoticeRiskLevel }> = {
-      A: { p: '높음', r: '낮음' },
-      B: { p: '높음', r: '보통' },
-      C: { p: '보통', r: '보통' },
-      D: { p: '낮음', r: '높음' },
-    }
-    const g = gradeMap[parsed.participationGrade]
-
-    const dateNotes: string[] = []
-    if (parsed.siteBriefingDate && !sv) dateNotes.push(`현장설명회 날짜 확인 필요: ${parsed.siteBriefingDate}`)
-    if (parsed.bidDeadline && !dl) dateNotes.push(`입찰마감 날짜 확인 필요: ${parsed.bidDeadline}`)
-    if (parsed.contractPeriod && !start && !end) dateNotes.push(`계약기간 확인 필요: ${parsed.contractPeriod}`)
-
-    const formPortion = {
-      ...defaultForm,
-      siteName,
-      region: parsed.region || defaultForm.region,
-      title: `${siteName} 입찰 공고 (AI 분석)`,
-      biddingMethod: parsed.bidMethod || defaultForm.biddingMethod,
-      siteVisitDate: sv,
-      deadlineDate: dl,
-      ptDate: toDateInput(parsed.businessPresentationDate || parsed.ptDate) || defaultForm.ptDate,
-      contractStartDate: start,
-      contractEndDate: end,
-      specialConditions: parsed.specialConditions.join(', '),
-      participationLikelihood: g ? g.p : defaultForm.participationLikelihood,
-      riskLevel: g ? g.r : defaultForm.riskLevel,
-      reviewMemo: [`[AI 분석] ${parsed.summary}`.trim(), ...dateNotes].filter(Boolean).join('\n'),
-      managementOfficePhone: parsed.managementOfficePhone || '',
-    }
-
-    const notice: TenderNotice = {
-      id: Date.now(),
-      ...formPortion,
-      autoAnalysis: parseAutoAnalysis(formPortion.fullText),
-      generatedSummary: buildSummaryText(formPortion, parseAutoAnalysis(formPortion.fullText)),
-    }
-    setNotices((prev) => [notice, ...prev])
-    const firstDate = sv || dl || start || end
-    if (firstDate) {
-      setSelectedDate(firstDate)
-      setCurrentMonth(new Date(firstDate))
-    }
-    return { added: addedCount, duplicate: false }
+    // AI scheduleEvents 스냅샷 보존: 공고 등록 시 TenderNotice.aiScheduleEvents에 그대로 들어감.
+    // 폼 date input이 날짜만 담으므로 이 스냅샷이 time/phone/households/calculatedStaffCount의 source of truth.
+    // 빈 배열이면 null로 두어 기존 fallback 흐름 유지.
+    setAiScheduleSnapshot(parsed.scheduleEvents.length > 0 ? parsed.scheduleEvents : null)
   }
 
   // AI 분석의 주요 일정만 캘린더(scheduleEvents)에 추가한다. 공고는 등록하지 않는다.
@@ -1217,15 +1215,29 @@ const TenderNotices = () => {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
+    // AI scheduleEvents 스냅샷을 그대로 TenderNotice에 보존.
+    // 폼 date input은 날짜만 담으므로 이 배열이 time/phone/households/calculatedStaffCount의 source.
     const notice: TenderNotice = {
       id: Date.now(),
       ...form,
+      aiScheduleEvents: aiScheduleSnapshot && aiScheduleSnapshot.length > 0 ? aiScheduleSnapshot : undefined,
       autoAnalysis: parseAutoAnalysis(form.fullText),
       generatedSummary: buildSummaryText(form, parseAutoAnalysis(form.fullText)),
     }
     setNotices((prev) => [notice, ...prev])
     setForm(defaultForm)
     setSelectedDate(notice.postedDate || todayKey)
+    // 등록 후 안내문: AI 추출 일정 동봉 여부에 따라 분기.
+    if (aiScheduleSnapshot && aiScheduleSnapshot.length > 0) {
+      setRegisterMsg(
+        '공고가 등록되었습니다. AI 추출 일정이 함께 저장되었습니다. 입찰 스케줄러 탭에서 확인하세요.',
+      )
+    } else {
+      setRegisterMsg('공고가 등록되었습니다. 입찰 스케줄러 탭에서 확인하세요.')
+    }
+    // 다음 공고 등록을 위해 스냅샷 비움.
+    setAiScheduleSnapshot(null)
+    setTimeout(() => setRegisterMsg(''), 12000)
   }
 
   const handleDelete = (id: number) => {
@@ -1257,7 +1269,8 @@ const TenderNotices = () => {
         </div>
       </div>
 
-      {/* 입찰공고 관리 상위 탭 (3종): AI 공고문 분석 / 입찰 스케줄러 / 공고 목록·관리 */}
+      {/* 입찰공고 관리 상위 탭 (3종): AI 공고문 분석 → 공고 등록·관리 → 입찰 스케줄러.
+          공고 등록·관리 탭은 AI 분석 결과 폼을 검토·등록하는 흐름이므로 분석 다음에 배치한다. */}
       <div className="bid-page-tabs" role="tablist" aria-label="입찰공고 관리 탭">
         <button
           type="button"
@@ -1271,27 +1284,26 @@ const TenderNotices = () => {
         <button
           type="button"
           role="tab"
+          aria-selected={bidPageTab === 'list'}
+          className={`bid-page-tab${bidPageTab === 'list' ? ' is-active' : ''}`}
+          onClick={() => setBidPageTab('list')}
+        >
+          공고 등록·관리
+        </button>
+        <button
+          type="button"
+          role="tab"
           aria-selected={bidPageTab === 'scheduler'}
           className={`bid-page-tab${bidPageTab === 'scheduler' ? ' is-active' : ''}`}
           onClick={() => setBidPageTab('scheduler')}
         >
           입찰 스케줄러
         </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={bidPageTab === 'list'}
-          className={`bid-page-tab${bidPageTab === 'list' ? ' is-active' : ''}`}
-          onClick={() => setBidPageTab('list')}
-        >
-          공고 목록·관리
-        </button>
       </div>
 
       {bidPageTab === 'analysis' && (
       <BidNoticeAIAnalysis
         onApplyToForm={handleApplyAiToForm}
-        onRegisterNotice={handleRegisterAiNotice}
         onAddScheduleEvents={handleAddAiScheduleEvents}
         onJumpToScheduler={() => setBidPageTab('scheduler')}
         onJumpToList={() => setBidPageTab('list')}
@@ -1940,7 +1952,25 @@ const TenderNotices = () => {
           </div>
           <div className="form-actions">
             <button type="submit" className="btn btn-primary">공고 등록</button>
+            {aiScheduleSnapshot && aiScheduleSnapshot.length > 0 && (
+              <span className="summary-small" style={{ marginLeft: 12 }}>
+                ※ AI 추출 일정 {aiScheduleSnapshot.length}건이 함께 저장됩니다 (시간 포함).
+              </span>
+            )}
           </div>
+          {registerMsg && (
+            <div className="bid-action-banner" style={{ marginTop: 12 }}>
+              <p className="bid-apply-msg" style={{ margin: 0 }}>{registerMsg}</p>
+              <span className="bid-action-banner-hint">→ 입찰 스케줄러에서 시간·전화번호·세대수가 함께 표시됩니다.</span>
+              <button
+                type="button"
+                className="btn btn-primary btn-small"
+                onClick={() => setBidPageTab('scheduler')}
+              >
+                입찰 스케줄러로 이동
+              </button>
+            </div>
+          )}
         </form>
 
         <div className="tender-review-cards">
@@ -2049,6 +2079,29 @@ const TenderNotices = () => {
               <li>PT 발표일: {selectedNotice.ptDate || '-'}</li>
             </ul>
           </div>
+          {/* AI 추출 일정: 시간/메모를 잃지 않았는지 사용자가 직접 확인할 수 있는 영역.
+              aiScheduleEvents가 있으면 시간 포함 일정을 그대로 노출. */}
+          {selectedNotice.aiScheduleEvents && selectedNotice.aiScheduleEvents.length > 0 && (
+            <div className="detail-schedule-list">
+              <h4>AI 추출 일정 (시간 포함)</h4>
+              <ul>
+                {selectedNotice.aiScheduleEvents.map((ev, i) => {
+                  const label = ev.eventTypeLabel || ev.eventType || '기타'
+                  const datePart = ev.date || '날짜 미정'
+                  const timePart = ev.time ? ` ${ev.time}` : ' (시간 미정)'
+                  const extras: string[] = []
+                  if (ev.location) extras.push(`장소 ${ev.location}`)
+                  if (ev.content) extras.push(ev.content)
+                  return (
+                    <li key={`${ev.eventType}-${ev.date}-${ev.time || ''}-${i}`}>
+                      {label}: {datePart}{timePart}
+                      {extras.length > 0 && ` · ${extras.join(' · ')}`}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
           <div className="detail-fulltext">
             <div className="detail-fulltext-header">
               <strong>공고문 원문</strong>

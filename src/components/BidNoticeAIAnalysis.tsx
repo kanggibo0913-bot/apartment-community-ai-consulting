@@ -110,20 +110,19 @@ const UPLOAD_HELPER_NOTE =
 
 interface BidNoticeAIAnalysisProps {
   // 버튼1: 분석 결과를 공고 등록 폼에 반영. noticeText가 함께 전달되면 form.fullText도 채운다.
+  // AI 분석 탭에서 "직접 공고 등록"은 더 이상 지원하지 않는다 (혼선 방지).
+  // 실제 공고 등록은 반드시 "공고 등록·관리" 탭에서 사용자가 확인 후 진행한다.
   onApplyToForm?: (parsed: BidAnalysisParsed, overwrite: boolean, noticeText?: string) => void
-  // 버튼2: 분석 결과로 공고(TenderNotice) 1건 등록
-  onRegisterNotice?: (parsed: BidAnalysisParsed) => { added: number; duplicate: boolean }
-  // 버튼3: 주요 일정만 캘린더에 추가
+  // 버튼2: 주요 일정만 캘린더에 추가 (공고 등록 없이 일정만 보고 싶은 흐름)
   onAddScheduleEvents?: (parsed: BidAnalysisParsed) => { added: number; duplicate: boolean }
-  // 일정 등록 직후 입찰 스케줄러 탭으로 이동(분석 탭 ↔ 스케줄러 탭 전환용)
+  // 일정 등록 직후 입찰 스케줄러 탭으로 이동
   onJumpToScheduler?: () => void
-  // 분석 완료 직후 공고 목록·관리 탭으로 이동
+  // 분석 완료 직후 공고 등록·관리 탭으로 이동
   onJumpToList?: () => void
 }
 
 const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
   onApplyToForm,
-  onRegisterNotice,
   onAddScheduleEvents,
   onJumpToScheduler,
   onJumpToList,
@@ -453,15 +452,6 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
     return out
   }, [parsed])
 
-  const handleRegister = () => {
-    if (!parsed || !onRegisterNotice) return
-    const res = onRegisterNotice(parsed)
-    if (res.duplicate) setActionMsg('이미 등록된 공고 또는 일정은 제외했습니다.')
-    else if (res.added > 0) setActionMsg('AI 분석 결과로 공고가 등록되었습니다.')
-    else setActionMsg('등록할 일정 정보가 없습니다. (날짜 확인 필요)')
-    setTimeout(() => setActionMsg(''), 6000)
-  }
-
   const handleAddScheduleOnly = () => {
     if (!parsed || !onAddScheduleEvents) return
     const res = onAddScheduleEvents(parsed)
@@ -504,7 +494,7 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
             try {
               // 신규 draft를 그 자리에서 parsed로 변환해 폼 핸들러에 전달(state 비동기 지연 방지).
               onApplyToForm(draftToParsed(newDraft), false, form.noticeText)
-              setApplyMsg('AI 분석 결과가 공고 등록 폼에 반영되었습니다. 공고 목록·관리 탭에서 확인 후 등록하세요.')
+              setApplyMsg('AI 분석 결과가 공고 등록 폼에 반영되었습니다. 공고 등록·관리 탭에서 확인 후 등록하세요.')
               setTimeout(() => setApplyMsg(''), 9000)
             } catch {
               // applyForm 실패는 분석 결과 자체에는 영향 없음
@@ -534,8 +524,8 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
     onApplyToForm(parsed, overwrite, form.noticeText)
     setApplyMsg(
       overwrite
-        ? '공고 등록 폼을 분석 결과로 덮어썼습니다. 폼에서 확인 후 "공고 등록"을 누르면 스케줄러에도 반영됩니다.'
-        : '비어 있는 공고 정보 항목을 분석 결과로 채웠습니다. 폼에서 확인 후 "공고 등록"을 누르면 스케줄러에도 반영됩니다.',
+        ? '공고 등록 폼을 분석 결과로 덮어썼습니다. 공고 등록·관리 탭에서 값을 확인하고 "공고 등록"을 누르면 스케줄러에도 반영됩니다.'
+        : '비어 있는 공고 정보 항목을 분석 결과로 채웠습니다. 공고 등록·관리 탭에서 값을 확인하고 "공고 등록"을 누르면 스케줄러에도 반영됩니다.',
     )
     setTimeout(() => setApplyMsg(''), 6000)
   }
@@ -850,9 +840,12 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
 
             {onApplyToForm && (
               <div className="bid-action-group">
-                <p className="bid-action-desc">아래 공고 등록 폼에 분석 값을 채웁니다. (직접 검토 후 등록)</p>
+                <p className="bid-action-desc">
+                  아래 공고 등록 폼에 분석 값을 채웁니다. AI 분석 탭에서는 직접 공고를 등록하지 않습니다 —
+                  반영 후 <strong>공고 등록·관리</strong> 탭에서 값을 확인하고 등록하세요.
+                </p>
                 <div className="bid-apply-actions">
-                  <Button variant="secondary" onClick={() => handleApply(false)}>분석 결과를 공고 정보에 반영 (빈 항목만)</Button>
+                  <Button variant="secondary" onClick={() => handleApply(false)}>분석 결과를 공고 등록 폼에 반영 (빈 항목만)</Button>
                   <Button variant="secondary" onClick={() => handleApply(true)}>전체 덮어쓰기</Button>
                 </div>
                 {applyMsg && (
@@ -860,21 +853,12 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
                     <p className="bid-apply-msg" style={{ margin: 0 }}>{applyMsg}</p>
                     {onJumpToList && (
                       <>
-                        <span className="bid-action-banner-hint">→ 공고 목록·관리 탭에서 폼 값을 확인하고 등록하세요.</span>
-                        <Button variant="secondary" onClick={onJumpToList}>공고 목록·관리로 이동</Button>
+                        <span className="bid-action-banner-hint">→ 공고 등록·관리 탭에서 폼 값을 확인 후 "공고 등록"을 눌러주세요.</span>
+                        <Button variant="primary" onClick={onJumpToList}>공고 등록·관리로 이동</Button>
                       </>
                     )}
                   </div>
                 )}
-              </div>
-            )}
-
-            {onRegisterNotice && (
-              <div className="bid-action-group">
-                <p className="bid-action-desc">분석 결과로 공고 1건을 바로 등록합니다. (공고 목록 + 스케줄러에 표시)</p>
-                <div className="bid-apply-actions">
-                  <Button variant="primary" onClick={handleRegister}>AI 분석 결과로 공고 등록</Button>
-                </div>
               </div>
             )}
 
