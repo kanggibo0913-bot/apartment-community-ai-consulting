@@ -301,11 +301,34 @@ const AiResultHistoryPage: React.FC = () => {
         setTimeout(() => setCopyMsg(''), 2500)
         return
       }
-      // 기존 + 신규 병합, 최대 100건 유지(기존 save 정책과 동일).
-      const merged = [...items, ...normalized].slice(0, 100)
-      window.localStorage.setItem('aiResultHistory', JSON.stringify(merged))
+      // ─── 중복 감지 및 스킵 ────────────────────────────────────────────────
+      // 동일 항목 판단 기준: createdAt + title + content + taskType (id·meta 제외).
+      // 같은 백업 파일 내부 중복도 제거하기 위해 통과한 key를 즉시 set에 add한다.
+      const makeDuplicateKey = (entry: { createdAt?: string; title?: string; content?: string; taskType?: string }) =>
+        [entry.createdAt || '', entry.title || '', entry.content || '', entry.taskType || ''].join('||')
+      const existingKeys = new Set(items.map(makeDuplicateKey))
+      const uniqueImportedItems = normalized.filter((entry) => {
+        const key = makeDuplicateKey(entry)
+        if (existingKeys.has(key)) return false
+        existingKeys.add(key)
+        return true
+      })
+      const skippedCount = normalized.length - uniqueImportedItems.length
+
+      if (uniqueImportedItems.length === 0) {
+        setCopyMsg(`새로 가져올 AI 이력이 없습니다. 중복 ${skippedCount}개는 건너뛰었습니다.`)
+        setTimeout(() => setCopyMsg(''), 2500)
+        return
+      }
+      // 기존 + 중복 제외 신규 병합, 최대 100건 유지(기존 save 정책과 동일).
+      const nextItems = [...items, ...uniqueImportedItems].slice(0, 100)
+      window.localStorage.setItem('aiResultHistory', JSON.stringify(nextItems))
       setItems(loadAiResults())
-      setCopyMsg(`${normalized.length}개의 AI 이력을 가져왔습니다.`)
+      setCopyMsg(
+        skippedCount > 0
+          ? `${uniqueImportedItems.length}개의 AI 이력을 가져왔습니다. 중복 ${skippedCount}개는 건너뛰었습니다.`
+          : `${uniqueImportedItems.length}개의 AI 이력을 가져왔습니다.`,
+      )
       setTimeout(() => setCopyMsg(''), 2500)
     }
     reader.onerror = () => {
