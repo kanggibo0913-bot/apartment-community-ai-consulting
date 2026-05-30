@@ -598,9 +598,9 @@ const TenderNotices = () => {
   const generatedSummary = useMemo(() => buildSummaryText(form, autoAnalysis), [form, autoAnalysis])
 
   const eventDefinitions = [
-    { field: 'siteVisitDate' as const, label: '현설', badge: 'schedule-site-visit' },
-    { field: 'deadlineDate' as const, label: '마감', badge: 'schedule-deadline' },
-    { field: 'ptDate' as const, label: 'PT', badge: 'schedule-pt' },
+    { field: 'siteVisitDate' as const, label: '현장설명회', badge: 'schedule-site-visit' },
+    { field: 'deadlineDate' as const, label: '입찰마감', badge: 'schedule-deadline' },
+    { field: 'ptDate' as const, label: 'PT 발표', badge: 'schedule-pt' },
     { field: 'contractStartDate' as const, label: '계약시작', badge: 'schedule-contract-start' },
     { field: 'contractEndDate' as const, label: '계약종료', badge: 'schedule-contract-end' },
   ]
@@ -926,11 +926,52 @@ const TenderNotices = () => {
         })
       })
     } else {
-      // 2) Fallback: 단일 키만 채워진 구버전 응답 처리.
+      // 2) Fallback: 단일 키만 채워진 구버전 응답 처리. 시간 필드가 있으면 함께 등록.
       const sv = toDateInput(parsed.siteBriefingDate)
-      if (sv) candidates.push({ type: 'siteBriefing', label: '현장설명회', raw: parsed.siteBriefingDate, date: sv })
+      if (sv)
+        candidates.push({
+          type: 'siteBriefing',
+          label: '현장설명회',
+          raw: parsed.siteBriefingDate,
+          date: sv,
+          time: parsed.siteBriefingTime || undefined,
+        })
       const dl = toDateInput(parsed.bidDeadline)
-      if (dl) candidates.push({ type: 'bidDeadline', label: '입찰마감', raw: parsed.bidDeadline, date: dl })
+      if (dl)
+        candidates.push({
+          type: 'bidDeadline',
+          label: '입찰마감',
+          raw: parsed.bidDeadline,
+          date: dl,
+          time: parsed.bidDeadlineTime || undefined,
+        })
+      const op = toDateInput(parsed.openingDate)
+      if (op)
+        candidates.push({
+          type: 'opening',
+          label: '개찰',
+          raw: parsed.openingDate,
+          date: op,
+          time: parsed.openingTime || undefined,
+        })
+      const ds = toDateInput(parsed.documentSubmissionDate)
+      if (ds)
+        candidates.push({
+          type: 'documentSubmission',
+          label: '서류제출',
+          raw: parsed.documentSubmissionDate,
+          date: ds,
+          time: parsed.documentSubmissionTime || undefined,
+        })
+      const pt = toDateInput(parsed.ptDate)
+      if (pt)
+        candidates.push({
+          type: 'pt',
+          label: 'PT 발표',
+          raw: parsed.ptDate,
+          date: pt,
+          time: parsed.ptTime || undefined,
+        })
       const bp = toDateInput(parsed.businessPresentationDate)
       if (bp)
         candidates.push({

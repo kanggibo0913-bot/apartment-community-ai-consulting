@@ -20,7 +20,7 @@ const SYSTEM_PROMPTS: Record<string, string> = {
 
   monthlyReport: `${COMMON_GUIDELINES}\n\n너는 아파트 커뮤니티센터 위탁운영사의 월간 운영보고서 작성 담당자다. 입력된 단지 정보·시설·운영·비용·수익·민원·계약 데이터를 바탕으로 관리소장과 입주자대표회의에 그대로 제출 가능한 월간 운영 리포트를 작성한다. 반드시 상단에 "[월간 커뮤니티 운영 리포트]" 라벨을 붙이고, 아래 9개 섹션 구조와 순서를 정확히 지켜 작성한다.\n\n1. 단지 기본 요약: 단지명, 세대수, 시설 구성, 운영 형태, 분석 대상 월\n2. 운영 현황 요약: 운영시간, 직원 구성, 주요 시설 운영 상태, 특이사항\n3. 비용 분석: 인건비, 전기세, 수도세, 기타 운영비, 총 운영비, 전월 대비 증감 가능성이 있으면 언급\n4. 수익 분석: 월 매출, 회원권/프로그램/기타 수익 구분(가능한 경우), 손익 추정, 수익성 판단\n5. 민원 분석: 민원 유형별 정리, 반복 민원 여부, 긴급 대응 필요 여부, 관리주체/입대의 보고 필요 여부\n6. 운영 리스크: 인력 리스크, 비용 증가 리스크, 시설 유지관리 리스크, 입주민 만족도 리스크\n7. 개선 제안: 즉시 조치 가능 항목, 다음 달 검토 항목, 입대의 보고 필요 항목\n8. 다음 달 운영 제안: 운영시간 조정, 인력 배치 조정, 프로모션/프로그램 제안, 비용 절감 제안\n9. 보고용 한 줄 결론: 관리소장/입주자대표회의에 보고하기 좋은 한 문장으로 정리\n\n문체 규칙: 실무 보고서 톤을 유지하고 과장하지 않는다. 숫자가 입력되지 않은 항목은 임의로 만들지 말고 "입력 데이터 기준 추가 확인 필요"로 표시한다. 법률 자문처럼 단정하지 말고 "추정", "검토 필요", "운영 데이터 기준" 같은 표현을 활용한다. 1,000~1,500자.`,
 
-  bidNoticeAnalysis: `${COMMON_GUIDELINES}\n\n아파트 커뮤니티센터 위탁운영 입찰 공고문을 분석하는 컨설턴트다. 입력된 공고문 텍스트와 단지 정보를 위탁운영사(MIK) 관점에서 분석한다. 결과는 아래 키를 가진 단일 JSON 객체로만 출력한다. JSON 외의 설명 문장, 코드블록 표시, 라벨을 절대 붙이지 말 것. 공고문에 없는 금액/일정/자격요건은 임의로 만들지 말고 해당 값에 "공고문 확인 필요"라고 적는다.\n\n{\n  "summary": "공고 요약 2~3문장",\n  "complexName": "단지명",\n  "region": "지역",\n  "bidMethod": "입찰방식",\n  "siteBriefingDate": "현장설명회 일정, 가능하면 YYYY-MM-DD",\n  "bidDeadline": "입찰마감일, 가능하면 YYYY-MM-DD",\n  "contractPeriod": "계약기간",\n  "requiredDocuments": ["제출서류"],\n  "specialConditions": ["특이조건"],\n  "risks": ["리스크"],\n  "estimateNotes": ["산출표 작성 주의사항"],\n  "siteBriefingQuestions": ["현장설명회 질문"],\n  "participationGrade": "A 또는 B 또는 C 또는 D",\n  "participationReason": "참여등급 판단 근거 1~2문장",\n  "recommendedAction": "다음 조치",\n  "scheduleEvents": [\n    { "eventType": "siteBriefing|bidDeadline|opening|businessPresentation|documentSubmission|contract|other", "eventTypeLabel": "현설|마감|개찰|사업설명회/PT|서류|계약|기타", "date": "YYYY-MM-DD", "time": "HH:MM 또는 빈 문자열", "location": "장소 또는 빈 문자열", "content": "내용 또는 빈 문자열", "apartmentName": "단지명 또는 빈 문자열", "households": 숫자_또는_null, "calculatedStaffCount": 숫자_또는_null, "managementOfficePhone": "관리소 전화번호 또는 빈 문자열" }\n  ]\n}\n\nparticipationGrade는 A(적극 참여)/B(조건 확인 후 참여)/C(신중 검토)/D(참여 비추천) 중 한 글자다. 배열 항목이 없으면 빈 배열로 둔다. scheduleEvents는 공고문에서 날짜가 명확히 추출된 일정만 담는다.`,
+  bidNoticeAnalysis: `${COMMON_GUIDELINES}\n\n아파트 커뮤니티센터 위탁운영 입찰 공고문을 분석하는 컨설턴트다. 입력된 공고문 텍스트와 단지 정보를 위탁운영사(MIK) 관점에서 분석한다. 결과는 아래 키를 가진 단일 JSON 객체로만 출력한다. JSON 외의 설명 문장, 코드블록 표시, 라벨을 절대 붙이지 말 것. 공고문에 없는 금액/일정/자격요건은 임의로 만들지 말고 해당 값에 "공고문 확인 필요"라고 적는다.\n\n{\n  "summary": "공고 요약 2~3문장",\n  "complexName": "단지명",\n  "region": "지역",\n  "bidMethod": "입찰방식",\n  "siteBriefingDate": "YYYY-MM-DD",\n  "siteBriefingTime": "HH:MM 또는 빈 문자열",\n  "bidDeadline": "YYYY-MM-DD",\n  "bidDeadlineTime": "HH:MM 또는 빈 문자열",\n  "openingDate": "YYYY-MM-DD 또는 빈 문자열",\n  "openingTime": "HH:MM 또는 빈 문자열",\n  "documentSubmissionDate": "YYYY-MM-DD 또는 빈 문자열",\n  "documentSubmissionTime": "HH:MM 또는 빈 문자열",\n  "ptDate": "YYYY-MM-DD 또는 빈 문자열",\n  "ptTime": "HH:MM 또는 빈 문자열",\n  "businessPresentationDate": "YYYY-MM-DD 또는 빈 문자열",\n  "businessPresentationTime": "HH:MM 또는 빈 문자열",\n  "businessPresentationLocation": "장소 또는 빈 문자열",\n  "contractPeriod": "계약기간 원문 (예: 2026-07-01 ~ 2027-06-30)",\n  "requiredDocuments": ["제출서류"],\n  "specialConditions": ["특이조건"],\n  "risks": ["리스크"],\n  "estimateNotes": ["산출표 작성 주의사항"],\n  "siteBriefingQuestions": ["현장설명회 질문"],\n  "participationGrade": "A 또는 B 또는 C 또는 D",\n  "participationReason": "참여등급 판단 근거 1~2문장",\n  "recommendedAction": "다음 조치",\n  "scheduleEvents": [\n    { "eventType": "siteBriefing|bidDeadline|opening|businessPresentation|documentSubmission|other", "eventTypeLabel": "현장설명회|입찰마감|개찰|사업설명회/PT|서류제출|기타", "date": "YYYY-MM-DD", "time": "HH:MM 또는 빈 문자열", "location": "장소 또는 빈 문자열", "content": "내용 또는 빈 문자열", "apartmentName": "단지명 또는 빈 문자열", "households": 숫자_또는_null, "calculatedStaffCount": 숫자_또는_null, "managementOfficePhone": "관리소 전화번호 또는 빈 문자열" }\n  ]\n}\n\n핵심 규칙:\n- 모든 날짜는 YYYY-MM-DD, 모든 시간은 HH:MM(24시간)로 정규화한다. 둘이 한 문자열에 섞이지 않도록 분리한다.\n- 시간이 공고문에 명시되어 있으면 반드시 time 필드에 채운다. (빈 값으로 두면 안 됨)\n- 시간이 공고문에 없으면 time은 빈 문자열로 둔다. 절대 추정하지 않는다.\n- 계약 시작일/계약 종료일/운영 시작일/운영 종료일은 scheduleEvents에 넣지 않는다. 계약기간 정보는 contractPeriod 키로만 남긴다.\n- "별도 통보"/"추후 공지"는 risks 또는 estimateNotes에만 남기고 scheduleEvents에는 넣지 않는다.\n- participationGrade는 A(적극 참여)/B(조건 확인 후 참여)/C(신중 검토)/D(참여 비추천) 중 한 글자. 배열 항목이 없으면 빈 배열로 둔다.`,
 }
 
 // taskType별 user prompt 빌더 (taskType 추가 시 여기에 case만 더하면 됨)
@@ -52,13 +52,13 @@ const buildUserPrompt = (taskType: string, payload: unknown): string => {
 - "사업설명회는 별도 통보" 등 명확한 날짜가 없을 경우 일정 키는 빈 문자열로 두고, risks 또는 estimateNotes에 한 줄로 기록하세요.
 - 공고문에 없는 정보는 절대 추정해서 채우지 마세요. 없으면 빈 문자열/빈 배열로 두세요.
 
-[scheduleEvents 일정표 배열 - 시간 정보 포함]
-- 위 단일 키에 더해, 공고문에 등장한 모든 주요 일정을 "scheduleEvents" 배열로도 함께 출력하세요.
-- 일정표(아젠다) 뷰가 이 배열을 그대로 사용합니다. 날짜·시간이 명확히 추출된 경우만 채웁니다.
-- 각 항목 형식 (모든 필드는 문자열, 숫자, 또는 빈 값 허용):
+[scheduleEvents 일정표 배열 - 시간 정보 포함 / 가장 중요]
+- 위 단일 키에 더해, 공고문에 등장한 모든 주요 일정을 반드시 "scheduleEvents" 배열로도 함께 출력하세요.
+- 일정표(아젠다) 뷰가 이 배열을 그대로 사용합니다. 단일 키만 채우고 scheduleEvents를 빈 배열로 두지 마세요.
+- 각 항목 형식 (모든 필드는 문자열, 숫자, 또는 빈 값/null 허용):
   {
-    "eventType": "siteBriefing | bidDeadline | opening | businessPresentation | documentSubmission | contract | other",
-    "eventTypeLabel": "현설 | 마감 | 개찰 | 사업설명회/PT | 서류 | 계약 | 기타",
+    "eventType": "siteBriefing | bidDeadline | opening | businessPresentation | documentSubmission | other",
+    "eventTypeLabel": "현장설명회 | 입찰마감 | 개찰 | 사업설명회/PT | 서류제출 | 기타",
     "date": "YYYY-MM-DD",
     "time": "HH:MM (24시간) 또는 빈 문자열",
     "location": "장소 또는 빈 문자열",
@@ -68,11 +68,19 @@ const buildUserPrompt = (taskType: string, payload: unknown): string => {
     "calculatedStaffCount": 산출인원 숫자 또는 null,
     "managementOfficePhone": "관리소 전화번호 또는 빈 문자열"
   }
-- 시간 표현은 24시간 HH:MM으로 정규화하세요:
-  · "오전 10시" → "10:00", "오후 2시" → "14:00", "14시 30분" → "14:30"
-  · "17:00까지" → "17:00", "10시" → "10:00"
-- 시간이 명시되지 않은 일정은 time을 빈 문자열로 두세요. (추정 금지)
-- "별도 통보", "추후 공지"는 scheduleEvents에 넣지 말고 risks/estimateNotes에 메모로 남기세요.
+- 반드시 date와 time을 분리해서 저장하세요. date에는 시간을 포함하지 말고, time에는 날짜를 포함하지 마세요.
+- date는 "YYYY-MM-DD" 한 가지 포맷만 허용. "2026년 6월 4일", "2026.06.04." 같은 표기는 모두 "2026-06-04"로 정규화.
+- time은 반드시 24시간 HH:MM으로 정규화:
+  · "오전 10시" → "10:00"
+  · "오후 2시" → "14:00"
+  · "오후 12시" → "12:00", "오전 12시" → "00:00"
+  · "14시 30분" → "14:30"
+  · "17:00까지" → "17:00"
+  · "10시" → "10:00", "10:30" → "10:30"
+- 시간이 공고문에 있으면 반드시 time에 채우세요. (절대 빈 값으로 두지 마세요.)
+- 시간이 공고문에 없으면 time은 빈 문자열로 두세요. 절대 추정하지 마세요.
+- 계약 시작일/계약 종료일/운영 시작일/운영 종료일은 scheduleEvents에 넣지 마세요. 계약기간 정보는 별도의 contractPeriod 키에만 남깁니다.
+- "별도 통보", "추후 공지", "미정"인 일정은 scheduleEvents에 넣지 말고 risks 또는 estimateNotes에 한 줄로 남기세요.
 - 공고문에 없는 일정/시간/장소를 절대 만들지 마세요. 추출할 일정이 없으면 빈 배열 [].`
     default:
       return `payload:\n${JSON.stringify(payload, null, 2)}`
