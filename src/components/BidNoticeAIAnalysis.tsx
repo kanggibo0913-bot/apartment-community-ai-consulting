@@ -82,8 +82,9 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
   // 버튼3(일정만 추가)에 표시할 마일스톤 후보.
   // 1순위: AI가 반환한 scheduleEvents[] (시간 포함). 2순위: 단일 키 fallback.
   // 계약 시작/종료는 스케줄러 대상이 아니므로 후보 표시 단계에서도 제외한다.
+  // individualVisit/unknown 상태는 날짜가 없을 수 있지만 화면 후보에는 유지(자동 등록은 비활성화).
   const scheduleCandidates = useMemo(() => {
-    if (!parsed) return [] as { label: string; value: string }[]
+    if (!parsed) return [] as { label: string; value: string; disabledReason?: string }[]
     const fmt = (raw: string) => {
       const d = toDateInput(raw)
       return d || (raw ? `날짜 확인 필요 (원문: ${raw})` : '')
@@ -94,22 +95,44 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
       if (t === 'contract' || t === 'contractstart' || t === 'contractend') return true
       return /(계약|운영(시작|종료)|operation)/i.test(l)
     }
+    const out: { label: string; value: string; disabledReason?: string }[] = []
+
+    // 1) 현장확인/개별방문 또는 현장확인 여부 미확정은 날짜가 없어도 후보로 노출한다.
+    //    자동 등록 대신 "일자 수동 입력 필요" 안내를 붙인다.
+    if (parsed.siteBriefingStatus === 'individualVisit') {
+      out.push({
+        label: '현장확인/개별방문',
+        value: '일자 수동 입력 필요',
+        disabledReason: '단체 현장설명회 없음 / 개별 방문 일자를 직접 등록해주세요.',
+      })
+    } else if (parsed.siteBriefingStatus === 'unknown') {
+      out.push({
+        label: '현장확인 여부',
+        value: '확인 필요 / 일자 수동 입력',
+        disabledReason: '공고문에 현장설명회 미개최만 언급되어 있음. 현장확인 일자를 직접 등록해주세요.',
+      })
+    }
+
     if (parsed.scheduleEvents.length > 0) {
-      return parsed.scheduleEvents
+      parsed.scheduleEvents
         .filter((ev) => !isContractLike(ev))
-        .map((ev) => {
+        .forEach((ev) => {
           const parts: string[] = []
           if (ev.time) parts.push(ev.time)
           if (ev.location) parts.push(ev.location)
           const valueBase = ev.date
-          return {
+          out.push({
             label: ev.eventTypeLabel || ev.eventType,
             value: parts.length > 0 ? `${valueBase} (${parts.join(' · ')})` : `${valueBase}${ev.time ? '' : ' · 시간 미정'}`,
-          }
+          })
         })
+      return out
     }
-    const out: { label: string; value: string }[] = []
-    if (parsed.siteBriefingDate) out.push({ label: '현장설명회', value: fmt(parsed.siteBriefingDate) })
+
+    // 2) Fallback: 단일 키 응답
+    if (parsed.siteBriefingDate && parsed.siteBriefingStatus !== 'individualVisit') {
+      out.push({ label: '현장설명회', value: fmt(parsed.siteBriefingDate) })
+    }
     if (parsed.bidDeadline) out.push({ label: '입찰마감', value: fmt(parsed.bidDeadline) })
     if (parsed.businessPresentationDate) {
       const extras: string[] = []
@@ -268,11 +291,20 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
           <section className="bid-block">
             <h5>주요 일정</h5>
             <ul className="bid-kv">
-              {/* 현장설명회: 미개최가 명확하면 '개최하지 않음 / 개별 방문 확인'으로 표시. */}
+              {/* 현장설명회 라벨/내용은 status에 따라 분기.
+                  - scheduled : 날짜·시간 노출
+                  - individualVisit : 라벨을 "현장확인/개별방문"으로 바꾸고 "일자 수동 확인 필요" 표시 (스케줄러 후보에는 유지)
+                  - notRequired : "현장 확인 불필요" (스케줄러 후보 제외)
+                  - unknown : "현장확인 여부 확인 필요" (스케줄러 후보에는 검토 항목으로 유지)
+                  - '' : "공고문 확인 필요" */}
               <li>
-                <span>현장설명회</span>{' '}
-                {parsed.siteBriefingStatus === 'notHeld'
-                  ? `개최하지 않음 / ${parsed.siteBriefingNote || '개별 방문 확인'}`
+                <span>{parsed.siteBriefingStatus === 'individualVisit' ? '현장확인/개별방문' : '현장설명회'}</span>{' '}
+                {parsed.siteBriefingStatus === 'individualVisit'
+                  ? `일자 수동 확인 필요${parsed.siteBriefingNote ? ' · ' + parsed.siteBriefingNote : ''}`
+                  : parsed.siteBriefingStatus === 'notRequired'
+                  ? parsed.siteBriefingNote || '현장 확인 불필요'
+                  : parsed.siteBriefingStatus === 'unknown'
+                  ? parsed.siteBriefingNote || '현장확인 여부 확인 필요'
                   : parsed.siteBriefingDate
                   ? [parsed.siteBriefingDate, parsed.siteBriefingTime].filter(Boolean).join(' · ')
                   : '공고문 확인 필요'}
@@ -408,9 +440,21 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
                 {scheduleCandidates.length > 0 && (
                   <ul className="bid-kv">
                     {scheduleCandidates.map((c, i) => (
-                      <li key={i}><span>{c.label}</span> {c.value}</li>
+                      <li key={i}>
+                        <span>{c.label}</span> {c.value}
+                        {c.disabledReason && (
+                          <div className="bid-apply-msg" style={{ marginTop: 4 }}>
+                            ※ {c.disabledReason}
+                          </div>
+                        )}
+                      </li>
                     ))}
                   </ul>
+                )}
+                {scheduleCandidates.some((c) => c.disabledReason) && (
+                  <p className="bid-apply-msg" style={{ marginTop: 4 }}>
+                    안내: 일자 수동 입력 항목은 자동 등록되지 않습니다. 공고 등록 폼이나 일정표에서 직접 일자를 입력해 등록해주세요.
+                  </p>
                 )}
                 <div className="bid-apply-actions">
                   <Button variant="primary" onClick={handleAddScheduleOnly}>주요 일정만 스케줄러에 추가</Button>

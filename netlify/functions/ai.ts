@@ -20,7 +20,7 @@ const SYSTEM_PROMPTS: Record<string, string> = {
 
   monthlyReport: `${COMMON_GUIDELINES}\n\n너는 아파트 커뮤니티센터 위탁운영사의 월간 운영보고서 작성 담당자다. 입력된 단지 정보·시설·운영·비용·수익·민원·계약 데이터를 바탕으로 관리소장과 입주자대표회의에 그대로 제출 가능한 월간 운영 리포트를 작성한다. 반드시 상단에 "[월간 커뮤니티 운영 리포트]" 라벨을 붙이고, 아래 9개 섹션 구조와 순서를 정확히 지켜 작성한다.\n\n1. 단지 기본 요약: 단지명, 세대수, 시설 구성, 운영 형태, 분석 대상 월\n2. 운영 현황 요약: 운영시간, 직원 구성, 주요 시설 운영 상태, 특이사항\n3. 비용 분석: 인건비, 전기세, 수도세, 기타 운영비, 총 운영비, 전월 대비 증감 가능성이 있으면 언급\n4. 수익 분석: 월 매출, 회원권/프로그램/기타 수익 구분(가능한 경우), 손익 추정, 수익성 판단\n5. 민원 분석: 민원 유형별 정리, 반복 민원 여부, 긴급 대응 필요 여부, 관리주체/입대의 보고 필요 여부\n6. 운영 리스크: 인력 리스크, 비용 증가 리스크, 시설 유지관리 리스크, 입주민 만족도 리스크\n7. 개선 제안: 즉시 조치 가능 항목, 다음 달 검토 항목, 입대의 보고 필요 항목\n8. 다음 달 운영 제안: 운영시간 조정, 인력 배치 조정, 프로모션/프로그램 제안, 비용 절감 제안\n9. 보고용 한 줄 결론: 관리소장/입주자대표회의에 보고하기 좋은 한 문장으로 정리\n\n문체 규칙: 실무 보고서 톤을 유지하고 과장하지 않는다. 숫자가 입력되지 않은 항목은 임의로 만들지 말고 "입력 데이터 기준 추가 확인 필요"로 표시한다. 법률 자문처럼 단정하지 말고 "추정", "검토 필요", "운영 데이터 기준" 같은 표현을 활용한다. 1,000~1,500자.`,
 
-  bidNoticeAnalysis: `${COMMON_GUIDELINES}\n\n아파트 커뮤니티센터 위탁운영 입찰 공고문을 분석하는 컨설턴트다. 입력된 공고문 텍스트와 단지 정보를 위탁운영사(MIK) 관점에서 분석한다. 결과는 아래 키를 가진 단일 JSON 객체로만 출력한다. JSON 외의 설명 문장, 코드블록 표시, 라벨을 절대 붙이지 말 것. 공고문에 없는 금액/일정/자격요건은 임의로 만들지 말고 해당 값에 "공고문 확인 필요"라고 적는다.\n\n{\n  "summary": "공고 요약 2~3문장",\n  "complexName": "단지명",\n  "region": "지역",\n  "bidMethod": "입찰방식",\n  "siteBriefingDate": "YYYY-MM-DD",\n  "siteBriefingTime": "HH:MM 또는 빈 문자열",\n  "siteBriefingStatus": "notHeld | scheduled | 빈 문자열",\n  "siteBriefingNote": "현장설명회 미개최 사유 또는 빈 문자열 (예: '개별 방문으로 확인')",\n  "siteBriefingNotHeld": true_또는_false,\n  "bidDeadline": "YYYY-MM-DD",\n  "bidDeadlineTime": "HH:MM 또는 빈 문자열",\n  "openingDate": "YYYY-MM-DD 또는 빈 문자열",\n  "openingTime": "HH:MM 또는 빈 문자열",\n  "documentSubmissionDate": "YYYY-MM-DD 또는 빈 문자열",\n  "documentSubmissionTime": "HH:MM 또는 빈 문자열",\n  "ptDate": "YYYY-MM-DD 또는 빈 문자열",\n  "ptTime": "HH:MM 또는 빈 문자열",\n  "businessPresentationDate": "YYYY-MM-DD 또는 빈 문자열",\n  "businessPresentationTime": "HH:MM 또는 빈 문자열",\n  "businessPresentationLocation": "장소 또는 빈 문자열",\n  "contractPeriod": "계약기간 원문 (예: 2026-07-01 ~ 2027-06-30)",\n  "requiredDocuments": ["제출서류"],\n  "specialConditions": ["특이조건"],\n  "risks": ["리스크"],\n  "estimateNotes": ["산출표 작성 주의사항"],\n  "siteBriefingQuestions": ["현장설명회 질문"],\n  "participationGrade": "A 또는 B 또는 C 또는 D",\n  "participationReason": "참여등급 판단 근거 1~2문장",\n  "recommendedAction": "다음 조치",\n  "scheduleEvents": [\n    { "eventType": "siteBriefing|bidDeadline|opening|businessPresentation|documentSubmission|other", "eventTypeLabel": "현장설명회|입찰마감|개찰|사업설명회/PT|서류제출|기타", "date": "YYYY-MM-DD", "time": "HH:MM 또는 빈 문자열", "location": "장소 또는 빈 문자열", "content": "내용 또는 빈 문자열", "apartmentName": "단지명 또는 빈 문자열", "households": 숫자_또는_null, "calculatedStaffCount": 숫자_또는_null, "managementOfficePhone": "관리소 전화번호 또는 빈 문자열" }\n  ]\n}\n\n핵심 규칙:\n- 모든 날짜는 YYYY-MM-DD, 모든 시간은 HH:MM(24시간)로 정규화한다. 둘이 한 문자열에 섞이지 않도록 분리한다.\n- 시간이 공고문에 명시되어 있으면 반드시 time 필드에 채운다. (빈 값으로 두면 안 됨)\n- 시간이 공고문에 없으면 time은 빈 문자열로 둔다. 절대 추정하지 않는다.\n- 계약 시작일/계약 종료일/운영 시작일/운영 종료일은 scheduleEvents에 넣지 않는다. 계약기간 정보는 contractPeriod 키로만 남긴다.\n- "별도 통보"/"추후 공지"는 risks 또는 estimateNotes에만 남기고 scheduleEvents에는 넣지 않는다.\n- participationGrade는 A(적극 참여)/B(조건 확인 후 참여)/C(신중 검토)/D(참여 비추천) 중 한 글자. 배열 항목이 없으면 빈 배열로 둔다.`,
+  bidNoticeAnalysis: `${COMMON_GUIDELINES}\n\n아파트 커뮤니티센터 위탁운영 입찰 공고문을 분석하는 컨설턴트다. 입력된 공고문 텍스트와 단지 정보를 위탁운영사(MIK) 관점에서 분석한다. 결과는 아래 키를 가진 단일 JSON 객체로만 출력한다. JSON 외의 설명 문장, 코드블록 표시, 라벨을 절대 붙이지 말 것. 공고문에 없는 금액/일정/자격요건은 임의로 만들지 말고 해당 값에 "공고문 확인 필요"라고 적는다.\n\n{\n  "summary": "공고 요약 2~3문장",\n  "complexName": "단지명",\n  "region": "지역",\n  "bidMethod": "입찰방식",\n  "siteBriefingDate": "YYYY-MM-DD",\n  "siteBriefingTime": "HH:MM 또는 빈 문자열",\n  "siteBriefingStatus": "scheduled | individualVisit | notRequired | unknown | 빈 문자열",\n  "siteBriefingNote": "현장설명회 진행 방식 보조 메모 (예: '개별 방문으로 현장 확인 필요')",\n  "bidDeadline": "YYYY-MM-DD",\n  "bidDeadlineTime": "HH:MM 또는 빈 문자열",\n  "openingDate": "YYYY-MM-DD 또는 빈 문자열",\n  "openingTime": "HH:MM 또는 빈 문자열",\n  "documentSubmissionDate": "YYYY-MM-DD 또는 빈 문자열",\n  "documentSubmissionTime": "HH:MM 또는 빈 문자열",\n  "ptDate": "YYYY-MM-DD 또는 빈 문자열",\n  "ptTime": "HH:MM 또는 빈 문자열",\n  "businessPresentationDate": "YYYY-MM-DD 또는 빈 문자열",\n  "businessPresentationTime": "HH:MM 또는 빈 문자열",\n  "businessPresentationLocation": "장소 또는 빈 문자열",\n  "contractPeriod": "계약기간 원문 (예: 2026-07-01 ~ 2027-06-30)",\n  "requiredDocuments": ["제출서류"],\n  "specialConditions": ["특이조건"],\n  "risks": ["리스크"],\n  "estimateNotes": ["산출표 작성 주의사항"],\n  "siteBriefingQuestions": ["현장설명회 질문"],\n  "participationGrade": "A 또는 B 또는 C 또는 D",\n  "participationReason": "참여등급 판단 근거 1~2문장",\n  "recommendedAction": "다음 조치",\n  "scheduleEvents": [\n    { "eventType": "siteBriefing|bidDeadline|opening|businessPresentation|documentSubmission|other", "eventTypeLabel": "현장설명회|입찰마감|개찰|사업설명회/PT|서류제출|기타", "date": "YYYY-MM-DD", "time": "HH:MM 또는 빈 문자열", "location": "장소 또는 빈 문자열", "content": "내용 또는 빈 문자열", "apartmentName": "단지명 또는 빈 문자열", "households": 숫자_또는_null, "calculatedStaffCount": 숫자_또는_null, "managementOfficePhone": "관리소 전화번호 또는 빈 문자열" }\n  ]\n}\n\n핵심 규칙:\n- 모든 날짜는 YYYY-MM-DD, 모든 시간은 HH:MM(24시간)로 정규화한다. 둘이 한 문자열에 섞이지 않도록 분리한다.\n- 시간이 공고문에 명시되어 있으면 반드시 time 필드에 채운다. (빈 값으로 두면 안 됨)\n- 시간이 공고문에 없으면 time은 빈 문자열로 둔다. 절대 추정하지 않는다.\n- 계약 시작일/계약 종료일/운영 시작일/운영 종료일은 scheduleEvents에 넣지 않는다. 계약기간 정보는 contractPeriod 키로만 남긴다.\n- "별도 통보"/"추후 공지"는 risks 또는 estimateNotes에만 남기고 scheduleEvents에는 넣지 않는다.\n- participationGrade는 A(적극 참여)/B(조건 확인 후 참여)/C(신중 검토)/D(참여 비추천) 중 한 글자. 배열 항목이 없으면 빈 배열로 둔다.`,
 }
 
 // taskType별 user prompt 빌더 (taskType 추가 시 여기에 case만 더하면 됨)
@@ -54,19 +54,25 @@ const buildUserPrompt = (taskType: string, payload: unknown): string => {
   - businessPresentationLocation: 장소 문자열 (없으면 빈 문자열)
 - "사업설명회는 별도 통보" 등 명확한 날짜가 없을 경우 일정 키는 빈 문자열로 두고, risks 또는 estimateNotes에 한 줄로 기록하세요.
 
-[현장설명회 미개최 처리 - 중요]
-- 다음과 같은 표현이 등장하면 현장설명회 일정을 만들지 마세요:
-  "현장설명회는 개최하지 않음", "현장설명회 미개최", "현장설명회 없음",
-  "사업설명회(현장설명회는 개최하지 않으며, 개별 방문으로 확인)",
-  "개별 방문으로 확인", "개별방문 확인", "현장 확인은 개별 방문"
-- 위 표현이 있을 때:
-  - siteBriefingDate: 빈 문자열
-  - siteBriefingTime: 빈 문자열
-  - siteBriefingStatus: "notHeld"
-  - siteBriefingNote: "개별 방문으로 확인" (또는 공고문 표현)
-  - siteBriefingNotHeld: true
-  - scheduleEvents[]에 siteBriefing 항목을 절대 넣지 마세요.
-  - risks 또는 estimateNotes에 "현장설명회 미개최, 개별 방문 확인 필요"를 한 줄 남기세요.
+[현장설명회 진행 방식 분류 - 중요]
+- siteBriefingStatus 키를 다음 중 하나로 정확히 채우세요:
+  · "scheduled"       : 단체 현장설명회 일정이 명시되어 있음 (siteBriefingDate/Time도 채울 것)
+  · "individualVisit" : 단체 현장설명회는 없지만 개별 방문 방식으로 현장 확인을 요구 (날짜 없을 수 있음)
+  · "notRequired"     : 공고문에 현장 확인 자체가 명시적으로 불필요하다고 적혀 있는 경우만 (드물고 명시적일 때만)
+  · "unknown"         : 현장설명회 미개최라고만 적혀 있고 개별 방문 안내가 없는 경우
+- 다음 표현이 있으면 status = "individualVisit"로 분류하세요(현장확인이 사라지는 게 아니라 방식이 바뀐 것):
+  "현장설명회는 개최하지 않으며 개별 방문으로 확인",
+  "단체 현장설명회 없음 / 개별 방문",
+  "개별 방문으로 현장 확인",
+  "개별 방문 확인", "개별방문 확인"
+- "individualVisit"인 경우:
+  - siteBriefingDate: 명시된 날짜가 있으면 채우고, 없으면 빈 문자열
+  - siteBriefingTime: 명시된 시간이 있으면 채우고, 없으면 빈 문자열
+  - siteBriefingNote: "개별 방문으로 현장 확인 필요" (또는 공고문 표현)
+  - scheduleEvents[]에 siteBriefing 항목을 굳이 추가할 필요는 없지만, 날짜·시간이 명시된 경우는 추가해도 됩니다.
+  - risks 또는 estimateNotes에 "개별 방문으로 현장 확인 필요, 일자 자체 일정 등록 필요"를 한 줄 남기세요.
+- "unknown"이면 risks에 "현장설명회 미개최 표현은 있으나 현장확인 방법이 불명확함, 발주처 확인 필요"를 남기세요.
+- 절대 금지: 현장확인이 필요한 상황을 임의로 "필요 없음"으로 단정하지 말 것. 단순히 "현장설명회 없음" 만으로 notRequired로 분류하지 말 것.
 
 [서류제출/개찰 추출 - 중요]
 - "서류제출 마감일시", "서류 제출 마감", "제출 마감", "전자입찰 등록 마감",

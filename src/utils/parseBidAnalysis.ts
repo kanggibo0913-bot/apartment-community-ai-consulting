@@ -31,9 +31,14 @@ export interface BidAnalysisParsed {
   bidMethod: string
   siteBriefingDate: string
   siteBriefingTime: string
-  // 'notHeld' = 현장설명회 미개최(개별 방문 확인) / 'scheduled' = 일정 있음 / '' = 불명확
-  siteBriefingStatus: '' | 'notHeld' | 'scheduled'
-  // 미개최일 때 사용자 안내용 보조 메모 (예: "개별 방문으로 확인")
+  // 현장설명회 진행 방식:
+  //  - 'scheduled'       : 단체 현장설명회 일정이 잡혀 있음 (date/time 사용)
+  //  - 'individualVisit' : 단체 현설 대신 개별 방문 방식 (날짜 미지정 가능, 후보로는 유지)
+  //  - 'notRequired'     : 현장 확인 자체가 필요 없음 (드물고, 명시적일 때만)
+  //  - 'unknown'         : 현장설명회 미개최 표현만 있고 개별 방문 안내가 없음 (확인 필요)
+  //  - ''                : 정보 불명
+  siteBriefingStatus: '' | 'scheduled' | 'individualVisit' | 'notRequired' | 'unknown'
+  // 안내용 보조 메모 (예: "개별 방문으로 현장 확인 필요")
   siteBriefingNote: string
   bidDeadline: string
   bidDeadlineTime: string
@@ -176,12 +181,22 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
   const rawPtTime =
     asString(o.ptTime ?? o.ptPresentationTime ?? o.proposalPresentationTime ?? '') || rawPtDate
 
-  // 현장설명회 미개최 표현 감지: AI가 명시적으로 status 키를 보내지 않아도 텍스트에서 추론.
-  // "현장설명회는 개최하지 않음", "개별 방문 확인" 등이 포함되면 notHeld로 표시.
-  const NOT_HELD_REGEX =
-    /(현장설명회.{0,20}(개최(하지)?\s*않|미개최|없음))|(현장설명회.{0,20}(개별\s*방문|개별방문))|(개별\s*방문.{0,10}확인)|(개별방문.{0,10}확인)/
-  const aiSiteStatus = asString(o.siteBriefingStatus ?? '').toLowerCase().trim()
-  const aiSiteNotHeldFlag = o.siteBriefingNotHeld === true || aiSiteStatus === 'notheld' || aiSiteStatus === 'not_held'
+  // 현장설명회 진행 방식 감지.
+  // 정책 핵심: "현장설명회 미개최 + 개별 방문 확인"은 일정 제거가 아니라 'individualVisit'로 표시해 스케줄러 후보에 유지한다.
+  // 정규식 의도:
+  //   - NOT_HELD_REGEX : "현장설명회는 개최하지 않음/미개최/없음" 같은 단체 미개최 표현
+  //   - INDIVIDUAL_VISIT_REGEX : "개별 방문(으로 확인)" 같은 개별 방문 방식 표현
+  //   - NOT_REQUIRED_REGEX : "현장 확인 불필요/필요 없음" 같은 완전 불필요 표현 (드물고 명시적일 때만)
+  const NOT_HELD_REGEX = /(현장설명회.{0,20}(개최(하지)?\s*않|미개최|없음))/
+  const INDIVIDUAL_VISIT_REGEX = /(개별\s*방문|개별방문)/
+  const NOT_REQUIRED_REGEX = /(현장\s*확인\s*(불필요|필요\s*없))/
+  const aiSiteStatusRaw = asString(o.siteBriefingStatus ?? '').toLowerCase().trim()
+  const aiNormalizedStatus = aiSiteStatusRaw.replace(/[_\s]/g, '')
+  // AI가 명시한 status 키도 인식
+  const aiIndividualVisit = aiNormalizedStatus === 'individualvisit'
+  const aiNotRequired = aiNormalizedStatus === 'notrequired'
+  const aiScheduledStatus = aiNormalizedStatus === 'scheduled'
+  const aiUnknownStatus = aiNormalizedStatus === 'unknown'
   // 후보 텍스트: summary / siteBriefingNote / risks / estimateNotes / siteBriefingDate 자체
   const siteBriefingProbe = [
     asString(o.summary),
@@ -191,28 +206,43 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
     asStringArray(o.estimateNotes).join(' '),
     rawSiteDate,
   ].join(' ')
-  const textIndicatesNotHeld = NOT_HELD_REGEX.test(siteBriefingProbe)
-  const siteBriefingNotHeld = aiSiteNotHeldFlag || textIndicatesNotHeld
-  const siteBriefingStatus: '' | 'notHeld' | 'scheduled' = siteBriefingNotHeld
-    ? 'notHeld'
-    : rawSiteDate
-    ? 'scheduled'
-    : ''
+  const textNotHeld = NOT_HELD_REGEX.test(siteBriefingProbe)
+  const textIndividualVisit = INDIVIDUAL_VISIT_REGEX.test(siteBriefingProbe)
+  const textNotRequired = NOT_REQUIRED_REGEX.test(siteBriefingProbe)
+
+  let siteBriefingStatus: '' | 'scheduled' | 'individualVisit' | 'notRequired' | 'unknown' = ''
+  // 우선순위: AI 명시 → 텍스트 개별방문 → 텍스트 불필요 → 텍스트 미개최(개별방문 미언급) → 날짜 있음 → ''
+  if (aiIndividualVisit) siteBriefingStatus = 'individualVisit'
+  else if (aiNotRequired) siteBriefingStatus = 'notRequired'
+  else if (aiUnknownStatus) siteBriefingStatus = 'unknown'
+  else if (textIndividualVisit) siteBriefingStatus = 'individualVisit'
+  else if (textNotRequired) siteBriefingStatus = 'notRequired'
+  else if (textNotHeld) siteBriefingStatus = 'unknown'
+  else if (aiScheduledStatus || rawSiteDate) siteBriefingStatus = 'scheduled'
+
   const siteBriefingNote = (() => {
     const aiNote = asString(o.siteBriefingNote ?? o.siteBriefingMemo ?? '').trim()
     if (aiNote) return aiNote
-    if (siteBriefingNotHeld) return '개별 방문으로 확인'
+    if (siteBriefingStatus === 'individualVisit') return '개별 방문으로 현장 확인 필요'
+    if (siteBriefingStatus === 'notRequired') return '현장 확인 불필요'
+    if (siteBriefingStatus === 'unknown') return '현장확인 여부 확인 필요'
     return ''
   })()
+
+  // individualVisit인 경우 단체 일정 일자는 무의미하므로 비워 둔다(AI가 다른 일정 날짜를 혼동해 넣었을 수 있음).
+  // scheduled/unknown/notRequired/'' 는 AI 원본 날짜를 그대로 보존.
+  const siteBriefingDateOut =
+    siteBriefingStatus === 'individualVisit' ? '' : rawSiteDate
+  const siteBriefingTimeOut =
+    siteBriefingStatus === 'individualVisit' ? '' : toTimeInput(rawSiteTime)
 
   return {
     summary: asString(o.summary),
     complexName: asString(o.complexName),
     region: asString(o.region),
     bidMethod: asString(o.bidMethod),
-    // 현장설명회 미개최가 확실하면 date를 비워 두어 스케줄러 후보가 만들어지지 않게 한다.
-    siteBriefingDate: siteBriefingNotHeld ? '' : rawSiteDate,
-    siteBriefingTime: siteBriefingNotHeld ? '' : toTimeInput(rawSiteTime),
+    siteBriefingDate: siteBriefingDateOut,
+    siteBriefingTime: siteBriefingTimeOut,
     siteBriefingStatus,
     siteBriefingNote,
     bidDeadline: rawDeadlineDate,
@@ -276,8 +306,7 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
           ) {
             eventType = 'businessPresentation'
           }
-          // 현장설명회 미개최가 명확하면 siteBriefing 항목은 처음부터 제거
-          if (eventType === 'siteBriefing' && siteBriefingNotHeld) return []
+          // 현장설명회 시드는 그대로 보존한다. (개별 방문 모드는 status로 분기하고 일정 자체는 유지)
           // 시간 결정 우선순위: it.time / it.date / it.content
           const rawTime = asString(it.time ?? it.startTime ?? '').trim()
           const extractedFromDate = toTimeInput(rawDate)
