@@ -456,10 +456,15 @@ const AiResultHistoryPage: React.FC = () => {
       {view === 'ai' && (
         <>
       <div className="ai-summary">
+        <p className="ai-summary-help">
+          AI 결과 이력은 이 브라우저에 최대 100건까지 저장됩니다. JSON 백업 파일을 내려받아 다른 PC나 브라우저에서 다시 가져올 수 있으며,
+          가져오기 시 중복 이력은 자동으로 건너뜁니다. 가져온 이력은 기존 이력에 병합되며 기존 이력을 덮어쓰지 않습니다.
+        </p>
+
         <div className="ai-summary-grid">
-          <div className="ai-summary-item">
-            <span>전체 이력</span>
-            <strong>{aiSummary.total}건</strong>
+          <div className="ai-summary-item ai-summary-count">
+            <span>현재 저장 이력</span>
+            <strong>{aiSummary.total} / 100건</strong>
           </div>
           <div className="ai-summary-item">
             <span>주요 taskType</span>
@@ -478,20 +483,23 @@ const AiResultHistoryPage: React.FC = () => {
             <strong>{aiSummary.latest ? new Date(aiSummary.latest).toLocaleString('ko-KR') : '-'}</strong>
           </div>
         </div>
-        <button type="button" className="ai-summary-backup" onClick={backupAiResultsJson}>AI 이력 JSON 백업</button>
-        <button type="button" className="ai-summary-backup" onClick={() => importInputRef.current?.click()}>AI 이력 JSON 가져오기</button>
-        <input
-          ref={importInputRef}
-          type="file"
-          accept="application/json,.json"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) importAiHistoryJson(f)
-            e.target.value = ''
-          }}
-        />
-        {copyMsg && <span className="ai-summary-msg">{copyMsg}</span>}
+
+        <div className="ai-summary-actions">
+          <button type="button" className="ai-summary-backup" onClick={backupAiResultsJson}>AI 이력 JSON 백업</button>
+          <button type="button" className="ai-summary-backup" onClick={() => importInputRef.current?.click()}>AI 이력 JSON 가져오기</button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) importAiHistoryJson(f)
+              e.target.value = ''
+            }}
+          />
+          {copyMsg && <span className="ai-summary-msg">{copyMsg}</span>}
+        </div>
       </div>
 
       <div className="ai-history-workfilters">

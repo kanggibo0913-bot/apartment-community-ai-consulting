@@ -9,17 +9,37 @@
 /* AI 이력 통합 요약 + 백업 (AI 탭 상단) */
 .ai-summary {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: 12px;
   margin-bottom: 14px;
+  padding: 14px;
+  background: #fbfcfe;
+  border: 1px solid #e3e8ef;
+  border-radius: 10px;
+}
+
+.ai-summary-help {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #475569;
 }
 
 .ai-summary-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  flex: 1 1 auto;
+}
+
+.ai-summary-item.ai-summary-count strong {
+  color: #1d4ed8;
+}
+
+.ai-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .ai-summary-item {
@@ -55,10 +75,16 @@
 }
 
 .ai-summary-msg {
-  align-self: center;
+  display: inline-flex;
+  align-items: center;
   font-size: 13px;
+  font-weight: 600;
   color: #1d4ed8;
-  padding-left: 4px;
+  padding: 6px 12px;
+  background: #e8f0fe;
+  border: 1px solid #c7dbff;
+  border-radius: 999px;
+  line-height: 1.4;
 }
 
 .ai-history-sort {
