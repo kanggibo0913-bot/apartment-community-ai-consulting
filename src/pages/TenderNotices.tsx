@@ -826,8 +826,53 @@ const TenderNotices = () => {
     return `${WEEKDAY_KO[d.getDay()]}요일`
   }
 
+  // 2주 보드 전용 표시 허용 타입: 현설/마감/PT만.
+  // opening(개찰)·contractStart/End·other 등은 보드에서 숨긴다(데이터는 그대로 보존).
+  const BOARD_ALLOWED_EVENT_TYPES = useMemo(
+    () =>
+      new Set<ScheduleEventType>([
+        'siteBriefing',
+        'bidDeadline',
+        'documentSubmission',
+        'businessPresentation',
+        'pt',
+      ]),
+    [],
+  )
+
+  // 2주 보드 항목 우선순위 (시간 동률 시 항목 순서): 현설 1 / 마감 2 / PT 3.
+  // 라벨 기반 추정도 같은 우선순위로 매핑.
+  const boardPriorityOf = (it: CalendarItem): number => {
+    const byType: Partial<Record<ScheduleEventType, number>> = {
+      siteBriefing: 1,
+      bidDeadline: 2,
+      documentSubmission: 2,
+      businessPresentation: 3,
+      pt: 3,
+    }
+    if (it.eventType && byType[it.eventType] != null) return byType[it.eventType] as number
+    const l = (it.label || '').toLowerCase()
+    if (/(현설|현장설명|현장확인|개별방문)/i.test(l)) return 1
+    if (/(마감|서류제출|입찰마감|전자입찰)/i.test(l)) return 2
+    if (/(pt|사업설명|제안설명|발표)/i.test(l)) return 3
+    return 9
+  }
+
+  // 2주 보드 항목 노출 가능 여부.
+  // eventType이 허용 집합에 있거나, 'other'로 들어왔지만 라벨에 현설/마감/PT 키워드가 있으면 허용.
+  // opening/개찰/계약/operation 등은 라벨 매칭이 없으면 false.
+  const isBoardVisible = (it: CalendarItem): boolean => {
+    if (it.eventType && BOARD_ALLOWED_EVENT_TYPES.has(it.eventType)) return true
+    // 'other' 등으로 들어온 경우 라벨로 보강 (현설/마감/PT만)
+    const l = (it.label || '').toLowerCase()
+    if (/(현설|현장설명|현장확인|개별방문)/i.test(l)) return true
+    if (/(마감|서류제출|입찰마감|전자입찰)/i.test(l)) return true
+    if (/(pt|사업설명|제안설명|발표)/i.test(l)) return true
+    return false
+  }
+
   // 2주 보드 보기 데이터: 오늘 ~ 오늘+13일까지 14개 컬럼.
-  // 컬럼별로 정렬된 이벤트 리스트를 담아 그대로 렌더한다.
+  // 컬럼별로 필터(현설/마감/PT) → 시간순 → 항목 우선순위 → 단지명 순으로 정렬.
   const boardColumns = useMemo(() => {
     const today = new Date(`${todayKeyForAgenda}T00:00:00`)
     const columns: { date: string; weekdayIndex: number; items: CalendarItem[] }[] = []
@@ -836,22 +881,25 @@ const TenderNotices = () => {
       const dateKey = getLocalDateString(d)
       const weekdayIndex = d.getDay()
       const items = eventsByDate[dateKey] || []
-      // 동일 정렬 규칙: 시간 보유 일정 우선(오름차순) → 우선순위 → 단지명
-      const sorted = [...items].sort((a, b) => {
+      // 보드 표시 대상만 필터링 (개찰·계약·기타 일정 제외).
+      // 정렬 규칙: 시간 보유 일정 우선(HH:mm 오름차순) → 항목 우선순위(현설 1 / 마감 2 / PT 3) → 단지명.
+      const sorted = [...items].filter(isBoardVisible).sort((a, b) => {
         const aHas = !!a.time
         const bHas = !!b.time
         if (aHas && !bHas) return -1
         if (!aHas && bHas) return 1
         if (aHas && bHas && a.time !== b.time) return (a.time || '').localeCompare(b.time || '')
-        const pa = a.eventType ? EVENT_PRIORITY[a.eventType] : 9
-        const pb = b.eventType ? EVENT_PRIORITY[b.eventType] : 9
+        const pa = boardPriorityOf(a)
+        const pb = boardPriorityOf(b)
         if (pa !== pb) return pa - pb
         return (a.title || '').localeCompare(b.title || '')
       })
       columns.push({ date: dateKey, weekdayIndex, items: sorted })
     }
     return columns
-  }, [eventsByDate, todayKeyForAgenda])
+    // boardPriorityOf/isBoardVisible은 순수 함수이므로 deps 누락 의도적(safelist).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventsByDate, todayKeyForAgenda, BOARD_ALLOWED_EVENT_TYPES])
 
   const boardTotalCount = useMemo(
     () => boardColumns.reduce((sum, c) => sum + c.items.length, 0),
@@ -875,23 +923,30 @@ const TenderNotices = () => {
     return 'bid-board-item--other'
   }
 
-  // 2주 보드용 라벨 정리 (짧고 명확한 한국어 라벨로)
+  // 2주 보드용 라벨: 매우 짧은 한국어 라벨 (현설 / 마감 / PT).
+  // 개찰은 보드에서 숨겨지지만 다른 뷰가 같은 함수를 호출할 가능성에 대비해 케이스는 보존.
   const boardLabelByType = (t?: ScheduleEventType, fallback?: string): string => {
     switch (t) {
       case 'siteBriefing':
-        return '현장설명회'
+        return '현설'
       case 'documentSubmission':
-        return '서류제출 마감'
+        return '마감'
       case 'bidDeadline':
-        return '입찰 마감'
+        return '마감'
       case 'businessPresentation':
         return 'PT'
       case 'pt':
         return 'PT'
       case 'opening':
         return '개찰'
-      default:
+      default: {
+        // 'other'로 들어왔지만 라벨에 의미 있는 키워드가 있으면 보드용 단축 라벨로 매핑
+        const l = (fallback || '').toLowerCase()
+        if (/(현설|현장설명|현장확인|개별방문)/i.test(l)) return '현설'
+        if (/(마감|서류제출|입찰마감|전자입찰)/i.test(l)) return '마감'
+        if (/(pt|사업설명|제안설명|발표)/i.test(l)) return 'PT'
         return fallback || '기타'
+      }
     }
   }
 
@@ -1445,9 +1500,13 @@ const TenderNotices = () => {
                                     const colorCls = colorClassByType(item.eventType, item.label)
                                     const label = boardLabelByType(item.eventType, item.label)
                                     const timeText = item.time || '시간 미정'
-                                    const householdsText = item.households
-                                      ? `${formatNumber(item.households)}세대`
-                                      : '세대수 확인 필요'
+                                    // 1줄: 단지명 (없으면 안내)
+                                    const titleText = item.title || '단지명 확인 필요'
+                                    // 2줄: (N세대) / 없으면 (세대수 확인 필요). 괄호 포함 고정.
+                                    const householdsLine = item.households
+                                      ? `(${formatNumber(item.households)}세대)`
+                                      : '(세대수 확인 필요)'
+                                    // 3줄: 산출 N명 / 없으면 산출인원 확인 필요.
                                     // 산출인원 우선순위 fallback (calculatedStaffCount → requiredStaffCount → staffCount → requiredPersonnel → staffingCount → staffCountText)
                                     const staff = pickStaffDisplay(
                                       item.calculatedStaffCount,
@@ -1457,12 +1516,12 @@ const TenderNotices = () => {
                                       item.staffingCount,
                                       item.staffCountText,
                                     )
-                                    const staffText = staff.num
+                                    const staffLine = staff.num
                                       ? `산출 ${staff.num}명`
                                       : staff.text
                                       ? staff.text
                                       : '산출인원 확인 필요'
-                                    // 전화번호 fallback: 다수 alias 중 첫 유효 값. notice 기반 항목은 notice.managementOfficePhone까지.
+                                    // 5줄: 전화번호 fallback.
                                     const phoneText =
                                       pickPhoneDisplay(
                                         item.managementOfficePhone,
@@ -1473,10 +1532,9 @@ const TenderNotices = () => {
                                       ) || '전화번호 확인 필요'
                                     return (
                                       <div key={item.uid} className={`bid-board-item ${colorCls}`}>
-                                        <div className="bid-board-item-title">{item.title || '단지명 확인 필요'}</div>
-                                        <div className="bid-board-item-meta">
-                                          ({householdsText}) / {staffText}
-                                        </div>
+                                        <div className="bid-board-item-title">{titleText}</div>
+                                        <div className="bid-board-item-households">{householdsLine}</div>
+                                        <div className="bid-board-item-staff">{staffLine}</div>
                                         <div className="bid-board-item-kind">
                                           {label} {timeText}
                                         </div>

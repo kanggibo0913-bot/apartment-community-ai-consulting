@@ -980,6 +980,17 @@
   font-size: 11px;
 }
 
+/* 5줄 고정 포맷 — 2줄: 세대수, 3줄: 산출인원. 각각 한 줄에 단독 표시. */
+.bid-board-item-households {
+  color: #475569;
+  font-size: 11px;
+}
+
+.bid-board-item-staff {
+  color: #475569;
+  font-size: 11px;
+}
+
 .bid-board-item-kind {
   font-weight: 700;
 }
