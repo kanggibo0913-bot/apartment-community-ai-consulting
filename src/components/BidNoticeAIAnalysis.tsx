@@ -136,6 +136,9 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
   const [uploadSuccess, setUploadSuccess] = useState('')
   const [extractedText, setExtractedText] = useState('')
   const [imagePreviewUrl, setImagePreviewUrl] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
+  // dragenter/dragleave는 자식 요소 위로 마우스가 이동할 때마다 재발화되므로 카운터로 안정화.
+  const dragCounterRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // 이미지 ObjectURL 정리
   useEffect(() => {
@@ -158,16 +161,13 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    // input value를 즉시 비워두면 같은 파일을 다시 선택해도 onChange가 다시 발화함
-    if (fileInputRef.current) fileInputRef.current.value = ''
-    if (!file) return
-
+  // 파일 입력(<input type=file> 또는 드롭)에서 받은 파일 1건을 동일한 흐름으로 처리한다.
+  // 다중 파일이 들어와도 호출자가 첫 번째 파일만 넘겨주는 것을 전제로 한다.
+  const processFile = async (file: File) => {
     // 새 선택 시 직전 미리보기/상태 정리
     if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl)
     setUploadError('')
-    setUploadWarning('')
+    // multi-drop 안내 등은 호출자가 미리 설정해 둘 수 있으므로 warning은 비우지 않는다.
     setUploadSuccess('')
     setExtractedText('')
     setImagePreviewUrl('')
@@ -256,6 +256,55 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
     }
   }
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    // input value를 즉시 비워두면 같은 파일을 다시 선택해도 onChange가 다시 발화함
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (!file) return
+    setUploadWarning('') // 직접 선택 시에는 multi-drop 안내가 없으므로 초기화
+    void processFile(file)
+  }
+
+  // 드래그앤드롭 핸들러. dragenter/dragleave는 자식 요소 사이를 오갈 때마다 발생하므로
+  // 카운터로 안정화해 깜빡임을 방지한다.
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer.types?.includes('Files')) {
+      dragCounterRef.current += 1
+      if (dragCounterRef.current > 0) setIsDragging(true)
+    }
+  }
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    // dragover에서 preventDefault를 호출해야 drop 이벤트가 발화됨.
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+  }
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) setIsDragging(false)
+  }
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current = 0
+    setIsDragging(false)
+    const files = e.dataTransfer?.files
+    if (!files || files.length === 0) return
+    // 다중 파일은 첫 번째만 처리. 사용자가 인지할 수 있도록 안내 메시지 표시.
+    if (files.length > 1) {
+      setUploadWarning('1개 파일만 업로드할 수 있습니다. 첫 번째 파일만 처리했습니다.')
+    } else {
+      setUploadWarning('')
+    }
+    // input.value도 함께 초기화해 두면 직후 같은 파일을 다시 input으로 선택해도 동작.
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    void processFile(files[0])
+  }
+
   // 추출 텍스트를 분석 입력값(noticeText)에 반영.
   const handleApplyExtractedToAnalysis = () => {
     if (!extractedText.trim()) {
@@ -263,7 +312,7 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
       return
     }
     setForm((prev) => ({ ...prev, noticeText: extractedText }))
-    setUploadSuccess('추출 내용이 분석 입력값에 반영되었습니다. 아래 "AI 공고문 분석" 버튼으로 분석을 진행하세요.')
+    setUploadSuccess('분석 입력값에 반영되었습니다. 아래 "AI 공고문 분석" 버튼을 눌러 분석을 진행하세요.')
     setUploadError('')
     // 분석 textarea로 부드럽게 스크롤
     setTimeout(() => {
@@ -427,7 +476,13 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
           추출 결과를 확인·수정한 뒤 공고문 분석을 실행하세요.
         </p>
 
-        <div className="notice-upload-dropzone">
+        <div
+          className={`notice-upload-dropzone${isDragging ? ' is-dragging' : ''}`}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           <label className="browse-btn" htmlFor="bid-notice-file-input">
             파일 선택
           </label>
@@ -461,7 +516,7 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
             </div>
           ) : (
             <span className="notice-upload-meta">
-              선택된 파일이 없습니다. 지원: TXT, CSV, PDF, XLSX, JPG, JPEG, PNG, WEBP
+              파일을 선택하거나 이 영역에 끌어다 놓으세요. (지원: TXT, CSV, PDF, XLSX, JPG, JPEG, PNG, WEBP)
             </span>
           )}
         </div>
