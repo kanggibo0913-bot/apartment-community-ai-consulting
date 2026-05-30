@@ -84,6 +84,14 @@ const buildUserPrompt = (taskType: string, payload: unknown): string => {
   · scheduleEvents[]에도 {eventType:"opening", eventTypeLabel:"개찰", date, time, location, content}로 포함.
 - 같은 날짜·같은 시간에 서류제출 마감과 개찰이 동시에 있어도 (예: 둘 다 12:00) 서로 다른 일정이므로 병합하지 말고 2건으로 유지하세요.
 
+[산출인원/투입인원 - 중요]
+- 공고문에 산출인원, 투입인원, 배치인원, 필요인원, 운영인력 같은 표현이 있으면
+  scheduleEvents[]의 각 일정과 최상위에 calculatedStaffCount(또는 requiredStaffCount) 값으로 넣으세요.
+- 단순 숫자(예: 2)면 calculatedStaffCount: 2 처럼 숫자로 출력하세요.
+- 혼합 표현(예: "센터장 1명, 트레이너 2명")은 그대로 문자열로 두어도 됩니다.
+  파싱 단계가 숫자 추출이 가능하면 자동으로 calculatedStaffCount에 담고, 그 외는 staffCountText로 보존합니다.
+- 공고문에 인원 명시가 없으면 빈 값 또는 null. 절대 추정하지 마세요.
+
 [관리소 전화번호 - 중요]
 - 공고문에 관리사무소 전화번호, 담당자 연락처, 문의처, 입찰 관련 연락처가 있으면
   최상위 키 "managementOfficePhone"에 반드시 채우고, scheduleEvents[]의 각 일정에도 같은 번호를 가능하면 동일하게 넣으세요.

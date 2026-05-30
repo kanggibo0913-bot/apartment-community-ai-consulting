@@ -21,6 +21,9 @@ export interface ParsedScheduleEvent {
   apartmentName: string
   households: number | null
   calculatedStaffCount: number | null
+  // 산출인원이 단순 숫자가 아니라 "센터장 1명, 트레이너 2명" 같은 혼합 문자열인 경우 원문을 보존.
+  // 숫자 추출이 안전한 경우만 calculatedStaffCount에 담고, 그 외는 staffCountText에만 담는다.
+  staffCountText: string
   managementOfficePhone: string
 }
 
@@ -356,6 +359,36 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
                 '',
             ).trim()
           const itemPhone = normalizePhone(rawItemPhone) || managementOfficePhoneTop
+          // 산출인원 alias 흡수: 영문 8종 + 한글 5종.
+          // 숫자(또는 "N명") → calculatedStaffCount, 혼합 문자열("센터장 1명, 트레이너 2명") → staffCountText에 보존.
+          const rawStaffSource =
+            it.calculatedStaffCount ??
+            it.requiredStaffCount ??
+            it.staffCount ??
+            it.requiredPersonnel ??
+            it.staffingCount ??
+            it.personnelCount ??
+            it.requiredWorkers ??
+            it.workerCount ??
+            it['산출인원'] ??
+            it['필요인원'] ??
+            it['투입인원'] ??
+            it['배치인원'] ??
+            it['운영인력'] ??
+            null
+          let calculatedStaffCount: number | null = null
+          let staffCountText = ''
+          if (typeof rawStaffSource === 'number' && Number.isFinite(rawStaffSource)) {
+            calculatedStaffCount = rawStaffSource
+          } else if (typeof rawStaffSource === 'string') {
+            const trimmed = rawStaffSource.trim()
+            if (trimmed) {
+              // "3" 또는 "3명" 같은 단순 표현만 숫자로 추출. 그 외는 원문 그대로 보존.
+              const onlyNum = trimmed.match(/^(\d+)\s*명?$/)
+              if (onlyNum) calculatedStaffCount = Number(onlyNum[1])
+              else staffCountText = trimmed
+            }
+          }
           return [
             {
               eventType,
@@ -366,7 +399,8 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
               content: asString(it.content ?? it.memo ?? it.description ?? '').trim(),
               apartmentName: asString(it.apartmentName ?? it.complexName ?? '').trim(),
               households: asNumberOrNull(it.households ?? it.totalUnits),
-              calculatedStaffCount: asNumberOrNull(it.calculatedStaffCount ?? it.staffCount),
+              calculatedStaffCount,
+              staffCountText,
               managementOfficePhone: itemPhone,
             },
           ]

@@ -763,3 +763,207 @@
     width: 100%;
   }
 }
+
+/* ─── 입찰 스케줄러 보기 탭 (2주 보드 / 일정표 / 월간 달력) ─── */
+.bid-scheduler-tabs {
+  display: inline-flex;
+  gap: 2px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.bid-scheduler-tab {
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.bid-scheduler-tab:hover {
+  background: #ffffff;
+}
+
+.bid-scheduler-tab.is-active {
+  background: #0d6efd;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(13, 110, 253, 0.25);
+}
+
+/* ─── 2주 보드 보기 ─── */
+.bid-board-view {
+  margin-top: 16px;
+}
+
+.bid-board-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.bid-board-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.bid-board-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.legend-briefing { background: #198754; }
+.legend-deadline { background: #1d4ed8; }
+.legend-pt { background: #dc2626; }
+.legend-opening { background: #6b7280; }
+
+.bid-board-count {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.bid-board-grid-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+.bid-board-grid {
+  display: grid;
+  /* 14개 컬럼 고정 폭(가로 스크롤 허용). 엑셀 느낌의 경계선. */
+  grid-template-columns: repeat(14, minmax(150px, 1fr));
+  min-width: 2100px;
+}
+
+.bid-board-column {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #cbd5e1;
+}
+
+.bid-board-column:last-child {
+  border-right: none;
+}
+
+.bid-board-header {
+  background: #fef9c3; /* 평일 노란색 (엑셀 양식 톤) */
+  border-bottom: 2px solid #94a3b8;
+  padding: 6px 8px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 12px;
+  color: #1f2a44;
+  font-variant-numeric: tabular-nums;
+}
+
+.bid-board-header--sat {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.bid-board-header--sun {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.bid-board-header-date {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bid-board-header-weekday {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.bid-board-cell {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 80px;
+  background: #ffffff;
+}
+
+.bid-board-empty {
+  color: #cbd5e1;
+  text-align: center;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.bid-board-item {
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #6b7280;
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: #ffffff;
+  font-size: 11.5px;
+  line-height: 1.35;
+  display: grid;
+  gap: 1px;
+}
+
+.bid-board-item-title {
+  font-weight: 700;
+  color: #0d3b66;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bid-board-item-meta {
+  color: #475569;
+  font-size: 11px;
+}
+
+.bid-board-item-kind {
+  font-weight: 700;
+}
+
+.bid-board-item-phone {
+  color: #0d6efd;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+/* 카테고리별 좌측 보더 + 일정종류 색상 */
+.bid-board-item--briefing { border-left-color: #198754; }
+.bid-board-item--briefing .bid-board-item-kind { color: #198754; }
+
+.bid-board-item--deadline { border-left-color: #1d4ed8; }
+.bid-board-item--deadline .bid-board-item-kind { color: #1d4ed8; }
+
+.bid-board-item--pt { border-left-color: #dc2626; }
+.bid-board-item--pt .bid-board-item-kind { color: #dc2626; }
+
+.bid-board-item--opening { border-left-color: #6b7280; }
+.bid-board-item--opening .bid-board-item-kind { color: #6b7280; }
+
+.bid-board-item--other { border-left-color: #94a3b8; }
+.bid-board-item--other .bid-board-item-kind { color: #334155; }

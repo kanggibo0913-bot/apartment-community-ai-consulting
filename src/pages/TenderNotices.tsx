@@ -50,6 +50,13 @@ interface ScheduleEvent {
   time?: string
   endTime?: string
   location?: string
+  // 산출인원 alias 호환 필드(옵셔널). 우선순위는 calculatedStaffCount → requiredStaffCount → staffCount → requiredPersonnel → staffingCount → staffCountText.
+  // 모두 number 또는 string 허용해 기존 데이터/외부 입력을 깨지 않게 흡수한다.
+  requiredStaffCount?: number | string
+  staffCount?: number | string
+  requiredPersonnel?: number | string
+  staffingCount?: number | string
+  staffCountText?: string
 }
 
 const scheduleBadgeByType: Record<ScheduleEventType, string> = {
@@ -84,6 +91,12 @@ type CalendarItem = {
   location?: string
   source?: string
   eventType?: ScheduleEventType
+  // 산출인원 fallback 보조 필드. number/string 모두 허용해 외부/레거시 데이터 흡수.
+  requiredStaffCount?: number | string
+  staffCount?: number | string
+  requiredPersonnel?: number | string
+  staffingCount?: number | string
+  staffCountText?: string
 }
 
 // 일정 항목 정렬을 위한 우선순위. 같은 시간(또는 시간 미정)일 때 적용.
@@ -143,6 +156,28 @@ const addDays = (base: Date, days: number): Date => {
   const next = new Date(base)
   next.setDate(next.getDate() + days)
   return next
+}
+
+// 산출인원 표시용 fallback. 여러 alias 필드를 순서대로 확인해 (숫자, 원문) 쌍을 반환한다.
+// 우선순위: calculatedStaffCount → requiredStaffCount → staffCount → requiredPersonnel → staffingCount → staffCountText.
+// 숫자(또는 "N명") → 숫자로 인식 / 그 외 문자열은 원문 보존.
+type StaffCandidate = number | string | undefined | null
+const pickStaffDisplay = (
+  ...candidates: StaffCandidate[]
+): { num: number | null; text: string } => {
+  for (const v of candidates) {
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+      return { num: v, text: '' }
+    }
+    if (typeof v === 'string') {
+      const trimmed = v.trim()
+      if (!trimmed) continue
+      const onlyNum = trimmed.match(/^(\d+)\s*명?$/)
+      if (onlyNum) return { num: Number(onlyNum[1]), text: '' }
+      return { num: null, text: trimmed }
+    }
+  }
+  return { num: null, text: '' }
 }
 
 const getLocalDateString = (date: Date) => date.toLocaleDateString('sv')
@@ -582,7 +617,8 @@ const TenderNotices = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [showRawText, setShowRawText] = useState(false)
   // 스케줄러 표시 모드 — 기본은 실무 친화적인 일정표(아젠다) 뷰.
-  const [schedulerView, setSchedulerView] = useState<'agenda' | 'calendar'>('agenda')
+  // 보기 모드: 2주 보드(기본) / 일정표 / 월간 달력. 데이터는 eventsByDate를 공유.
+  const [schedulerView, setSchedulerView] = useState<'board' | 'agenda' | 'calendar'>('board')
   // 일정표 기준 기간: 2주(14일) / 3주(21일, 기본) / 전체.
   const [agendaRange, setAgendaRange] = useState<'2w' | '3w' | 'all'>('3w')
 
@@ -647,6 +683,12 @@ const TenderNotices = () => {
         memo: ev.memo,
         households: ev.households,
         calculatedStaffCount: ev.calculatedStaffCount,
+        // 산출인원 alias 폴백 필드를 CalendarItem으로 그대로 전달 → board 렌더에서 우선순위 적용.
+        requiredStaffCount: ev.requiredStaffCount,
+        staffCount: ev.staffCount,
+        requiredPersonnel: ev.requiredPersonnel,
+        staffingCount: ev.staffingCount,
+        staffCountText: ev.staffCountText,
         content: ev.content,
         managementOfficePhone: ev.managementOfficePhone,
         time: ev.time || '',
@@ -700,6 +742,75 @@ const TenderNotices = () => {
     const d = new Date(`${dateStr}T00:00:00`)
     if (Number.isNaN(d.getTime())) return ''
     return `${WEEKDAY_KO[d.getDay()]}요일`
+  }
+
+  // 2주 보드 보기 데이터: 오늘 ~ 오늘+13일까지 14개 컬럼.
+  // 컬럼별로 정렬된 이벤트 리스트를 담아 그대로 렌더한다.
+  const boardColumns = useMemo(() => {
+    const today = new Date(`${todayKeyForAgenda}T00:00:00`)
+    const columns: { date: string; weekdayIndex: number; items: CalendarItem[] }[] = []
+    for (let i = 0; i < 14; i++) {
+      const d = addDays(today, i)
+      const dateKey = getLocalDateString(d)
+      const weekdayIndex = d.getDay()
+      const items = eventsByDate[dateKey] || []
+      // 동일 정렬 규칙: 시간 보유 일정 우선(오름차순) → 우선순위 → 단지명
+      const sorted = [...items].sort((a, b) => {
+        const aHas = !!a.time
+        const bHas = !!b.time
+        if (aHas && !bHas) return -1
+        if (!aHas && bHas) return 1
+        if (aHas && bHas && a.time !== b.time) return (a.time || '').localeCompare(b.time || '')
+        const pa = a.eventType ? EVENT_PRIORITY[a.eventType] : 9
+        const pb = b.eventType ? EVENT_PRIORITY[b.eventType] : 9
+        if (pa !== pb) return pa - pb
+        return (a.title || '').localeCompare(b.title || '')
+      })
+      columns.push({ date: dateKey, weekdayIndex, items: sorted })
+    }
+    return columns
+  }, [eventsByDate, todayKeyForAgenda])
+
+  const boardTotalCount = useMemo(
+    () => boardColumns.reduce((sum, c) => sum + c.items.length, 0),
+    [boardColumns],
+  )
+
+  // 2주 보드/일정표 공통: 이벤트 타입을 색상 카테고리로 매핑.
+  // siteBriefing → 초록 / documentSubmission·bidDeadline → 파랑 / businessPresentation·pt → 빨강 / opening → 회색
+  const colorClassByType = (t?: ScheduleEventType, label?: string): string => {
+    if (!t) return 'bid-board-item--other'
+    if (t === 'siteBriefing') return 'bid-board-item--briefing'
+    if (t === 'documentSubmission' || t === 'bidDeadline') return 'bid-board-item--deadline'
+    if (t === 'businessPresentation' || t === 'pt') return 'bid-board-item--pt'
+    if (t === 'opening') return 'bid-board-item--opening'
+    // other 안에 라벨 기반 추정 (예: 라벨이 'PT'·'사업설명회'면 빨강)
+    const l = (label || '').toLowerCase()
+    if (/(pt|사업설명회|제안설명회|발표)/i.test(l)) return 'bid-board-item--pt'
+    if (/(현설|현장설명|개별방문|현장확인)/i.test(l)) return 'bid-board-item--briefing'
+    if (/(마감|서류제출)/i.test(l)) return 'bid-board-item--deadline'
+    if (/(개찰)/i.test(l)) return 'bid-board-item--opening'
+    return 'bid-board-item--other'
+  }
+
+  // 2주 보드용 라벨 정리 (짧고 명확한 한국어 라벨로)
+  const boardLabelByType = (t?: ScheduleEventType, fallback?: string): string => {
+    switch (t) {
+      case 'siteBriefing':
+        return '현장설명회'
+      case 'documentSubmission':
+        return '서류제출 마감'
+      case 'bidDeadline':
+        return '입찰 마감'
+      case 'businessPresentation':
+        return 'PT'
+      case 'pt':
+        return 'PT'
+      case 'opening':
+        return '개찰'
+      default:
+        return fallback || '기타'
+    }
   }
 
   const selectedEvents = eventsByDate[selectedDate] || []
@@ -893,6 +1004,8 @@ const TenderNotices = () => {
       content?: string
       households?: number
       calculatedStaffCount?: number
+      // 산출인원이 혼합 문자열(예: "센터장 1명, 트레이너 2명")인 경우 원문 보존.
+      staffCountText?: string
       managementOfficePhone?: string
       apartmentName?: string
     }
@@ -921,6 +1034,8 @@ const TenderNotices = () => {
           content: ev.content || undefined,
           households: ev.households != null ? ev.households : undefined,
           calculatedStaffCount: ev.calculatedStaffCount != null ? ev.calculatedStaffCount : undefined,
+          // staffCountText: parser가 혼합 문자열을 보존한 경우 그대로 등록 흐름까지 전달.
+          staffCountText: ev.staffCountText || undefined,
           managementOfficePhone: ev.managementOfficePhone || undefined,
           apartmentName: ev.apartmentName || undefined,
         })
@@ -1023,6 +1138,8 @@ const TenderNotices = () => {
         location: c.location,
         households: c.households,
         calculatedStaffCount: c.calculatedStaffCount,
+        // 산출인원이 혼합 문자열(예: "센터장 1명, 트레이너 2명")인 경우 ScheduleEvent에도 그대로 보존.
+        staffCountText: c.staffCountText,
         // 우선순위: 후보(scheduleEvent) 전화번호 → parsed 단지 전체 전화번호 → 빈 문자열
         managementOfficePhone: c.managementOfficePhone || parsed.managementOfficePhone || '',
       })
@@ -1112,19 +1229,30 @@ const TenderNotices = () => {
           <div>
             <h3>입찰 스케줄러</h3>
             <p className="summary-small">
-              {schedulerView === 'agenda'
+              {schedulerView === 'board'
+                ? '오늘 기준 2주치 입찰 일정을 엑셀 양식처럼 보드형으로 확인합니다.'
+                : schedulerView === 'agenda'
                 ? '오늘 기준 다가오는 입찰 일정을 시간순으로 한눈에 확인합니다.'
                 : '월간 달력에서 주요 공고 일정을 확인하고 날짜별 일정을 선택하세요.'}
             </p>
           </div>
           <div className="schedule-controls">
-            {/* 일정표/월간달력 보기 전환. 실무 기본값은 일정표(agenda). */}
-            <div className="schedule-view-toggle" role="tablist" aria-label="스케줄러 보기 모드">
+            {/* 3종 보기 탭. 기본값은 2주 보드 보기. 데이터는 동일한 eventsByDate를 공유. */}
+            <div className="bid-scheduler-tabs" role="tablist" aria-label="스케줄러 보기 모드">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={schedulerView === 'board'}
+                className={`bid-scheduler-tab${schedulerView === 'board' ? ' is-active' : ''}`}
+                onClick={() => setSchedulerView('board')}
+              >
+                2주 보드 보기
+              </button>
               <button
                 type="button"
                 role="tab"
                 aria-selected={schedulerView === 'agenda'}
-                className={`btn btn-secondary${schedulerView === 'agenda' ? ' is-active' : ''}`}
+                className={`bid-scheduler-tab${schedulerView === 'agenda' ? ' is-active' : ''}`}
                 onClick={() => setSchedulerView('agenda')}
               >
                 일정표 보기
@@ -1133,7 +1261,7 @@ const TenderNotices = () => {
                 type="button"
                 role="tab"
                 aria-selected={schedulerView === 'calendar'}
-                className={`btn btn-secondary${schedulerView === 'calendar' ? ' is-active' : ''}`}
+                className={`bid-scheduler-tab${schedulerView === 'calendar' ? ' is-active' : ''}`}
                 onClick={() => setSchedulerView('calendar')}
               >
                 월간 달력 보기
@@ -1152,7 +1280,87 @@ const TenderNotices = () => {
           </div>
         </div>
 
-        {schedulerView === 'agenda' ? (
+        {schedulerView === 'board' ? (
+          <div className="bid-board-view">
+            <div className="bid-board-toolbar">
+              <ul className="bid-board-legend" aria-label="색상 범례">
+                <li><span className="legend-dot legend-briefing" /> 현설/개별방문 (초록)</li>
+                <li><span className="legend-dot legend-deadline" /> 마감/서류제출 (파랑)</li>
+                <li><span className="legend-dot legend-pt" /> PT/사업설명회 (빨강)</li>
+                <li><span className="legend-dot legend-opening" /> 개찰 (회색)</li>
+              </ul>
+              <span className="bid-board-count">
+                오늘부터 2주 · 총 {boardTotalCount}건
+              </span>
+            </div>
+            <div className="bid-board-grid-wrap">
+              <div className="bid-board-grid">
+                {boardColumns.map((col) => {
+                  // 요일별 헤더 클래스: 토(파란) / 일(빨간) / 평일(노란)
+                  const headerCls =
+                    col.weekdayIndex === 0
+                      ? 'bid-board-header bid-board-header--sun'
+                      : col.weekdayIndex === 6
+                      ? 'bid-board-header bid-board-header--sat'
+                      : 'bid-board-header'
+                  return (
+                    <div key={col.date} className="bid-board-column">
+                      <div className={headerCls}>
+                        <div className="bid-board-header-date">
+                          {col.date.replace(/-/g, '.')}
+                        </div>
+                        <div className="bid-board-header-weekday">{formatWeekday(col.date)}</div>
+                      </div>
+                      <div className="bid-board-cell">
+                        {col.items.length === 0 ? (
+                          <div className="bid-board-empty">·</div>
+                        ) : (
+                          col.items.map((item) => {
+                            const colorCls = colorClassByType(item.eventType, item.label)
+                            const label = boardLabelByType(item.eventType, item.label)
+                            const timeText = item.time || '시간 미정'
+                            const householdsText = item.households
+                              ? `${formatNumber(item.households)}세대`
+                              : '세대수 확인 필요'
+                            // 산출인원 우선순위 fallback (calculatedStaffCount → requiredStaffCount → staffCount → requiredPersonnel → staffingCount → staffCountText)
+                            const staff = pickStaffDisplay(
+                              item.calculatedStaffCount,
+                              item.requiredStaffCount,
+                              item.staffCount,
+                              item.requiredPersonnel,
+                              item.staffingCount,
+                              item.staffCountText,
+                            )
+                            const staffText = staff.num
+                              ? `산출 ${staff.num}명`
+                              : staff.text
+                              ? staff.text
+                              : '산출인원 확인 필요'
+                            const phoneText = item.managementOfficePhone
+                              ? item.managementOfficePhone
+                              : '전화번호 확인 필요'
+                            return (
+                              <div key={item.uid} className={`bid-board-item ${colorCls}`}>
+                                <div className="bid-board-item-title">{item.title || '단지명 확인 필요'}</div>
+                                <div className="bid-board-item-meta">
+                                  ({householdsText}) / {staffText}
+                                </div>
+                                <div className="bid-board-item-kind">
+                                  {label} {timeText}
+                                </div>
+                                <div className="bid-board-item-phone">{phoneText}</div>
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        ) : schedulerView === 'agenda' ? (
           <>
             {/* 범위 토글 + 결과 카운트 */}
             <div className="agenda-toolbar">
