@@ -173,6 +173,196 @@
   background: #475569;
 }
 
+/* ─── 스케줄러 보기 전환 + 일정표(아젠다) 뷰 ─── */
+.schedule-view-toggle,
+.agenda-range-toggle {
+  display: inline-flex;
+  gap: 4px;
+  border: 1px solid #e9ecef;
+  border-radius: 999px;
+  padding: 2px;
+  background: #f8f9fa;
+}
+
+.schedule-view-toggle .btn,
+.agenda-range-toggle .btn {
+  border-radius: 999px;
+  border: none;
+  padding: 6px 14px;
+  background: transparent;
+  color: #475569;
+  font-weight: 600;
+}
+
+.schedule-view-toggle .btn.is-active,
+.agenda-range-toggle .btn.is-active {
+  background: #0d6efd;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(13, 110, 253, 0.25);
+}
+
+.agenda-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0 12px;
+}
+
+.agenda-count {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.agenda-empty {
+  margin: 24px 0;
+  padding: 24px;
+  text-align: center;
+  color: #64748b;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px dashed #cbd5e1;
+}
+
+.agenda-list {
+  display: grid;
+  gap: 18px;
+}
+
+.agenda-day {
+  border: 1px solid #e9ecef;
+  border-radius: 14px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.agenda-day-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.agenda-day-date {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0d3b66;
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-day-weekday {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.agenda-day-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  background: #e2e8f0;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
+.agenda-table-wrap {
+  overflow-x: auto;
+}
+
+.agenda-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 920px;
+}
+
+.agenda-table th,
+.agenda-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #eef1f6;
+  vertical-align: top;
+}
+
+.agenda-table th {
+  background: #f9fafb;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.agenda-table tr:last-child td {
+  border-bottom: none;
+}
+
+.agenda-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: #0d3b66;
+  white-space: nowrap;
+}
+
+.agenda-time-empty {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.agenda-name {
+  font-weight: 600;
+  color: #1f2a44;
+}
+
+.agenda-num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #334155;
+}
+
+.agenda-content {
+  color: #334155;
+  line-height: 1.45;
+  min-width: 200px;
+}
+
+.agenda-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.agenda-phone {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: #0d6efd;
+}
+
+.agenda-source-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.agenda-source-ai {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.agenda-source-manual {
+  background: #e2e8f0;
+  color: #334155;
+}
+
 /* 캘린더 셀의 풍부한 이벤트 카드: 단지명·세대수·산출인원·내용·관리소 전화번호 */
 .calendar-event-card {
   display: grid;

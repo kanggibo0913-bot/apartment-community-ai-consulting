@@ -1,5 +1,29 @@
 // 공고문 AI 분석 결과(JSON) 파싱 + 보조 유틸. 파싱 실패 시 null을 반환해 텍스트 폴백을 유도한다.
 
+// 일정표 보기를 위한 일정 항목 정규형. AI가 동의어로 응답해도 같은 구조로 흡수한다.
+// time/location/content/apartmentName/households/calculatedStaffCount/managementOfficePhone는 옵셔널.
+export type ParsedScheduleEventType =
+  | 'siteBriefing'
+  | 'bidDeadline'
+  | 'opening'
+  | 'businessPresentation'
+  | 'documentSubmission'
+  | 'contract'
+  | 'other'
+
+export interface ParsedScheduleEvent {
+  eventType: ParsedScheduleEventType
+  eventTypeLabel: string
+  date: string
+  time: string
+  location: string
+  content: string
+  apartmentName: string
+  households: number | null
+  calculatedStaffCount: number | null
+  managementOfficePhone: string
+}
+
 export interface BidAnalysisParsed {
   summary: string
   complexName: string
@@ -21,6 +45,8 @@ export interface BidAnalysisParsed {
   participationGrade: string
   participationReason: string
   recommendedAction: string
+  // 시간 포함된 일정 배열. AI 프롬프트의 scheduleEvents[]를 직접 흡수해 일정표 뷰에 반영.
+  scheduleEvents: ParsedScheduleEvent[]
 }
 
 export type RiskCategory =
@@ -39,6 +65,39 @@ const asStringArray = (v: unknown): string[] => {
   if (Array.isArray(v)) return v.map(asString).filter((s) => s.trim().length > 0)
   const s = asString(v).trim()
   return s ? [s] : []
+}
+
+const asNumberOrNull = (v: unknown): number | null => {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string') {
+    const digits = v.replace(/[^0-9]/g, '')
+    if (digits) return Number(digits)
+  }
+  return null
+}
+
+// 'siteBriefing'·'현설'·'현장설명회' 등 다양한 표기를 정규형으로 통일.
+const normalizeScheduleEventType = (raw: unknown): ParsedScheduleEventType => {
+  const t = asString(raw).toLowerCase().trim()
+  if (!t) return 'other'
+  if (/(site.?brief|sitevisit|현설|현장설명)/i.test(t)) return 'siteBriefing'
+  if (/(biddeadline|deadline|마감)/i.test(t)) return 'bidDeadline'
+  if (/(open|개찰)/i.test(t)) return 'opening'
+  if (/(business.?present|pt|사업설명|제안설명|제안.?발표|프레젠|프리젠|기술제안)/i.test(t))
+    return 'businessPresentation'
+  if (/(document|서류|제출)/i.test(t)) return 'documentSubmission'
+  if (/(contract|계약)/i.test(t)) return 'contract'
+  return 'other'
+}
+
+const DEFAULT_SCHEDULE_LABEL: Record<ParsedScheduleEventType, string> = {
+  siteBriefing: '현설',
+  bidDeadline: '마감',
+  opening: '개찰',
+  businessPresentation: '사업설명회/PT',
+  documentSubmission: '서류',
+  contract: '계약',
+  other: '기타',
 }
 
 // AI가 코드펜스나 부가 텍스트를 섞어 보내도 JSON 객체만 안전하게 추출한다.
@@ -97,6 +156,32 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
     participationGrade: /^[ABCD]$/.test(grade) ? grade : asString(o.participationGrade),
     participationReason: asString(o.participationReason),
     recommendedAction: asString(o.recommendedAction),
+    // scheduleEvents[]: AI가 시간 포함 일정을 제공한 경우만 채워진다. 비어있으면 빈 배열.
+    // 추정치는 받지 않으므로 빈 값이면 그대로 비워 둔다.
+    scheduleEvents: Array.isArray(o.scheduleEvents)
+      ? (o.scheduleEvents as unknown[]).flatMap((rawItem): ParsedScheduleEvent[] => {
+          if (typeof rawItem !== 'object' || rawItem === null) return []
+          const it = rawItem as Record<string, unknown>
+          const date = toDateInput(asString(it.date))
+          if (!date) return [] // 날짜 없는 항목은 일정표에서 무의미
+          const eventType = normalizeScheduleEventType(it.eventType ?? it.type)
+          const labelRaw = asString(it.eventTypeLabel ?? it.label).trim()
+          return [
+            {
+              eventType,
+              eventTypeLabel: labelRaw || DEFAULT_SCHEDULE_LABEL[eventType],
+              date,
+              time: asString(it.time ?? it.startTime ?? '').trim(),
+              location: asString(it.location ?? it.place ?? '').trim(),
+              content: asString(it.content ?? it.memo ?? it.description ?? '').trim(),
+              apartmentName: asString(it.apartmentName ?? it.complexName ?? '').trim(),
+              households: asNumberOrNull(it.households ?? it.totalUnits),
+              calculatedStaffCount: asNumberOrNull(it.calculatedStaffCount ?? it.staffCount),
+              managementOfficePhone: asString(it.managementOfficePhone ?? it.officePhone ?? '').trim(),
+            },
+          ]
+        })
+      : [],
   }
 }
 

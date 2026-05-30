@@ -7,7 +7,12 @@ import {
   TenderNoticeStatus,
 } from '../types/CommunityData'
 import BidNoticeAIAnalysis from '../components/BidNoticeAIAnalysis'
-import { BidAnalysisParsed, splitContractPeriod, toDateInput } from '../utils/parseBidAnalysis'
+import {
+  BidAnalysisParsed,
+  ParsedScheduleEvent,
+  splitContractPeriod,
+  toDateInput,
+} from '../utils/parseBidAnalysis'
 import './TenderNotices.css'
 
 const STORAGE_KEY = 'tenderNotices'
@@ -34,13 +39,17 @@ interface ScheduleEvent {
   complexName: string
   memo: string
   source: string
-  // 캘린더 카드에 노출할 추가 메타데이터 (없으면 fallback 표시)
+  // 캘린더/일정표 카드에 노출할 추가 메타데이터 (없으면 fallback 표시)
   households?: number
   calculatedStaffCount?: number
   content?: string
   managementOfficePhone?: string
   category?: string
   createdAt?: string
+  // 일정표 보기를 위한 시간/장소 필드 (옵셔널, 기존 데이터 하위호환)
+  time?: string
+  endTime?: string
+  location?: string
 }
 
 const scheduleBadgeByType: Record<ScheduleEventType, string> = {
@@ -70,6 +79,40 @@ type CalendarItem = {
   calculatedStaffCount?: number
   content?: string
   managementOfficePhone?: string
+  // 일정표 보기용 시간 필드 (HH:MM 또는 빈 문자열)
+  time?: string
+  location?: string
+  source?: string
+  eventType?: ScheduleEventType
+}
+
+// 일정 항목 정렬을 위한 우선순위. 같은 시간(또는 시간 미정)일 때 적용.
+const EVENT_PRIORITY: Record<ScheduleEventType, number> = {
+  siteBriefing: 1,
+  businessPresentation: 2,
+  documentSubmission: 3,
+  bidDeadline: 4,
+  opening: 5,
+  contractStart: 6,
+  contractEnd: 7,
+  pt: 2, // 레거시 pt(=사업설명회와 동일 우선순위)
+  other: 9,
+}
+
+// 캘린더 필드 → ScheduleEventType 매핑 (notice 기반 항목의 eventType 추출용).
+const FIELD_EVENT_TYPE: Record<string, ScheduleEventType> = {
+  siteVisitDate: 'siteBriefing',
+  deadlineDate: 'bidDeadline',
+  ptDate: 'businessPresentation',
+  contractStartDate: 'contractStart',
+  contractEndDate: 'contractEnd',
+}
+
+// 'YYYY-MM-DD'를 더해/빼고 다시 'YYYY-MM-DD'로 변환.
+const addDays = (base: Date, days: number): Date => {
+  const next = new Date(base)
+  next.setDate(next.getDate() + days)
+  return next
 }
 
 const getLocalDateString = (date: Date) => date.toLocaleDateString('sv')
@@ -508,6 +551,10 @@ const TenderNotices = () => {
   const [selectedDate, setSelectedDate] = useState(getLocalDateString(new Date()))
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [showRawText, setShowRawText] = useState(false)
+  // 스케줄러 표시 모드 — 기본은 실무 친화적인 일정표(아젠다) 뷰.
+  const [schedulerView, setSchedulerView] = useState<'agenda' | 'calendar'>('agenda')
+  // 일정표 기준 기간: 2주(14일) / 3주(21일, 기본) / 전체.
+  const [agendaRange, setAgendaRange] = useState<'2w' | '3w' | 'all'>('3w')
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(notices))
@@ -546,6 +593,10 @@ const TenderNotices = () => {
             households: notice.totalUnits || undefined,
             calculatedStaffCount: notice.estimatedStaff || undefined,
             content: notice.title || undefined,
+            // notice는 시간 필드를 별도로 보유하지 않으므로 빈 값 → 일정표에서 '시간 미정' fallback.
+            time: '',
+            source: '수동',
+            eventType: FIELD_EVENT_TYPE[eventDef.field],
           })
         }
       })
@@ -564,11 +615,59 @@ const TenderNotices = () => {
           calculatedStaffCount: ev.calculatedStaffCount,
           content: ev.content,
           managementOfficePhone: ev.managementOfficePhone,
+          time: ev.time || '',
+          location: ev.location,
+          source: ev.source,
+          eventType: ev.type,
         })
       }
     })
     return map
   }, [notices, scheduleEvents])
+
+  // 일정표(아젠다) 뷰: 오늘 기준 2주/3주/전체 범위 안의 일정만 골라 날짜별 그룹·시간순 정렬.
+  const todayKeyForAgenda = useMemo(() => getLocalDateString(new Date()), [])
+  const agendaGroups = useMemo(() => {
+    const days = agendaRange === '2w' ? 14 : agendaRange === '3w' ? 21 : null
+    const today = new Date(`${todayKeyForAgenda}T00:00:00`)
+    const limit = days != null ? getLocalDateString(addDays(today, days - 1)) : null
+
+    // 날짜 → 그 날짜의 이벤트 리스트
+    const groups: { date: string; items: CalendarItem[] }[] = []
+    const dateKeys = Object.keys(eventsByDate)
+      .filter((k) => k >= todayKeyForAgenda && (limit == null || k <= limit))
+      .sort()
+    dateKeys.forEach((date) => {
+      const items = [...eventsByDate[date]].sort((a, b) => {
+        // 시간이 있는 일정이 먼저, 같은 그룹 안에서는 시간 오름차순.
+        const aHas = !!a.time
+        const bHas = !!b.time
+        if (aHas && !bHas) return -1
+        if (!aHas && bHas) return 1
+        if (aHas && bHas && a.time !== b.time) return (a.time || '').localeCompare(b.time || '')
+        // 시간 동일/둘 다 없음 → 우선순위 비교
+        const pa = a.eventType ? EVENT_PRIORITY[a.eventType] : 9
+        const pb = b.eventType ? EVENT_PRIORITY[b.eventType] : 9
+        if (pa !== pb) return pa - pb
+        // 우선순위도 같으면 단지명 사전순.
+        return (a.title || '').localeCompare(b.title || '')
+      })
+      groups.push({ date, items })
+    })
+    return groups
+  }, [eventsByDate, agendaRange, todayKeyForAgenda])
+
+  const agendaTotalCount = useMemo(
+    () => agendaGroups.reduce((sum, g) => sum + g.items.length, 0),
+    [agendaGroups],
+  )
+
+  const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토']
+  const formatWeekday = (dateStr: string) => {
+    const d = new Date(`${dateStr}T00:00:00`)
+    if (Number.isNaN(d.getTime())) return ''
+    return `${WEEKDAY_KO[d.getDay()]}요일`
+  }
 
   const selectedEvents = eventsByDate[selectedDate] || []
 
@@ -746,42 +845,90 @@ const TenderNotices = () => {
   }
 
   // AI 분석의 주요 일정만 캘린더(scheduleEvents)에 추가한다. 공고는 등록하지 않는다.
-  // (버튼: "주요 일정만 스케줄러에 추가") 현장설명회/입찰마감/사업설명회(PT) 등 마일스톤만 대상.
+  // (버튼: "주요 일정만 스케줄러에 추가") AI가 scheduleEvents[]를 반환했으면 그 시간 포함 일정을 우선 사용,
+  // 없으면 기존 단일 키(siteBriefingDate/bidDeadline/businessPresentationDate) 후보를 fallback으로 사용한다.
   const handleAddAiScheduleEvents = (parsed: BidAnalysisParsed): { added: number; duplicate: boolean } => {
     const complexName = parsed.complexName || '(미입력 단지)'
-    const candidates: Array<{ type: ScheduleEventType; label: string; raw: string; date: string }> = []
-    const sv = toDateInput(parsed.siteBriefingDate)
-    if (sv) candidates.push({ type: 'siteBriefing', label: '현장설명회', raw: parsed.siteBriefingDate, date: sv })
-    const dl = toDateInput(parsed.bidDeadline)
-    if (dl) candidates.push({ type: 'bidDeadline', label: '입찰마감', raw: parsed.bidDeadline, date: dl })
-    // 사업설명회/PT 발표 일정: parser가 동의어를 흡수해 채워준 값을 사용한다.
-    const bp = toDateInput(parsed.businessPresentationDate)
-    if (bp)
-      candidates.push({
-        type: 'businessPresentation',
-        label: '사업설명회/PT',
-        raw: parsed.businessPresentationDate,
-        date: bp,
+
+    type Candidate = {
+      type: ScheduleEventType
+      label: string
+      raw: string
+      date: string
+      time?: string
+      location?: string
+      content?: string
+      households?: number
+      calculatedStaffCount?: number
+      managementOfficePhone?: string
+      apartmentName?: string
+    }
+
+    const candidates: Candidate[] = []
+
+    // 1) AI가 scheduleEvents[]를 반환했으면 그 항목들을 우선 사용. 각 항목은 파서가 이미 정규화한 상태.
+    if (parsed.scheduleEvents.length > 0) {
+      // 파서의 ParsedScheduleEventType → 내부 ScheduleEventType 매핑.
+      // 'contract'는 내부에 'contractStart/contractEnd'만 존재하므로 시작일로 매핑(start/end 구분은 AI가 명시하지 않음).
+      const mapType = (t: ParsedScheduleEvent['eventType']): ScheduleEventType => {
+        if (t === 'contract') return 'contractStart'
+        return t as ScheduleEventType
+      }
+      parsed.scheduleEvents.forEach((ev: ParsedScheduleEvent) => {
+        const type: ScheduleEventType = mapType(ev.eventType)
+        candidates.push({
+          type,
+          label: ev.eventTypeLabel || type,
+          raw: `${ev.date}${ev.time ? ' ' + ev.time : ''}`,
+          date: ev.date,
+          time: ev.time || undefined,
+          location: ev.location || undefined,
+          content: ev.content || undefined,
+          households: ev.households != null ? ev.households : undefined,
+          calculatedStaffCount: ev.calculatedStaffCount != null ? ev.calculatedStaffCount : undefined,
+          managementOfficePhone: ev.managementOfficePhone || undefined,
+          apartmentName: ev.apartmentName || undefined,
+        })
       })
+    } else {
+      // 2) Fallback: 단일 키만 채워진 구버전 응답 처리.
+      const sv = toDateInput(parsed.siteBriefingDate)
+      if (sv) candidates.push({ type: 'siteBriefing', label: '현장설명회', raw: parsed.siteBriefingDate, date: sv })
+      const dl = toDateInput(parsed.bidDeadline)
+      if (dl) candidates.push({ type: 'bidDeadline', label: '입찰마감', raw: parsed.bidDeadline, date: dl })
+      const bp = toDateInput(parsed.businessPresentationDate)
+      if (bp)
+        candidates.push({
+          type: 'businessPresentation',
+          label: '사업설명회/PT',
+          raw: parsed.businessPresentationDate,
+          date: bp,
+          time: parsed.businessPresentationTime || undefined,
+          location: parsed.businessPresentationLocation || undefined,
+        })
+    }
 
     if (candidates.length === 0) return { added: 0, duplicate: false }
 
     let duplicate = false
     const toAdd: ScheduleEvent[] = []
     candidates.forEach((c) => {
+      const apt = c.apartmentName || complexName
       const exists =
-        scheduleEvents.some((e) => e.complexName === complexName && e.type === c.type && e.date === c.date) ||
-        toAdd.some((e) => e.complexName === complexName && e.type === c.type && e.date === c.date)
+        scheduleEvents.some(
+          (e) => e.complexName === apt && e.type === c.type && e.date === c.date && (e.time || '') === (c.time || ''),
+        ) ||
+        toAdd.some(
+          (e) => e.complexName === apt && e.type === c.type && e.date === c.date && (e.time || '') === (c.time || ''),
+        )
       if (exists) {
         duplicate = true
         return
       }
-      // 사업설명회/PT는 시간·장소가 함께 추출되었을 수 있으므로 메모와 content에 포함한다.
+      // 시간·장소가 함께 추출되었으면 메모와 content에 포함한다.
       const extra: string[] = []
-      if (c.type === 'businessPresentation') {
-        if (parsed.businessPresentationTime) extra.push(`시간 ${parsed.businessPresentationTime}`)
-        if (parsed.businessPresentationLocation) extra.push(`장소 ${parsed.businessPresentationLocation}`)
-      }
+      if (c.time) extra.push(`시간 ${c.time}`)
+      if (c.location) extra.push(`장소 ${c.location}`)
       const memoBase = `AI 분석에서 추가 (원문: ${c.raw})`
       const memo = extra.length > 0 ? `${memoBase} / ${extra.join(' / ')}` : memoBase
       toAdd.push({
@@ -789,12 +936,18 @@ const TenderNotices = () => {
         date: c.date,
         type: c.type,
         label: c.label,
-        complexName,
+        complexName: apt,
         memo,
         source: 'AI 분석',
-        content: c.type === 'businessPresentation' && extra.length > 0 ? extra.join(' · ') : undefined,
+        // content: 우선 AI가 명시한 내용, 없으면 시간/장소 요약을 사용.
+        content: c.content || (extra.length > 0 ? extra.join(' · ') : undefined),
         category: c.label,
         createdAt: new Date().toISOString(),
+        time: c.time,
+        location: c.location,
+        households: c.households,
+        calculatedStaffCount: c.calculatedStaffCount,
+        managementOfficePhone: c.managementOfficePhone,
       })
     })
 
@@ -881,17 +1034,155 @@ const TenderNotices = () => {
         <div className="schedule-card-header">
           <div>
             <h3>입찰 스케줄러</h3>
-            <p className="summary-small">월간 달력에서 주요 공고 일정을 확인하고 날짜별 일정을 선택하세요.</p>
+            <p className="summary-small">
+              {schedulerView === 'agenda'
+                ? '오늘 기준 다가오는 입찰 일정을 시간순으로 한눈에 확인합니다.'
+                : '월간 달력에서 주요 공고 일정을 확인하고 날짜별 일정을 선택하세요.'}
+            </p>
           </div>
           <div className="schedule-controls">
-            <button type="button" className="btn btn-secondary" onClick={() => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>
-              이전
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>
-              다음
-            </button>
+            {/* 일정표/월간달력 보기 전환. 실무 기본값은 일정표(agenda). */}
+            <div className="schedule-view-toggle" role="tablist" aria-label="스케줄러 보기 모드">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={schedulerView === 'agenda'}
+                className={`btn btn-secondary${schedulerView === 'agenda' ? ' is-active' : ''}`}
+                onClick={() => setSchedulerView('agenda')}
+              >
+                일정표 보기
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={schedulerView === 'calendar'}
+                className={`btn btn-secondary${schedulerView === 'calendar' ? ' is-active' : ''}`}
+                onClick={() => setSchedulerView('calendar')}
+              >
+                월간 달력 보기
+              </button>
+            </div>
+            {schedulerView === 'calendar' && (
+              <>
+                <button type="button" className="btn btn-secondary" onClick={() => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>
+                  이전
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={() => setCurrentMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>
+                  다음
+                </button>
+              </>
+            )}
           </div>
         </div>
+
+        {schedulerView === 'agenda' ? (
+          <>
+            {/* 범위 토글 + 결과 카운트 */}
+            <div className="agenda-toolbar">
+              <div className="agenda-range-toggle" role="tablist" aria-label="일정표 범위">
+                {(
+                  [
+                    { key: '2w' as const, label: '2주' },
+                    { key: '3w' as const, label: '3주' },
+                    { key: 'all' as const, label: '전체' },
+                  ]
+                ).map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={agendaRange === opt.key}
+                    className={`btn btn-secondary${agendaRange === opt.key ? ' is-active' : ''}`}
+                    onClick={() => setAgendaRange(opt.key)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <span className="agenda-count">
+                {agendaRange === 'all' ? '전체' : agendaRange === '2w' ? '2주 내' : '3주 내'} 총{' '}
+                {agendaTotalCount}건
+              </span>
+            </div>
+
+            {agendaGroups.length === 0 ? (
+              <p className="agenda-empty">
+                {agendaRange === 'all'
+                  ? '등록된 다가오는 일정이 없습니다. AI 분석 결과에서 "주요 일정만 스케줄러에 추가"를 사용하거나 공고를 등록해보세요.'
+                  : `오늘 기준 ${agendaRange === '2w' ? '2주' : '3주'} 내 예정된 일정이 없습니다. 범위를 "전체"로 바꾸거나 일정을 추가해주세요.`}
+              </p>
+            ) : (
+              <div className="agenda-list">
+                {agendaGroups.map((group) => (
+                  <section key={group.date} className="agenda-day">
+                    <header className="agenda-day-header">
+                      <span className="agenda-day-date">{group.date}</span>
+                      <span className="agenda-day-weekday">{formatWeekday(group.date)}</span>
+                      <span className="agenda-day-count">{group.items.length}건</span>
+                    </header>
+                    <div className="agenda-table-wrap">
+                      <table className="agenda-table">
+                        <thead>
+                          <tr>
+                            <th>시간</th>
+                            <th>항목</th>
+                            <th>단지명</th>
+                            <th>세대수</th>
+                            <th>산출인원</th>
+                            <th>내용</th>
+                            <th>관리소 전화번호</th>
+                            <th>출처</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.items.map((item) => (
+                            <tr key={item.uid}>
+                              <td className={item.time ? 'agenda-time' : 'agenda-time agenda-time-empty'}>
+                                {item.time || '시간 미정'}
+                              </td>
+                              <td>
+                                <span className={`event-badge ${item.badge}`}>{item.label}</span>
+                              </td>
+                              <td className="agenda-name">{item.title || '(미입력 단지)'}</td>
+                              <td className="agenda-num">
+                                {item.households ? `${formatNumber(item.households)}세대` : '세대수 확인 필요'}
+                              </td>
+                              <td className="agenda-num">
+                                {item.calculatedStaffCount ? `${item.calculatedStaffCount}명` : '산출인원 확인 필요'}
+                              </td>
+                              <td className="agenda-content">
+                                {item.content ||
+                                  (item.kind === 'notice' && item.notice ? item.notice.title : '') ||
+                                  item.memo ||
+                                  '-'}
+                                {item.location && (
+                                  <div className="agenda-sub">장소 {item.location}</div>
+                                )}
+                              </td>
+                              <td className="agenda-phone">
+                                {item.managementOfficePhone || '전화번호 확인 필요'}
+                              </td>
+                              <td>
+                                <span
+                                  className={`agenda-source-badge${
+                                    item.source === 'AI 분석' ? ' agenda-source-ai' : ' agenda-source-manual'
+                                  }`}
+                                >
+                                  {item.source === 'AI 분석' ? 'AI 일정' : '수동'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
         <div className="schedule-month-title">
           {currentMonth.getFullYear()}년 {currentMonth.getMonth() + 1}월
         </div>
@@ -978,6 +1269,8 @@ const TenderNotices = () => {
             <p className="summary-small">선택한 날짜에 예정된 일정이 없습니다.</p>
           )}
         </div>
+          </>
+        )}
       </div>
 
       <div className="tender-analysis-card card">
