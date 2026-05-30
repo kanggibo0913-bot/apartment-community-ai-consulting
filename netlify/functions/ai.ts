@@ -38,7 +38,19 @@ const buildUserPrompt = (taskType: string, payload: unknown): string => {
     case 'monthlyReport':
       return `월간 운영 리포트 작성: ${json}\n위 데이터를 기반으로 보고서 형식의 월간 운영 리포트를 작성하세요.`
     case 'bidNoticeAnalysis':
-      return `입찰 공고문 분석: ${json}\n위 공고문 텍스트와 단지 정보를 분석해 참여 판단(A~D 등급 포함)을 작성하세요.`
+      return `입찰 공고문 분석: ${json}
+위 공고문 텍스트와 단지 정보를 분석해 참여 판단(A~D 등급 포함)을 작성하세요.
+
+[일정 추출 지침]
+- 다음 동의어가 등장하면 "사업설명회/PT 발표 일정"으로 모두 인식하세요:
+  사업설명회, 제안설명회, 제안서 발표, PT 발표, PT 일정, 프레젠테이션, 프리젠테이션,
+  업체 발표, 운영계획 발표, 설명회 심사, 적격심사 발표, 기술제안 발표, Presentation
+- 사업설명회/PT 발표 일정이 있으면 JSON에 다음 키로 포함하세요:
+  - businessPresentationDate: YYYY-MM-DD (없으면 빈 문자열)
+  - businessPresentationTime: HH:MM (없으면 빈 문자열)
+  - businessPresentationLocation: 장소 문자열 (없으면 빈 문자열)
+- "사업설명회는 별도 통보" 등 명확한 날짜가 없을 경우 일정 키는 빈 문자열로 두고, risks 또는 estimateNotes에 한 줄로 기록하세요.
+- 공고문에 없는 정보는 절대 추정해서 채우지 마세요. 없으면 빈 문자열/빈 배열로 두세요.`
     default:
       return `payload:\n${JSON.stringify(payload, null, 2)}`
   }

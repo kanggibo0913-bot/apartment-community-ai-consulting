@@ -8,6 +8,11 @@ export interface BidAnalysisParsed {
   siteBriefingDate: string
   bidDeadline: string
   contractPeriod: string
+  // 사업설명회/PT 발표 일정(공고문 내 명확한 날짜가 있을 때만 채워짐).
+  // 동의어: 사업설명회/제안설명회/제안서 발표/PT 발표/프레젠테이션/업체 발표/기술제안 발표 등.
+  businessPresentationDate: string
+  businessPresentationTime: string
+  businessPresentationLocation: string
   requiredDocuments: string[]
   specialConditions: string[]
   risks: string[]
@@ -74,6 +79,16 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
     siteBriefingDate: asString(o.siteBriefingDate),
     bidDeadline: asString(o.bidDeadline),
     contractPeriod: asString(o.contractPeriod),
+    // 사업설명회/PT 별칭 다중 수용 (AI가 어느 키로 응답해도 받기 위함).
+    businessPresentationDate: asString(
+      o.businessPresentationDate ?? o.ptPresentationDate ?? o.presentationDate ?? o.ptDate ?? '',
+    ),
+    businessPresentationTime: asString(
+      o.businessPresentationTime ?? o.presentationTime ?? o.ptTime ?? '',
+    ),
+    businessPresentationLocation: asString(
+      o.businessPresentationLocation ?? o.presentationLocation ?? o.ptLocation ?? '',
+    ),
     requiredDocuments: asStringArray(o.requiredDocuments),
     specialConditions: asStringArray(o.specialConditions),
     risks: asStringArray(o.risks),

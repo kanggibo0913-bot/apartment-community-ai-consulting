@@ -79,7 +79,7 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
 
   const parsed = useMemo(() => parseBidAnalysis(result), [result])
 
-  // 버튼3(일정만 추가)에 표시할 마일스톤 후보 (현장설명회/입찰마감)
+  // 버튼3(일정만 추가)에 표시할 마일스톤 후보 (현장설명회/입찰마감/사업설명회·PT)
   const scheduleCandidates = useMemo(() => {
     if (!parsed) return [] as { label: string; value: string }[]
     const fmt = (raw: string) => {
@@ -89,6 +89,16 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
     const out: { label: string; value: string }[] = []
     if (parsed.siteBriefingDate) out.push({ label: '현장설명회', value: fmt(parsed.siteBriefingDate) })
     if (parsed.bidDeadline) out.push({ label: '입찰마감', value: fmt(parsed.bidDeadline) })
+    if (parsed.businessPresentationDate) {
+      const extras: string[] = []
+      if (parsed.businessPresentationTime) extras.push(parsed.businessPresentationTime)
+      if (parsed.businessPresentationLocation) extras.push(parsed.businessPresentationLocation)
+      const base = fmt(parsed.businessPresentationDate)
+      out.push({
+        label: '사업설명회/PT',
+        value: extras.length > 0 ? `${base} (${extras.join(' · ')})` : base,
+      })
+    }
     return out
   }, [parsed])
 
@@ -238,6 +248,18 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
             <ul className="bid-kv">
               <li><span>현장설명회</span> {parsed.siteBriefingDate || '공고문 확인 필요'}</li>
               <li><span>입찰마감</span> {parsed.bidDeadline || '공고문 확인 필요'}</li>
+              <li>
+                <span>사업설명회/PT</span>{' '}
+                {parsed.businessPresentationDate
+                  ? [
+                      parsed.businessPresentationDate,
+                      parsed.businessPresentationTime,
+                      parsed.businessPresentationLocation,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  : '공고문 확인 필요'}
+              </li>
               <li><span>계약기간</span> {parsed.contractPeriod || '공고문 확인 필요'}</li>
             </ul>
           </section>

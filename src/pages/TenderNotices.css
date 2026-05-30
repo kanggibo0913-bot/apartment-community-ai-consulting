@@ -158,6 +158,98 @@
   background: #fd7e14;
 }
 
+/* 사업설명회/PT 발표 일정 (보라) - 기존 schedule-pt(녹색)와 구분 */
+.schedule-business-presentation {
+  background: #7c3aed;
+}
+
+/* 서류 제출 등 보조 일정 (회색) */
+.schedule-document {
+  background: #6c757d;
+}
+
+/* 기타 분류 일정 (진회색) */
+.schedule-other {
+  background: #475569;
+}
+
+/* 캘린더 셀의 풍부한 이벤트 카드: 단지명·세대수·산출인원·내용·관리소 전화번호 */
+.calendar-event-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #ffffff;
+  border-left: 3px solid #e9ecef;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  text-align: left;
+}
+
+.calendar-event-card.schedule-site-visit {
+  border-left-color: #0d6efd;
+}
+.calendar-event-card.schedule-deadline {
+  border-left-color: #dc3545;
+}
+.calendar-event-card.schedule-pt {
+  border-left-color: #198754;
+}
+.calendar-event-card.schedule-contract-start {
+  border-left-color: #6f42c1;
+}
+.calendar-event-card.schedule-contract-end {
+  border-left-color: #fd7e14;
+}
+.calendar-event-card.schedule-business-presentation {
+  border-left-color: #7c3aed;
+}
+.calendar-event-card.schedule-document {
+  border-left-color: #6c757d;
+}
+.calendar-event-card.schedule-other {
+  border-left-color: #475569;
+}
+
+.calendar-event-card-body {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 11px;
+  color: #1f2a44;
+}
+
+.calendar-event-card-title {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-event-card-meta {
+  color: #475569;
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-event-card-content {
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-event-card-phone {
+  color: #0d6efd;
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .calendar-detail-card {
   padding: 18px;
   border: 1px solid #e9ecef;

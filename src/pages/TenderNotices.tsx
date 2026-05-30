@@ -13,9 +13,19 @@ import './TenderNotices.css'
 const STORAGE_KEY = 'tenderNotices'
 const SCHEDULE_STORAGE_KEY = 'tenderScheduleEvents'
 
-type ScheduleEventType = 'siteBriefing' | 'bidDeadline' | 'pt' | 'opening' | 'contractStart' | 'contractEnd'
+type ScheduleEventType =
+  | 'siteBriefing'
+  | 'bidDeadline'
+  | 'pt'
+  | 'opening'
+  | 'contractStart'
+  | 'contractEnd'
+  | 'businessPresentation'
+  | 'documentSubmission'
+  | 'other'
 
-// 공고 전체 등록과 별개로, 캘린더에만 표시되는 "일정만" 항목
+// 공고 전체 등록과 별개로, 캘린더에만 표시되는 "일정만" 항목.
+// 옵셔널 메타 필드는 기존 데이터와의 호환을 위해 모두 선택값으로 둔다.
 interface ScheduleEvent {
   id: string
   date: string
@@ -24,6 +34,13 @@ interface ScheduleEvent {
   complexName: string
   memo: string
   source: string
+  // 캘린더 카드에 노출할 추가 메타데이터 (없으면 fallback 표시)
+  households?: number
+  calculatedStaffCount?: number
+  content?: string
+  managementOfficePhone?: string
+  category?: string
+  createdAt?: string
 }
 
 const scheduleBadgeByType: Record<ScheduleEventType, string> = {
@@ -33,9 +50,13 @@ const scheduleBadgeByType: Record<ScheduleEventType, string> = {
   opening: 'schedule-deadline',
   contractStart: 'schedule-contract-start',
   contractEnd: 'schedule-contract-end',
+  businessPresentation: 'schedule-business-presentation',
+  documentSubmission: 'schedule-document',
+  other: 'schedule-other',
 }
 
-// 캘린더가 notices와 scheduleEvents를 함께 렌더링하기 위한 통합 이벤트 형태
+// 캘린더가 notices와 scheduleEvents를 함께 렌더링하기 위한 통합 이벤트 형태.
+// 풍부한 카드를 그리기 위해 단지명/세대수/산출인원/내용/관리소 전화번호를 모두 옵셔널로 둔다.
 type CalendarItem = {
   uid: string
   label: string
@@ -44,6 +65,11 @@ type CalendarItem = {
   kind: 'notice' | 'schedule'
   notice?: TenderNotice
   memo?: string
+  // 카드에 보조 정보로 노출 (있을 때만 표시)
+  households?: number
+  calculatedStaffCount?: number
+  content?: string
+  managementOfficePhone?: string
 }
 
 const getLocalDateString = (date: Date) => date.toLocaleDateString('sv')
@@ -516,6 +542,10 @@ const TenderNotices = () => {
             title: notice.siteName,
             kind: 'notice',
             notice,
+            // notice 기반 항목은 단지/세대수/산출인원/공고명을 자동 매핑한다.
+            households: notice.totalUnits || undefined,
+            calculatedStaffCount: notice.estimatedStaff || undefined,
+            content: notice.title || undefined,
           })
         }
       })
@@ -530,6 +560,10 @@ const TenderNotices = () => {
           title: ev.complexName,
           kind: 'schedule',
           memo: ev.memo,
+          households: ev.households,
+          calculatedStaffCount: ev.calculatedStaffCount,
+          content: ev.content,
+          managementOfficePhone: ev.managementOfficePhone,
         })
       }
     })
@@ -712,7 +746,7 @@ const TenderNotices = () => {
   }
 
   // AI 분석의 주요 일정만 캘린더(scheduleEvents)에 추가한다. 공고는 등록하지 않는다.
-  // (버튼: "주요 일정만 스케줄러에 추가") 현장설명회/입찰마감 등 마일스톤만 대상.
+  // (버튼: "주요 일정만 스케줄러에 추가") 현장설명회/입찰마감/사업설명회(PT) 등 마일스톤만 대상.
   const handleAddAiScheduleEvents = (parsed: BidAnalysisParsed): { added: number; duplicate: boolean } => {
     const complexName = parsed.complexName || '(미입력 단지)'
     const candidates: Array<{ type: ScheduleEventType; label: string; raw: string; date: string }> = []
@@ -720,6 +754,15 @@ const TenderNotices = () => {
     if (sv) candidates.push({ type: 'siteBriefing', label: '현장설명회', raw: parsed.siteBriefingDate, date: sv })
     const dl = toDateInput(parsed.bidDeadline)
     if (dl) candidates.push({ type: 'bidDeadline', label: '입찰마감', raw: parsed.bidDeadline, date: dl })
+    // 사업설명회/PT 발표 일정: parser가 동의어를 흡수해 채워준 값을 사용한다.
+    const bp = toDateInput(parsed.businessPresentationDate)
+    if (bp)
+      candidates.push({
+        type: 'businessPresentation',
+        label: '사업설명회/PT',
+        raw: parsed.businessPresentationDate,
+        date: bp,
+      })
 
     if (candidates.length === 0) return { added: 0, duplicate: false }
 
@@ -733,14 +776,25 @@ const TenderNotices = () => {
         duplicate = true
         return
       }
+      // 사업설명회/PT는 시간·장소가 함께 추출되었을 수 있으므로 메모와 content에 포함한다.
+      const extra: string[] = []
+      if (c.type === 'businessPresentation') {
+        if (parsed.businessPresentationTime) extra.push(`시간 ${parsed.businessPresentationTime}`)
+        if (parsed.businessPresentationLocation) extra.push(`장소 ${parsed.businessPresentationLocation}`)
+      }
+      const memoBase = `AI 분석에서 추가 (원문: ${c.raw})`
+      const memo = extra.length > 0 ? `${memoBase} / ${extra.join(' / ')}` : memoBase
       toAdd.push({
         id: `${Date.now()}-${c.type}-${Math.random().toString(36).slice(2, 7)}`,
         date: c.date,
         type: c.type,
         label: c.label,
         complexName,
-        memo: `AI 분석에서 추가 (원문: ${c.raw})`,
+        memo,
         source: 'AI 분석',
+        content: c.type === 'businessPresentation' && extra.length > 0 ? extra.join(' · ') : undefined,
+        category: c.label,
+        createdAt: new Date().toISOString(),
       })
     })
 
@@ -864,11 +918,29 @@ const TenderNotices = () => {
               >
                 <div className="calendar-date-label">{day.getDate()}</div>
                 <div className="calendar-event-list">
-                  {events.slice(0, 3).map((item) => (
-                    <span key={item.uid} className={`event-badge ${item.badge}`}>
-                      {item.label}: {item.title}
-                    </span>
-                  ))}
+                  {events.slice(0, 3).map((item) => {
+                    // 풍부한 카드: 단지명/세대수/산출인원/내용/관리소 전화번호 (없으면 행 자체를 생략)
+                    const metaParts: string[] = []
+                    if (item.households) metaParts.push(`${formatNumber(item.households)}세대`)
+                    if (item.calculatedStaffCount) metaParts.push(`산출 ${item.calculatedStaffCount}명`)
+                    return (
+                      <div key={item.uid} className={`calendar-event-card ${item.badge}`}>
+                        <span className={`event-badge ${item.badge}`}>{item.label}</span>
+                        <div className="calendar-event-card-body">
+                          <div className="calendar-event-card-title">{item.title || '(미입력 단지)'}</div>
+                          {metaParts.length > 0 && (
+                            <div className="calendar-event-card-meta">{metaParts.join(' · ')}</div>
+                          )}
+                          {item.content && (
+                            <div className="calendar-event-card-content">{item.content}</div>
+                          )}
+                          {item.managementOfficePhone && (
+                            <div className="calendar-event-card-phone">관리소 {item.managementOfficePhone}</div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                   {events.length > 3 && <span className="event-badge event-more">+{events.length - 3}개</span>}
                 </div>
               </button>
@@ -886,6 +958,9 @@ const TenderNotices = () => {
                   {item.kind === 'notice' && item.notice ? ` | ${item.notice.title}` : ' | AI 일정'}
                   <div className="calendar-event-meta">
                     <span>일정: {selectedDate}</span>
+                    {item.households ? <span>세대수: {formatNumber(item.households)}세대</span> : null}
+                    {item.calculatedStaffCount ? <span>산출인원: {item.calculatedStaffCount}명</span> : null}
+                    {item.managementOfficePhone ? <span>관리소: {item.managementOfficePhone}</span> : null}
                     {item.kind === 'notice' && item.notice ? (
                       <>
                         <span>참여 가능성: {item.notice.participationLikelihood}</span>
