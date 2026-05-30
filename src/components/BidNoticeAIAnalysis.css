@@ -361,3 +361,40 @@
   font-size: 12px;
   color: #065f46;
 }
+
+/* ─── compact 모드: 기본 상태 업로드 카드 높이 축소 ─── */
+.notice-upload-card--compact { padding: 10px 12px; }
+.notice-upload-card--compact h4 { margin: 0 0 4px; font-size: 13px; }
+.notice-upload-card--compact .desc {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #64748b;
+}
+.notice-upload-card--compact .desc-formats {
+  display: block;
+  margin-top: 2px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+.notice-upload-card--compact .notice-upload-dropzone { padding: 8px 10px; }
+.notice-upload-card--compact .browse-btn { padding: 6px 10px; font-size: 12px; }
+.notice-upload-card--compact .notice-upload-meta { font-size: 11.5px; }
+
+/* 일정 등록/공고 등록 직후 안내 배너: 메시지 + 스케줄러로 이동 버튼 */
+.bid-action-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+}
+
+.bid-action-banner-hint {
+  font-size: 12px;
+  color: #065f46;
+}

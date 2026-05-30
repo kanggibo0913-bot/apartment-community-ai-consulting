@@ -157,3 +157,91 @@
     text-align: left;
   }
 }
+
+/* ─── compact 모드: 한 줄 요약 + 데이터 관리 토글 ─── */
+.project-selector--compact {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.project-header--inline {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.project-summary {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2a44;
+}
+
+.project-summary-label {
+  color: #475569;
+  font-weight: 500;
+}
+
+.project-summary-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0d3b66;
+}
+
+.project-summary-dot {
+  color: #94a3b8;
+}
+
+.project-summary-meta {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* 한 줄 액션 그리드: select + 3개 버튼 */
+.project-actions--inline {
+  grid-template-columns: minmax(160px, 1fr) auto auto auto;
+  margin-bottom: 0;
+  align-items: center;
+}
+
+.project-actions--inline .project-select {
+  margin-bottom: 0;
+}
+
+.project-detail {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #e2e8f0;
+  display: grid;
+  gap: 10px;
+}
+
+/* 상세 정보 2x2 그리드로 압축 */
+.project-info--grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+  padding: 8px 12px;
+}
+
+.project-info--grid .info-row {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 6px 0;
+}
+
+@media (max-width: 768px) {
+  .project-selector--compact {
+    padding: 10px 12px;
+  }
+  .project-actions--inline {
+    grid-template-columns: 1fr;
+  }
+  .project-info--grid {
+    grid-template-columns: 1fr;
+  }
+}

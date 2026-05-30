@@ -194,3 +194,12 @@
     display: block;
   }
 }
+
+/* nav 텍스트가 좁은 폭에서 세로 줄바꿈되지 않도록 보호 */
+.nav-item,
+.nav-group-header {
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

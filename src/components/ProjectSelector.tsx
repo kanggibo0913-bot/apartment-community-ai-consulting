@@ -24,7 +24,8 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   onBackupProjects,
   onRestoreProjects,
 }) => {
-  const [showBackupRestore, setShowBackupRestore] = useState(false)
+  // compact 처리: 데이터 관리(상세 정보 + 백업·복원)는 기본 접힘 상태로 둔다.
+  const [showDataManage, setShowDataManage] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const activeProject = projects.find(p => p.id === activeProjectId)
@@ -71,41 +72,34 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
     )
   }
 
+  // 한 줄 요약: 단지명 · 세대수 · 주소(또는 미입력 안내)
+  const summaryParts = [
+    `${activeProject.householdCount}세대`,
+    activeProject.address || '주소 미입력',
+  ]
   const lastModified = new Date(activeProject.updatedAt).toLocaleDateString('ko-KR')
 
   return (
-    <div className="project-selector">
-      <div className="project-header">
-        <h2>현재 선택: {activeProject.name}</h2>
+    <div className={`project-selector project-selector--compact${showDataManage ? ' is-expanded' : ''}`}>
+      {/* 한 줄 요약 + 데이터 관리 토글 */}
+      <div className="project-header project-header--inline">
+        <h2 className="project-summary">
+          <span className="project-summary-label">현재 선택:</span>
+          <span className="project-summary-name">{activeProject.name}</span>
+          <span className="project-summary-dot">·</span>
+          <span className="project-summary-meta">{summaryParts.join(' · ')}</span>
+        </h2>
         <button
           className="btn-toggle-actions"
           type="button"
-          onClick={() => setShowBackupRestore(!showBackupRestore)}
+          onClick={() => setShowDataManage(!showDataManage)}
         >
-          {showBackupRestore ? '▼' : '▶'} 데이터 관리
+          {showDataManage ? '▼ 데이터 관리 닫기' : '▶ 데이터 관리 열기'}
         </button>
       </div>
 
-      <div className="project-info">
-        <div className="info-row">
-          <span className="label">주소:</span>
-          <span className="value">{activeProject.address || '(미입력)'}</span>
-        </div>
-        <div className="info-row">
-          <span className="label">세대수:</span>
-          <span className="value">{activeProject.householdCount}세대</span>
-        </div>
-        <div className="info-row">
-          <span className="label">관리회사:</span>
-          <span className="value">{activeProject.managementCompany || '(미입력)'}</span>
-        </div>
-        <div className="info-row">
-          <span className="label">마지막 수정:</span>
-          <span className="value">{lastModified}</span>
-        </div>
-      </div>
-
-      <div className="project-actions">
+      {/* 단지 변경/추가/수정/삭제는 항상 한 줄로 노출 */}
+      <div className="project-actions project-actions--inline">
         <select
           value={activeProjectId}
           onChange={e => onSelectProject(e.target.value)}
@@ -130,21 +124,43 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
         </Button>
       </div>
 
-      {showBackupRestore && (
-        <div className="backup-actions">
-          <Button onClick={onBackupProjects} className="btn-secondary">
-            ⬇ 전체 데이터 백업
-          </Button>
-          <Button onClick={handleRestoreClick} className="btn-secondary">
-            ⬆ 데이터 불러오기
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            style={{ display: 'none' }}
-            onChange={handleFileSelect}
-          />
+      {/* 데이터 관리 열기 상태에서만 상세 정보 + 백업/복원 노출 */}
+      {showDataManage && (
+        <div className="project-detail">
+          <div className="project-info project-info--grid">
+            <div className="info-row">
+              <span className="label">주소</span>
+              <span className="value">{activeProject.address || '(미입력)'}</span>
+            </div>
+            <div className="info-row">
+              <span className="label">세대수</span>
+              <span className="value">{activeProject.householdCount}세대</span>
+            </div>
+            <div className="info-row">
+              <span className="label">관리회사</span>
+              <span className="value">{activeProject.managementCompany || '(미입력)'}</span>
+            </div>
+            <div className="info-row">
+              <span className="label">마지막 수정</span>
+              <span className="value">{lastModified}</span>
+            </div>
+          </div>
+
+          <div className="backup-actions">
+            <Button onClick={onBackupProjects} className="btn-secondary">
+              ⬇ 전체 데이터 백업
+            </Button>
+            <Button onClick={handleRestoreClick} className="btn-secondary">
+              ⬆ 데이터 불러오기
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              style={{ display: 'none' }}
+              onChange={handleFileSelect}
+            />
+          </div>
         </div>
       )}
     </div>

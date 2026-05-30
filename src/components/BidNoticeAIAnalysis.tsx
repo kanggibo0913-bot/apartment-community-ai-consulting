@@ -112,12 +112,15 @@ interface BidNoticeAIAnalysisProps {
   onRegisterNotice?: (parsed: BidAnalysisParsed) => { added: number; duplicate: boolean }
   // 버튼3: 주요 일정만 캘린더에 추가
   onAddScheduleEvents?: (parsed: BidAnalysisParsed) => { added: number; duplicate: boolean }
+  // 일정 등록 직후 입찰 스케줄러 탭으로 이동(분석 탭 ↔ 스케줄러 탭 전환용)
+  onJumpToScheduler?: () => void
 }
 
 const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
   onApplyToForm,
   onRegisterNotice,
   onAddScheduleEvents,
+  onJumpToScheduler,
 }) => {
   const [form, setForm] = useState<BidForm>(emptyForm)
   const [loading, setLoading] = useState(false)
@@ -477,12 +480,12 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
 
   return (
     <Card title="AI 공고문 분석 (텍스트 붙여넣기)">
-      {/* 공고문 파일 업로드 + 추출 결과 미리보기 (Phase B-0) */}
-      <div className="notice-upload-card">
+      {/* 공고문 파일 업로드 + 추출 결과 미리보기 (Phase B-0). 기본 상태에서는 compact 노출. */}
+      <div className="notice-upload-card notice-upload-card--compact">
         <h4>공고문 파일 업로드</h4>
         <p className="desc">
-          PDF, TXT, CSV, XLSX, JPG, PNG 파일을 업로드하면 분석용 텍스트를 먼저 추출합니다.
-          추출 결과를 확인·수정한 뒤 공고문 분석을 실행하세요.
+          파일을 업로드하면 분석용 텍스트를 먼저 추출합니다. 확인·수정 후 분석하세요.
+          <span className="desc-formats">지원: TXT · CSV · PDF · XLSX · JPG · PNG · WEBP</span>
         </p>
 
         <div
@@ -806,7 +809,18 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
               </div>
             )}
 
-            {actionMsg && <p className="bid-apply-msg">{actionMsg}</p>}
+            {actionMsg && (
+              <div className="bid-action-banner">
+                <p className="bid-apply-msg" style={{ margin: 0 }}>{actionMsg}</p>
+                {/* 스케줄러로 이동 버튼: 일정 등록·공고 등록 후 노출. onJumpToScheduler가 있을 때만. */}
+                {onJumpToScheduler && /스케줄러|공고가 등록|등록되었/.test(actionMsg) && (
+                  <>
+                    <span className="bid-action-banner-hint">→ 입찰 스케줄러 탭에서 확인할 수 있습니다.</span>
+                    <Button variant="secondary" onClick={onJumpToScheduler}>입찰 스케줄러로 이동</Button>
+                  </>
+                )}
+              </div>
+            )}
           </section>
         </div>
       )}

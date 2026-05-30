@@ -619,6 +619,8 @@ const TenderNotices = () => {
   // 스케줄러 표시 모드 — 기본은 실무 친화적인 일정표(아젠다) 뷰.
   // 보기 모드: 2주 보드(기본) / 일정표 / 월간 달력. 데이터는 eventsByDate를 공유.
   const [schedulerView, setSchedulerView] = useState<'board' | 'agenda' | 'calendar'>('board')
+  // 페이지 상위 탭: AI 공고문 분석(기본) / 입찰 스케줄러 / 공고 목록·관리.
+  const [bidPageTab, setBidPageTab] = useState<'analysis' | 'scheduler' | 'list'>('analysis')
   // 일정표 기준 기간: 2주(14일) / 3주(21일, 기본) / 전체.
   const [agendaRange, setAgendaRange] = useState<'2w' | '3w' | 'all'>('3w')
 
@@ -1187,20 +1189,56 @@ const TenderNotices = () => {
   }
 
   return (
-    <div className="page tender-page">
-      <div className="report-section-header">
+    <div className="page tender-page tender-page--tabbed">
+      <div className="report-section-header report-section-header--compact">
         <div>
           <h2>입찰공고 관리</h2>
-          <p className="report-disclaimer">입찰공고 등록, 달력 기반 스케줄러, 자동 분석 및 참여 검토 결과를 한 곳에서 관리합니다.</p>
+          <p className="report-disclaimer">공고 분석 · 스케줄러 · 공고 목록을 탭으로 분리해 관리합니다.</p>
         </div>
       </div>
 
+      {/* 입찰공고 관리 상위 탭 (3종): AI 공고문 분석 / 입찰 스케줄러 / 공고 목록·관리 */}
+      <div className="bid-page-tabs" role="tablist" aria-label="입찰공고 관리 탭">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={bidPageTab === 'analysis'}
+          className={`bid-page-tab${bidPageTab === 'analysis' ? ' is-active' : ''}`}
+          onClick={() => setBidPageTab('analysis')}
+        >
+          AI 공고문 분석
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={bidPageTab === 'scheduler'}
+          className={`bid-page-tab${bidPageTab === 'scheduler' ? ' is-active' : ''}`}
+          onClick={() => setBidPageTab('scheduler')}
+        >
+          입찰 스케줄러
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={bidPageTab === 'list'}
+          className={`bid-page-tab${bidPageTab === 'list' ? ' is-active' : ''}`}
+          onClick={() => setBidPageTab('list')}
+        >
+          공고 목록·관리
+        </button>
+      </div>
+
+      {bidPageTab === 'analysis' && (
       <BidNoticeAIAnalysis
         onApplyToForm={handleApplyAiToForm}
         onRegisterNotice={handleRegisterAiNotice}
         onAddScheduleEvents={handleAddAiScheduleEvents}
+        onJumpToScheduler={() => setBidPageTab('scheduler')}
       />
+      )}
 
+      {bidPageTab === 'scheduler' && (
+      <>
       <div className="tender-summary-grid">
         <div className="tender-summary-card">
           <p className="summary-label">등록 공고 수</p>
@@ -1568,10 +1606,14 @@ const TenderNotices = () => {
         )}
       </div>
 
+      </>
+      )}
+
+      {bidPageTab === 'analysis' && (
       <div className="tender-analysis-card card">
         <div className="analysis-header">
           <div>
-            <h3>공고문 자동분석</h3>
+            <h3>공고문 자동분석 (텍스트 파서)</h3>
             <p className="summary-small">공고문 원문을 붙여넣고 분석 버튼을 누르면 주요 일정과 리스크를 추출합니다.</p>
           </div>
         </div>
@@ -1667,7 +1709,10 @@ const TenderNotices = () => {
           </div>
         )}
       </div>
+      )}
 
+      {bidPageTab === 'list' && (
+      <>
       <div className="tender-main-grid">
         <form className="tender-form-card card" onSubmit={handleSubmit}>
           <h3>입찰공고 등록</h3>
@@ -1954,6 +1999,8 @@ const TenderNotices = () => {
           </table>
         </div>
       </div>
+      </>
+      )}
     </div>
   )
 }
