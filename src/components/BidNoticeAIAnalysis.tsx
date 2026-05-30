@@ -4,14 +4,15 @@ import Button from './Button'
 import AIResultPanel from './AIResultPanel'
 import { callAI } from '../utils/aiClient'
 import {
+  BidAnalysisDraft,
   BidAnalysisParsed,
   GRADE_LABEL,
+  buildBidAnalysisDraft,
   categorizeRisk,
-  extractHouseholds,
-  normalizePhone,
   parseBidAnalysis,
   toDateInput,
 } from '../utils/parseBidAnalysis'
+import { formatNumber } from '../utils/formatUtils'
 import './BidNoticeAIAnalysis.css'
 
 interface BidForm {
@@ -331,25 +332,49 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
     }, 50)
   }
 
-  // parsed는 single source of truth. analyze() 또는 onLoadSaved에서 한 번 만들어 화면 표시/폼 반영/스케줄러 후보 모두에 동일 객체 사용.
-  // 사용자 인풋(noticeText) 기반 gap-fill을 적용한 결과를 그대로 보관해, 화면과 폼이 다르게 보이는 일을 방지한다.
-  const [parsed, setParsed] = useState<BidAnalysisParsed | null>(null)
-
-  // AI 결과가 결손한 필드만 noticeText에서 보충하는 헬퍼.
-  // 전체 재파싱이 아니라 households/managementOfficePhone 두 필드만 안전한 정규식으로 보강한다.
-  const enrichParsedFromNoticeText = (p: BidAnalysisParsed, noticeText: string): BidAnalysisParsed => {
-    const out = { ...p }
-    if (out.households == null && noticeText) {
-      const fromNotice = extractHouseholds(noticeText)
-      if (fromNotice) out.households = fromNotice
-    }
-    if (!out.managementOfficePhone && noticeText) {
-      // 한국 전화번호 패턴: 0xx-xxxx-xxxx (구분자: -, ), ., 공백)
-      const m = noticeText.match(/(0\d{1,2})\s*(?:-|\)|\.|\s)\s*(\d{3,4})\s*(?:-|\.|\s)\s*(\d{4})/)
-      if (m) out.managementOfficePhone = normalizePhone(`${m[1]}-${m[2]}-${m[3]}`)
-    }
-    return out
-  }
+  // draft는 single source of truth. analyze() 또는 onLoadSaved에서 한 번 빌드해
+  // 화면 기본정보/구조화 결과 / 공고 등록 폼 / 스케줄러 후보 / ScheduleEvent 저장 모두에 같은 객체를 사용.
+  const [draft, setDraft] = useState<BidAnalysisDraft | null>(null)
+  // draft → BidAnalysisParsed 변환 헬퍼. draft가 source이므로 두 형태가 결코 어긋날 수 없게 한 자리에서 매핑.
+  const draftToParsed = (d: BidAnalysisDraft): BidAnalysisParsed => ({
+    summary: d.memo.split('\n')[0]?.replace(/^\[AI 분석\]\s*/, '') || '',
+    complexName: d.apartmentName,
+    region: d.region,
+    bidMethod: d.bidMethod,
+    managementOfficePhone: d.managementOfficePhone,
+    households: d.households,
+    siteBriefingDate: d.siteBriefingDate,
+    siteBriefingTime: d.siteBriefingTime,
+    siteBriefingStatus: d.siteBriefingStatus,
+    siteBriefingNote: d.siteBriefingNote,
+    bidDeadline: d.bidDeadlineDate,
+    bidDeadlineTime: d.bidDeadlineTime,
+    openingDate: d.openingDate,
+    openingTime: d.openingTime,
+    documentSubmissionDate: '',
+    documentSubmissionTime: '',
+    ptDate: d.ptDate,
+    ptTime: d.ptTime,
+    contractPeriod: d.contractPeriod,
+    businessPresentationDate: d.businessPresentationDate,
+    businessPresentationTime: d.businessPresentationTime,
+    businessPresentationLocation: '',
+    requiredDocuments: d.requiredDocuments,
+    specialConditions: d.specialConditions,
+    risks: d.risks,
+    estimateNotes: d.estimateNotes,
+    siteBriefingQuestions: [],
+    participationGrade: d.participationGrade,
+    participationReason: d.participationReason,
+    recommendedAction: d.recommendedAction,
+    scheduleEvents: d.scheduleEvents,
+  })
+  // 화면 표시·후보 생성에 그대로 쓸 parsed (draft에서 파생). draft가 source인 점만 다름.
+  const parsed: BidAnalysisParsed | null = useMemo(
+    () => (draft ? draftToParsed(draft) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draft],
+  )
 
   // 버튼3(일정만 추가)에 표시할 마일스톤 후보.
   // 1순위: AI가 반환한 scheduleEvents[] (시간 포함). 2순위: 단일 키 fallback.
@@ -468,15 +493,17 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
           setError('AI가 빈 응답을 반환했습니다. 잠시 후 다시 시도해주세요.')
         } else {
           setResult(text)
-          // 분석 완료 직후: AI 응답 한 번 파싱 → noticeText 기반 gap-fill → 동일 객체를 표시/폼/스케줄러에 사용.
+          // 분석 완료 직후: AI 응답을 한 번 파싱 → noticeText 기반 gap-fill을 포함해 정규화된 draft 1개 생성.
+          // 이 draft가 화면 기본정보·구조화 결과·공고 등록 폼·스케줄러 후보·등록 모두의 source of truth.
           // 절대 noticeText를 다시 parseBidAnalysis하지 않는다(원본 텍스트 재파싱 금지 정책).
           const parsedRaw = parseBidAnalysis(text)
-          const parsedEnriched = parsedRaw ? enrichParsedFromNoticeText(parsedRaw, form.noticeText) : null
-          setParsed(parsedEnriched)
-          // 동일 객체를 폼 반영에도 전달 → 화면 표시값과 폼 값이 어긋나지 않음.
-          if (parsedEnriched && onApplyToForm) {
+          const newDraft = parsedRaw ? buildBidAnalysisDraft(parsedRaw, form.noticeText) : null
+          setDraft(newDraft)
+          // 동일 draft에서 도출된 parsed를 폼 반영에 전달.
+          if (newDraft && onApplyToForm) {
             try {
-              onApplyToForm(parsedEnriched, false, form.noticeText)
+              // 신규 draft를 그 자리에서 parsed로 변환해 폼 핸들러에 전달(state 비동기 지연 방지).
+              onApplyToForm(draftToParsed(newDraft), false, form.noticeText)
               setApplyMsg('AI 분석 결과가 공고 등록 폼에 반영되었습니다. 공고 목록·관리 탭에서 확인 후 등록하세요.')
               setTimeout(() => setApplyMsg(''), 9000)
             } catch {
@@ -657,7 +684,7 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
       </div>
 
       {/* 구조화 분석 카드 (JSON 파싱 성공 시) */}
-      {parsed && (
+      {parsed && draft && (
         <div className="bid-structured">
           <div className="bid-structured-head">
             <h4>구조화 분석 결과</h4>
@@ -665,6 +692,28 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
               <span className={`grade-badge grade-${gradeKey}`}>{GRADE_LABEL[gradeKey] || gradeKey}</span>
             )}
           </div>
+
+          {/* AI 기본정보: draft에서 직접 표시. 공고 등록 폼/스케줄러 카드 모두 같은 source를 봄. */}
+          <section className="bid-block">
+            <h5>AI 기본정보</h5>
+            <ul className="bid-kv">
+              <li><span>단지명</span> {draft.apartmentName || '확인 필요'}</li>
+              <li><span>지역</span> {draft.region || '확인 필요'}</li>
+              <li><span>세대수</span> {draft.households != null ? `${formatNumber(draft.households)}세대` : '확인 필요'}</li>
+              <li><span>산출인원</span> {draft.calculatedStaffCount != null ? `${draft.calculatedStaffCount}명` : draft.staffCountText || '확인 필요'}</li>
+              <li><span>관리소 전화번호</span> {draft.managementOfficePhone || '확인 필요'}</li>
+              <li><span>입찰마감</span> {draft.bidDeadlineDate ? `${draft.bidDeadlineDate} ${draft.bidDeadlineTime || ''}`.trim() : '확인 필요'}</li>
+              <li><span>PT/사업설명회</span> {draft.businessPresentationDate ? `${draft.businessPresentationDate} ${draft.businessPresentationTime || ''}`.trim() : '없음/확인 필요'}</li>
+              <li>
+                <span>현장확인</span>{' '}
+                {draft.siteBriefingStatus === 'individualVisit'
+                  ? `개별 방문 (${draft.siteBriefingNote || '일자 수동 확인 필요'})`
+                  : draft.siteBriefingDate
+                  ? `${draft.siteBriefingDate} ${draft.siteBriefingTime || ''}`.trim()
+                  : '확인 필요'}
+              </li>
+            </ul>
+          </section>
 
           {parsed.summary && (
             <section className="bid-block">
@@ -884,12 +933,13 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
         downloadFileName={`bid-notice-analysis-${new Date().toISOString().slice(0, 10)}.txt`}
         onClear={() => {
           setResult('')
-          setParsed(null)
+          setDraft(null)
         }}
         onLoadSaved={(content) => {
           setResult(content)
-          // 이력 로드에는 원본 noticeText가 없으므로 gap-fill 없이 AI 응답만으로 parsed 생성.
-          setParsed(parseBidAnalysis(content))
+          // 이력 로드는 원본 noticeText가 없으므로 gap-fill 없이 빈 noticeText로 draft 생성.
+          const parsedRaw = parseBidAnalysis(content)
+          setDraft(parsedRaw ? buildBidAnalysisDraft(parsedRaw, '') : null)
         }}
         showHistory
       />

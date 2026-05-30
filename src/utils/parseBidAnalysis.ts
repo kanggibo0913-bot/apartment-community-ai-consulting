@@ -607,18 +607,37 @@ export function splitDateTime(text: string): { date: string; time: string } {
   return { date: toDateInput(text), time: toTimeInput(text) }
 }
 
-// 세대수 텍스트에서 숫자만 추출. "999세대", "1,200 세대", "총 753세대", "753" 등 처리.
-// 추정 금지: 명확한 숫자 패턴이 안 잡히면 null 반환.
+// 세대수 텍스트에서 숫자만 추출. 추정 금지·연도/퍼센트 오인 방지를 위해 엄격 매칭.
+// 허용:
+//   - 명시 숫자값 (number 또는 "999"처럼 단위 없이 순수 숫자만 든 짧은 문자열) — 명시 키 값에서 옴
+//   - 텍스트에서 단위 "세대" / "가구" / "호" 가 직접 붙어 있는 숫자
+// 거부:
+//   - 연도(1900~2099 범위 / 4자리)
+//   - 단위 없는 숫자 매칭 (예: "25%", "2025년", "5%")
+//   - 1자리 숫자
 export function extractHouseholds(raw: unknown): number | null {
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw
+  const isValid = (n: number): boolean =>
+    Number.isFinite(n) && n >= 10 && n <= 999999 && !(n >= 1900 && n <= 2099)
+
+  if (typeof raw === 'number') return isValid(raw) ? raw : null
   if (typeof raw !== 'string') return null
-  const cleaned = raw.replace(/,/g, '').replace(/\s+/g, '')
-  if (!cleaned) return null
-  // 2~6자리 숫자에 선택적으로 "세대"가 붙은 패턴 (예: "999세대" / "753")
-  const m = cleaned.match(/(\d{2,6})\s*세?대?/)
-  if (m) {
+
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+
+  // 1) 명시값: 단위 없이 순수 숫자(콤마 허용)만 들어온 경우 — JSON 명시 키에서 옴 (예: "999" / "1,200")
+  const bareNum = trimmed.replace(/,/g, '')
+  if (/^\d+$/.test(bareNum)) {
+    const n = Number(bareNum)
+    return isValid(n) ? n : null
+  }
+
+  // 2) 자유 텍스트: "세대" / "가구" / "호" 단위 앵커가 직접 붙은 숫자만 인정
+  const cleaned = trimmed.replace(/,/g, '')
+  const matches = Array.from(cleaned.matchAll(/(\d{2,6})\s*(세대|가구|호\b)/g))
+  for (const m of matches) {
     const n = Number(m[1])
-    if (Number.isFinite(n) && n > 0) return n
+    if (isValid(n)) return n
   }
   return null
 }
@@ -655,4 +674,175 @@ export function splitContractPeriod(text: string): { start: string; end: string 
     return { start: toDateInput(parts[0]), end: toDateInput(parts[1]) }
   }
   return { start: toDateInput(text), end: '' }
+}
+
+// ─── BidAnalysisDraft: 화면/공고 등록 폼/스케줄러가 공통으로 보는 단일 데이터 소스 ───
+// parsed(BidAnalysisParsed)와 사용자가 입력한 공고문 원문(noticeText)을 결합해
+// 정규화된 draft 한 객체로 만든다. 이후 모든 소비자(공고 등록 폼 자동 채움 / 후보 표시 /
+// ScheduleEvent 등록)는 이 draft만을 source of truth로 사용해야 한다.
+export interface BidAnalysisDraft {
+  // 기본정보
+  apartmentName: string
+  region: string
+  households: number | null
+  bidTitle: string
+  managementOfficePhone: string
+  // 산출인원: 숫자/원문 둘 다 보존
+  calculatedStaffCount: number | null
+  staffCountText: string
+  // 일정/상태
+  noticeDate: string
+  siteBriefingStatus: '' | 'scheduled' | 'individualVisit' | 'notRequired' | 'unknown'
+  siteBriefingNote: string
+  siteBriefingDate: string
+  siteBriefingTime: string
+  bidDeadlineDate: string
+  bidDeadlineTime: string
+  openingDate: string
+  openingTime: string
+  ptDate: string
+  ptTime: string
+  businessPresentationDate: string
+  businessPresentationTime: string
+  contractPeriod: string
+  bidMethod: string
+  awardMethod: string
+  qualification: string
+  specialConditions: string[]
+  risks: string[]
+  requiredDocuments: string[]
+  estimateNotes: string[]
+  participationGrade: string
+  participationReason: string
+  recommendedAction: string
+  originalText: string
+  // 자동 생성된 검토 메모 (요약·등급·위험·일정 통합)
+  memo: string
+  // 표시·등록 양쪽에 같은 형태로 전달되는 정규화된 일정 배열
+  scheduleEvents: ParsedScheduleEvent[]
+}
+
+// parsed + noticeText를 받아 BidAnalysisDraft를 생성한다.
+// - households / managementOfficePhone는 parsed 우선, 없으면 noticeText에서 안전한 정규식으로 보충.
+// - scheduleEvents는 parsed 결과(이미 documentSubmission→bidDeadline 정규화 + dedupe 완료)를 그대로 사용.
+// - calculatedStaffCount/staffCountText는 scheduleEvents 항목에서 가장 빈도 높은 값으로 종합.
+// - memo는 요약·등급·위험·일정 정보를 사용자 친화 텍스트로 합성.
+export function buildBidAnalysisDraft(
+  parsed: BidAnalysisParsed,
+  noticeText: string,
+): BidAnalysisDraft {
+  // 1) households gap-fill (parsed 우선)
+  let households: number | null = parsed.households
+  if (households == null && noticeText) {
+    const m = noticeText.match(/(\d{2,6})\s*(세대|가구|호\b)/)
+    if (m) households = extractHouseholds(`${m[1]}${m[2]}`)
+  }
+  // scheduleEvents에서 보충(top이 비고 일정에 households가 있으면 사용)
+  if (households == null) {
+    const fromEvents = parsed.scheduleEvents.find((e) => e.households != null)?.households
+    if (fromEvents != null) households = fromEvents
+  }
+
+  // 2) managementOfficePhone gap-fill (parsed 우선)
+  let phone = parsed.managementOfficePhone
+  if (!phone && noticeText) {
+    const m = noticeText.match(/(0\d{1,2})\s*(?:-|\)|\.|\s)\s*(\d{3,4})\s*(?:-|\.|\s)\s*(\d{4})/)
+    if (m) phone = normalizePhone(`${m[1]}-${m[2]}-${m[3]}`)
+  }
+  if (!phone) {
+    const fromEvents = parsed.scheduleEvents.find((e) => e.managementOfficePhone)?.managementOfficePhone
+    if (fromEvents) phone = fromEvents
+  }
+
+  // 3) calculatedStaffCount / staffCountText 종합 (scheduleEvents의 모드/첫 비-null 값)
+  let calculatedStaffCount: number | null = null
+  let staffCountText = ''
+  for (const ev of parsed.scheduleEvents) {
+    if (calculatedStaffCount == null && ev.calculatedStaffCount != null && ev.calculatedStaffCount > 0) {
+      calculatedStaffCount = ev.calculatedStaffCount
+    }
+    if (!staffCountText && ev.staffCountText) staffCountText = ev.staffCountText
+    if (calculatedStaffCount != null && staffCountText) break
+  }
+
+  // 4) 일정 필드 도출 (parsed 단일 키 우선, 없으면 같은 타입의 scheduleEvent에서 추출)
+  const fromEvent = (
+    type: ParsedScheduleEventType,
+  ): { date: string; time: string } => {
+    const ev = parsed.scheduleEvents.find((e) => e.eventType === type)
+    return { date: ev?.date || '', time: ev?.time || '' }
+  }
+  const bidDeadlineEv = fromEvent('bidDeadline')
+  const openingEv = fromEvent('opening')
+  const bpEv = fromEvent('businessPresentation')
+
+  const bidDeadlineDate = parsed.bidDeadline || parsed.documentSubmissionDate || bidDeadlineEv.date
+  const bidDeadlineTime = parsed.bidDeadlineTime || parsed.documentSubmissionTime || bidDeadlineEv.time
+  const openingDate = parsed.openingDate || openingEv.date
+  const openingTime = parsed.openingTime || openingEv.time
+  const businessPresentationDate = parsed.businessPresentationDate || bpEv.date
+  const businessPresentationTime = parsed.businessPresentationTime || bpEv.time
+
+  // 5) memo 합성
+  const memoParts: string[] = []
+  if (parsed.summary) memoParts.push(`[AI 분석] ${parsed.summary}`)
+  if (parsed.participationGrade)
+    memoParts.push(`[참여등급 ${parsed.participationGrade}] ${parsed.participationReason}`.trim())
+  if (parsed.recommendedAction) memoParts.push(`다음 조치: ${parsed.recommendedAction}`)
+  if (parsed.risks.length) memoParts.push(`주요 리스크: ${parsed.risks.join(' / ')}`)
+  if (parsed.siteBriefingStatus === 'individualVisit') {
+    memoParts.push(`현장설명회 미개최: ${parsed.siteBriefingNote || '개별 방문으로 현장 확인 필요'}`)
+  }
+  if (parsed.contractPeriod) memoParts.push(`계약기간: ${parsed.contractPeriod}`)
+  if (phone) memoParts.push(`관리소 전화번호: ${phone}`)
+  if (bidDeadlineTime) memoParts.push(`입찰마감 시간: ${bidDeadlineTime}`)
+  if (businessPresentationTime || parsed.ptTime)
+    memoParts.push(`PT/사업설명회 시간: ${businessPresentationTime || parsed.ptTime}`)
+  if (openingDate && openingTime) memoParts.push(`개찰: ${openingDate} ${openingTime}`)
+  else if (openingDate) memoParts.push(`개찰일: ${openingDate}`)
+
+  // 공고 게시일은 별도 추출 키가 없으면 빈 문자열(폼이 기본값 처리).
+  const noticeDate = ''
+
+  // 공고명: AI가 별도 키로 주지 않으므로 단지명 기반 자동 생성.
+  const bidTitle = parsed.complexName ? `${parsed.complexName} 입찰 공고 (AI 분석)` : ''
+
+  return {
+    apartmentName: parsed.complexName,
+    region: parsed.region,
+    households,
+    bidTitle,
+    managementOfficePhone: phone,
+    calculatedStaffCount,
+    staffCountText,
+    noticeDate,
+    siteBriefingStatus: parsed.siteBriefingStatus,
+    siteBriefingNote: parsed.siteBriefingNote,
+    // individualVisit이면 날짜 비움(폼/일정 양쪽 동일)
+    siteBriefingDate: parsed.siteBriefingStatus === 'individualVisit' ? '' : parsed.siteBriefingDate,
+    siteBriefingTime: parsed.siteBriefingStatus === 'individualVisit' ? '' : parsed.siteBriefingTime,
+    bidDeadlineDate,
+    bidDeadlineTime,
+    openingDate,
+    openingTime,
+    ptDate: parsed.ptDate,
+    ptTime: parsed.ptTime,
+    businessPresentationDate,
+    businessPresentationTime,
+    contractPeriod: parsed.contractPeriod,
+    bidMethod: parsed.bidMethod,
+    // awardMethod / qualification는 BidAnalysisParsed에 없으므로 우선 빈 문자열. 향후 보강 가능.
+    awardMethod: '',
+    qualification: '',
+    specialConditions: parsed.specialConditions,
+    risks: parsed.risks,
+    requiredDocuments: parsed.requiredDocuments,
+    estimateNotes: parsed.estimateNotes,
+    participationGrade: parsed.participationGrade,
+    participationReason: parsed.participationReason,
+    recommendedAction: parsed.recommendedAction,
+    originalText: noticeText,
+    memo: memoParts.filter(Boolean).join('\n'),
+    scheduleEvents: parsed.scheduleEvents,
+  }
 }
