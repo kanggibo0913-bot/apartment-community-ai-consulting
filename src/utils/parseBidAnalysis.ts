@@ -31,6 +31,10 @@ export interface BidAnalysisParsed {
   bidMethod: string
   siteBriefingDate: string
   siteBriefingTime: string
+  // 'notHeld' = 현장설명회 미개최(개별 방문 확인) / 'scheduled' = 일정 있음 / '' = 불명확
+  siteBriefingStatus: '' | 'notHeld' | 'scheduled'
+  // 미개최일 때 사용자 안내용 보조 메모 (예: "개별 방문으로 확인")
+  siteBriefingNote: string
   bidDeadline: string
   bidDeadlineTime: string
   openingDate: string
@@ -172,13 +176,45 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
   const rawPtTime =
     asString(o.ptTime ?? o.ptPresentationTime ?? o.proposalPresentationTime ?? '') || rawPtDate
 
+  // 현장설명회 미개최 표현 감지: AI가 명시적으로 status 키를 보내지 않아도 텍스트에서 추론.
+  // "현장설명회는 개최하지 않음", "개별 방문 확인" 등이 포함되면 notHeld로 표시.
+  const NOT_HELD_REGEX =
+    /(현장설명회.{0,20}(개최(하지)?\s*않|미개최|없음))|(현장설명회.{0,20}(개별\s*방문|개별방문))|(개별\s*방문.{0,10}확인)|(개별방문.{0,10}확인)/
+  const aiSiteStatus = asString(o.siteBriefingStatus ?? '').toLowerCase().trim()
+  const aiSiteNotHeldFlag = o.siteBriefingNotHeld === true || aiSiteStatus === 'notheld' || aiSiteStatus === 'not_held'
+  // 후보 텍스트: summary / siteBriefingNote / risks / estimateNotes / siteBriefingDate 자체
+  const siteBriefingProbe = [
+    asString(o.summary),
+    asString(o.siteBriefingNote),
+    asString(o.siteBriefingMemo),
+    asStringArray(o.risks).join(' '),
+    asStringArray(o.estimateNotes).join(' '),
+    rawSiteDate,
+  ].join(' ')
+  const textIndicatesNotHeld = NOT_HELD_REGEX.test(siteBriefingProbe)
+  const siteBriefingNotHeld = aiSiteNotHeldFlag || textIndicatesNotHeld
+  const siteBriefingStatus: '' | 'notHeld' | 'scheduled' = siteBriefingNotHeld
+    ? 'notHeld'
+    : rawSiteDate
+    ? 'scheduled'
+    : ''
+  const siteBriefingNote = (() => {
+    const aiNote = asString(o.siteBriefingNote ?? o.siteBriefingMemo ?? '').trim()
+    if (aiNote) return aiNote
+    if (siteBriefingNotHeld) return '개별 방문으로 확인'
+    return ''
+  })()
+
   return {
     summary: asString(o.summary),
     complexName: asString(o.complexName),
     region: asString(o.region),
     bidMethod: asString(o.bidMethod),
-    siteBriefingDate: rawSiteDate,
-    siteBriefingTime: toTimeInput(rawSiteTime),
+    // 현장설명회 미개최가 확실하면 date를 비워 두어 스케줄러 후보가 만들어지지 않게 한다.
+    siteBriefingDate: siteBriefingNotHeld ? '' : rawSiteDate,
+    siteBriefingTime: siteBriefingNotHeld ? '' : toTimeInput(rawSiteTime),
+    siteBriefingStatus,
+    siteBriefingNote,
     bidDeadline: rawDeadlineDate,
     bidDeadlineTime: toTimeInput(rawDeadlineTime),
     openingDate: rawOpeningDate,
@@ -216,19 +252,33 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
     recommendedAction: asString(o.recommendedAction),
     // scheduleEvents[]: AI가 시간 포함 일정을 제공한 경우만 채워진다. 비어있으면 빈 배열.
     // 추정치는 받지 않으므로 빈 값이면 그대로 비워 둔다.
-    scheduleEvents: Array.isArray(o.scheduleEvents)
-      ? (o.scheduleEvents as unknown[]).flatMap((rawItem): ParsedScheduleEvent[] => {
+    //  추가 처리:
+    //   - 현장설명회 미개최면 siteBriefing 항목 제거
+    //   - 적격심사평가회의/사업설명회처럼 같은 날짜·같은 시간·같은 타입(businessPresentation)이 중복되면 1건으로 병합
+    //   - 'other' 타입이지만 label에 "적격심사/평가회의/사업설명회/제안설명회/PT" 같은 표현이 있고 같은 시간대의 businessPresentation과 매칭되면 businessPresentation으로 정규화 후 병합
+    scheduleEvents: (() => {
+      if (!Array.isArray(o.scheduleEvents)) return []
+      const raw: ParsedScheduleEvent[] = (o.scheduleEvents as unknown[]).flatMap(
+        (rawItem): ParsedScheduleEvent[] => {
           if (typeof rawItem !== 'object' || rawItem === null) return []
           const it = rawItem as Record<string, unknown>
           const rawDate = asString(it.date)
           const date = toDateInput(rawDate)
           if (!date) return [] // 날짜 없는 항목은 일정표에서 무의미
-          const eventType = normalizeScheduleEventType(it.eventType ?? it.type)
+          let eventType = normalizeScheduleEventType(it.eventType ?? it.type)
           const labelRaw = asString(it.eventTypeLabel ?? it.label).trim()
-          // 시간 결정 우선순위:
-          //   1) it.time / startTime
-          //   2) it.date 문자열에 시간이 함께 들어 있으면 추출
-          //   3) it.content / memo / description 안의 시간 표현
+          // 'other'/'documentSubmission' 등으로 들어왔더라도 라벨에 사업설명회/제안설명회/PT/적격심사 평가회의 표현이 있으면 businessPresentation으로 정규화
+          if (
+            eventType === 'other' &&
+            /(사업설명회|제안설명회|제안.?발표|PT|프레젠|프리젠|기술제안|적격심사.*(평가|회의)|평가회의|운영계획\s*발표)/i.test(
+              labelRaw,
+            )
+          ) {
+            eventType = 'businessPresentation'
+          }
+          // 현장설명회 미개최가 명확하면 siteBriefing 항목은 처음부터 제거
+          if (eventType === 'siteBriefing' && siteBriefingNotHeld) return []
+          // 시간 결정 우선순위: it.time / it.date / it.content
           const rawTime = asString(it.time ?? it.startTime ?? '').trim()
           const extractedFromDate = toTimeInput(rawDate)
           const extractedFromContent = toTimeInput(asString(it.content ?? it.memo ?? it.description ?? ''))
@@ -247,8 +297,35 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
               managementOfficePhone: asString(it.managementOfficePhone ?? it.officePhone ?? '').trim(),
             },
           ]
-        })
-      : [],
+        },
+      )
+      // (eventType, date, time) 기준 dedupe + 메모/콘텐츠 병합
+      const byKey = new Map<string, ParsedScheduleEvent>()
+      raw.forEach((ev) => {
+        const key = `${ev.eventType}|${ev.date}|${ev.time || ''}`
+        const prev = byKey.get(key)
+        if (!prev) {
+          byKey.set(key, { ...ev })
+          return
+        }
+        // 같은 키 → 콘텐츠/위치/라벨 정보를 합쳐 한 항목으로 유지
+        const mergeStr = (a: string, b: string) => {
+          if (!a) return b
+          if (!b) return a
+          if (a === b) return a
+          // 라벨/콘텐츠 등에 양쪽 표현이 있으면 둘 다 보존
+          return `${a} · ${b}`
+        }
+        prev.eventTypeLabel = mergeStr(prev.eventTypeLabel, ev.eventTypeLabel)
+        prev.content = mergeStr(prev.content, ev.content)
+        prev.location = mergeStr(prev.location, ev.location)
+        prev.apartmentName = prev.apartmentName || ev.apartmentName
+        prev.households = prev.households ?? ev.households
+        prev.calculatedStaffCount = prev.calculatedStaffCount ?? ev.calculatedStaffCount
+        prev.managementOfficePhone = prev.managementOfficePhone || ev.managementOfficePhone
+      })
+      return Array.from(byKey.values())
+    })(),
   }
 }
 

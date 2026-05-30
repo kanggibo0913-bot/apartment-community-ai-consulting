@@ -268,8 +268,34 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
           <section className="bid-block">
             <h5>주요 일정</h5>
             <ul className="bid-kv">
-              <li><span>현장설명회</span> {parsed.siteBriefingDate || '공고문 확인 필요'}</li>
-              <li><span>입찰마감</span> {parsed.bidDeadline || '공고문 확인 필요'}</li>
+              {/* 현장설명회: 미개최가 명확하면 '개최하지 않음 / 개별 방문 확인'으로 표시. */}
+              <li>
+                <span>현장설명회</span>{' '}
+                {parsed.siteBriefingStatus === 'notHeld'
+                  ? `개최하지 않음 / ${parsed.siteBriefingNote || '개별 방문 확인'}`
+                  : parsed.siteBriefingDate
+                  ? [parsed.siteBriefingDate, parsed.siteBriefingTime].filter(Boolean).join(' · ')
+                  : '공고문 확인 필요'}
+              </li>
+              {/* 서류제출 마감: documentSubmissionDate가 있을 때만 표시. */}
+              {parsed.documentSubmissionDate && (
+                <li>
+                  <span>서류제출 마감</span>{' '}
+                  {[parsed.documentSubmissionDate, parsed.documentSubmissionTime].filter(Boolean).join(' · ')}
+                </li>
+              )}
+              {/* 입찰마감: 별도 일정. */}
+              <li><span>입찰마감</span> {parsed.bidDeadline
+                ? [parsed.bidDeadline, parsed.bidDeadlineTime].filter(Boolean).join(' · ')
+                : '공고문 확인 필요'}</li>
+              {/* 개찰: openingDate가 있을 때만 표시. */}
+              {parsed.openingDate && (
+                <li>
+                  <span>개찰</span>{' '}
+                  {[parsed.openingDate, parsed.openingTime].filter(Boolean).join(' · ')}
+                </li>
+              )}
+              {/* 사업설명회/PT: 적격심사평가회의와 병합된 경우 scheduleEvents의 content/label에 병합 사실이 들어 있음. */}
               <li>
                 <span>사업설명회/PT</span>{' '}
                 {parsed.businessPresentationDate
