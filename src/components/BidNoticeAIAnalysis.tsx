@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Card from './Card'
 import Button from './Button'
 import AIResultPanel from './AIResultPanel'
@@ -55,6 +55,56 @@ const loadChecklist = (): Record<string, boolean> => {
   }
 }
 
+// 공고문 파일 업로드 관련 상수
+const UPLOAD_MAX_BYTES = 10 * 1024 * 1024 // 10MB
+type UploadKind = 'text' | 'csv' | 'xlsx' | 'pdf' | 'image' | 'hwp' | 'unsupported'
+const UPLOAD_ACCEPT = '.txt,.csv,.pdf,.xlsx,.jpg,.jpeg,.png,.webp,.hwp'
+
+// 확장자/MIME으로부터 처리 분류 결정. HWP는 명시적으로 안내만 제공.
+const decideKind = (file: File): UploadKind => {
+  const name = file.name.toLowerCase()
+  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : ''
+  if (ext === 'txt') return 'text'
+  if (ext === 'csv') return 'csv'
+  if (ext === 'xlsx') return 'xlsx'
+  if (ext === 'pdf') return 'pdf'
+  if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) return 'image'
+  if (ext === 'hwp' || ext === 'hwpx') return 'hwp'
+  // MIME fallback
+  if (file.type.startsWith('text/')) return 'text'
+  if (file.type === 'application/pdf') return 'pdf'
+  if (file.type.startsWith('image/')) return 'image'
+  return 'unsupported'
+}
+
+// 파일 크기를 사람이 읽기 쉽게 변환
+const formatBytes = (n: number) => {
+  if (!Number.isFinite(n) || n < 0) return '-'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`
+}
+
+// 텍스트 파일을 UTF-8로 읽어 문자열 반환.
+const readTextAsUtf8 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      resolve(typeof result === 'string' ? result : '')
+    }
+    reader.onerror = () => reject(reader.error || new Error('파일을 읽지 못했습니다.'))
+    reader.readAsText(file, 'utf-8')
+  })
+
+// 이미지 미리보기 URL 생성. 호출자가 revokeObjectURL을 책임진다.
+const createImagePreview = (file: File): string => URL.createObjectURL(file)
+
+type UploadStatus = 'idle' | 'extracting' | 'done' | 'error'
+
+const UPLOAD_HELPER_NOTE =
+  '추출된 내용은 자동 분석 전 반드시 확인해주세요. 표·금액·시간·세대수는 원본과 다를 수 있으므로 수정 후 분석하는 것을 권장합니다.'
+
 interface BidNoticeAIAnalysisProps {
   // 버튼1: 분석 결과를 공고 등록 폼에 반영
   onApplyToForm?: (parsed: BidAnalysisParsed, overwrite: boolean) => void
@@ -76,6 +126,153 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
   const [checklist, setChecklist] = useState<Record<string, boolean>>(loadChecklist)
   const [applyMsg, setApplyMsg] = useState('')
   const [actionMsg, setActionMsg] = useState('')
+
+  // 공고문 파일 업로드 상태 (이번 단계는 메모리에서만 처리, localStorage 미저장)
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [uploadKind, setUploadKind] = useState<UploadKind>('unsupported')
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle')
+  const [uploadError, setUploadError] = useState('')
+  const [uploadWarning, setUploadWarning] = useState('')
+  const [uploadSuccess, setUploadSuccess] = useState('')
+  const [extractedText, setExtractedText] = useState('')
+  const [imagePreviewUrl, setImagePreviewUrl] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  // 이미지 ObjectURL 정리
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl)
+    }
+  }, [imagePreviewUrl])
+
+  // 동일 파일 재선택 허용을 위해 input value 초기화 + 상태 리셋
+  const resetUploadState = () => {
+    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl)
+    setUploadedFile(null)
+    setUploadKind('unsupported')
+    setUploadStatus('idle')
+    setUploadError('')
+    setUploadWarning('')
+    setUploadSuccess('')
+    setExtractedText('')
+    setImagePreviewUrl('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    // input value를 즉시 비워두면 같은 파일을 다시 선택해도 onChange가 다시 발화함
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (!file) return
+
+    // 새 선택 시 직전 미리보기/상태 정리
+    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl)
+    setUploadError('')
+    setUploadWarning('')
+    setUploadSuccess('')
+    setExtractedText('')
+    setImagePreviewUrl('')
+
+    // 용량 제한
+    if (file.size === 0) {
+      setUploadedFile(file)
+      setUploadKind('unsupported')
+      setUploadStatus('error')
+      setUploadError('파일 내용이 비어 있습니다.')
+      return
+    }
+    if (file.size > UPLOAD_MAX_BYTES) {
+      setUploadedFile(file)
+      setUploadKind('unsupported')
+      setUploadStatus('error')
+      setUploadError(`파일 용량이 너무 큽니다. (최대 ${formatBytes(UPLOAD_MAX_BYTES)})`)
+      return
+    }
+
+    const kind = decideKind(file)
+    setUploadedFile(file)
+    setUploadKind(kind)
+
+    if (kind === 'unsupported') {
+      setUploadStatus('error')
+      setUploadError('지원하지 않는 파일 형식입니다. (지원: TXT, CSV, PDF, XLSX, JPG, JPEG, PNG, WEBP)')
+      return
+    }
+
+    if (kind === 'hwp') {
+      setUploadStatus('idle')
+      setUploadWarning('현재 HWP는 직접 텍스트 복사/붙여넣기를 권장합니다.')
+      return
+    }
+
+    if (kind === 'image') {
+      // 이미지 미리보기 + 안내
+      try {
+        const url = createImagePreview(file)
+        setImagePreviewUrl(url)
+        setUploadStatus('done')
+        setUploadWarning(
+          '이미지 공고문은 OCR 인식이 필요합니다. 이번 단계에서는 이미지 미리보기만 제공되며, 텍스트는 직접 입력하거나 다음 OCR 단계에서 처리됩니다.',
+        )
+      } catch {
+        setUploadStatus('error')
+        setUploadError('이미지 미리보기를 만들지 못했습니다.')
+      }
+      return
+    }
+
+    if (kind === 'pdf') {
+      setUploadStatus('idle')
+      setUploadWarning(
+        'PDF 텍스트 자동 추출은 다음 단계에서 지원 예정입니다. 현재는 PDF 내용을 복사해 붙여넣어 주세요.',
+      )
+      return
+    }
+
+    if (kind === 'xlsx') {
+      setUploadStatus('idle')
+      setUploadWarning(
+        'XLSX 자동 추출은 다음 단계에서 지원 예정입니다. 현재는 엑셀 내용을 복사해 붙여넣어 주세요.',
+      )
+      return
+    }
+
+    // TXT/CSV 추출 시도
+    setUploadStatus('extracting')
+    try {
+      const text = await readTextAsUtf8(file)
+      const trimmed = text.replace(/ /g, '') // 널 문자 제거 (이상 인코딩 방어)
+      if (!trimmed.trim()) {
+        setUploadStatus('error')
+        setUploadError('파일에서 텍스트를 추출하지 못했습니다. 직접 복사해 붙여넣어 주세요.')
+        return
+      }
+      setExtractedText(trimmed)
+      setUploadStatus('done')
+    } catch (err) {
+      setUploadStatus('error')
+      setUploadError(
+        '파일 읽기에 실패했습니다. ' + (err instanceof Error ? err.message : String(err)),
+      )
+    }
+  }
+
+  // 추출 텍스트를 분석 입력값(noticeText)에 반영.
+  const handleApplyExtractedToAnalysis = () => {
+    if (!extractedText.trim()) {
+      setUploadError('미리보기 내용이 비어 있습니다.')
+      return
+    }
+    setForm((prev) => ({ ...prev, noticeText: extractedText }))
+    setUploadSuccess('추출 내용이 분석 입력값에 반영되었습니다. 아래 "AI 공고문 분석" 버튼으로 분석을 진행하세요.')
+    setUploadError('')
+    // 분석 textarea로 부드럽게 스크롤
+    setTimeout(() => {
+      const textarea = document.querySelector<HTMLTextAreaElement>('textarea[data-role="bid-notice-input"]')
+      if (textarea) {
+        textarea.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }, 50)
+  }
 
   const parsed = useMemo(() => parseBidAnalysis(result), [result])
 
@@ -222,6 +419,88 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
 
   return (
     <Card title="AI 공고문 분석 (텍스트 붙여넣기)">
+      {/* 공고문 파일 업로드 + 추출 결과 미리보기 (Phase B-0) */}
+      <div className="notice-upload-card">
+        <h4>공고문 파일 업로드</h4>
+        <p className="desc">
+          PDF, TXT, CSV, XLSX, JPG, PNG 파일을 업로드하면 분석용 텍스트를 먼저 추출합니다.
+          추출 결과를 확인·수정한 뒤 공고문 분석을 실행하세요.
+        </p>
+
+        <div className="notice-upload-dropzone">
+          <label className="browse-btn" htmlFor="bid-notice-file-input">
+            파일 선택
+          </label>
+          <input
+            id="bid-notice-file-input"
+            type="file"
+            ref={fileInputRef}
+            accept={UPLOAD_ACCEPT}
+            onChange={handleFileChange}
+          />
+
+          {uploadedFile ? (
+            <div className="notice-upload-meta">
+              <span>
+                <strong>{uploadedFile.name}</strong>
+              </span>
+              <span>· {uploadKind.toUpperCase()}</span>
+              <span>· {formatBytes(uploadedFile.size)}</span>
+              <span className={`badge-status ${uploadStatus}`}>
+                {uploadStatus === 'idle'
+                  ? '대기'
+                  : uploadStatus === 'extracting'
+                  ? '추출 중'
+                  : uploadStatus === 'done'
+                  ? '추출 완료'
+                  : '추출 실패'}
+              </span>
+              <button type="button" className="notice-upload-remove" onClick={resetUploadState}>
+                파일 제거
+              </button>
+            </div>
+          ) : (
+            <span className="notice-upload-meta">
+              선택된 파일이 없습니다. 지원: TXT, CSV, PDF, XLSX, JPG, JPEG, PNG, WEBP
+            </span>
+          )}
+        </div>
+
+        {/* 이미지 미리보기 */}
+        {uploadKind === 'image' && imagePreviewUrl && (
+          <div className="notice-upload-preview">
+            <strong style={{ fontSize: 12, color: '#475569' }}>이미지 미리보기</strong>
+            <img src={imagePreviewUrl} alt="공고문 이미지 미리보기" />
+          </div>
+        )}
+
+        {uploadWarning && <p className="notice-upload-warning">⚠ {uploadWarning}</p>}
+        {uploadError && <p className="notice-upload-error">✕ {uploadError}</p>}
+        {uploadSuccess && <p className="notice-upload-success">✓ {uploadSuccess}</p>}
+
+        {/* 추출 결과 미리보기 - 추출 텍스트가 있는 경우만 */}
+        {(extractedText || (uploadStatus === 'done' && (uploadKind === 'text' || uploadKind === 'csv'))) && (
+          <div className="notice-extract-preview">
+            <strong style={{ fontSize: 12, color: '#475569' }}>추출 결과 미리보기 (수정 가능)</strong>
+            <textarea
+              value={extractedText}
+              onChange={(e) => setExtractedText(e.target.value)}
+              placeholder="추출 결과가 비어있다면 직접 복사해 붙여넣어 주세요."
+              rows={8}
+            />
+            <p className="desc" style={{ marginTop: 6 }}>{UPLOAD_HELPER_NOTE}</p>
+            <div className="notice-extract-actions">
+              <Button variant="primary" onClick={handleApplyExtractedToAnalysis}>
+                이 내용으로 공고문 분석
+              </Button>
+              <Button variant="secondary" onClick={() => setExtractedText('')}>
+                비우기
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="form-row">
         <div className="form-group">
           <label>단지명</label>
@@ -258,6 +537,7 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
       <div className="form-group">
         <label>공고문 내용 (붙여넣기)</label>
         <textarea
+          data-role="bid-notice-input"
           value={form.noticeText}
           onChange={e => update('noticeText', e.target.value)}
           rows={8}

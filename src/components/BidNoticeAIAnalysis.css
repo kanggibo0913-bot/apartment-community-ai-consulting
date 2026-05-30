@@ -196,3 +196,159 @@
   color: #64748b;
   margin: 0 0 8px;
 }
+
+/* ─── 공고문 파일 업로드 & 추출 미리보기 ─── */
+.notice-upload-card {
+  margin: 8px 0 12px;
+  padding: 14px;
+  border: 1px solid #e3e8ef;
+  border-radius: 10px;
+  background: #fafbff;
+}
+
+.notice-upload-card h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #1f2a44;
+}
+
+.notice-upload-card .desc {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.notice-upload-dropzone {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.notice-upload-dropzone input[type='file'] {
+  display: none;
+}
+
+.notice-upload-dropzone .browse-btn {
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #1f2a44;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.notice-upload-dropzone .browse-btn:hover {
+  background: #eef2ff;
+}
+
+.notice-upload-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.notice-upload-meta strong {
+  color: #1f2a44;
+}
+
+.notice-upload-meta .badge-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.notice-upload-meta .badge-status.idle { background: #e2e8f0; color: #334155; }
+.notice-upload-meta .badge-status.extracting { background: #dbeafe; color: #1d4ed8; }
+.notice-upload-meta .badge-status.done { background: #dcfce7; color: #166534; }
+.notice-upload-meta .badge-status.error { background: #fee2e2; color: #b91c1c; }
+
+.notice-upload-remove {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #f0c0c0;
+  color: #b71c1c;
+  background: #fff5f5;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.notice-upload-preview {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #e3e8ef;
+  border-radius: 6px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notice-upload-preview img {
+  max-width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+.notice-extract-preview {
+  margin-top: 10px;
+}
+
+.notice-extract-preview textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.notice-extract-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.notice-upload-warning {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #9a3412;
+}
+
+.notice-upload-error {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #991b1b;
+}
+
+.notice-upload-success {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #065f46;
+}
