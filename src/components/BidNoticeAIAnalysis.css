@@ -206,6 +206,23 @@
   background: #fafbff;
 }
 
+/* K-apt 단축 검색 액션 — 업로드 카드 상단에 secondary 스타일로 노출 */
+.kapt-quick-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #d6def0;
+}
+
+.kapt-quick-link-desc {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
 .notice-upload-card h4 {
   margin: 0 0 8px;
   font-size: 14px;

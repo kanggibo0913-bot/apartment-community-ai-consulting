@@ -12,6 +12,7 @@ import {
   parseBidAnalysis,
   toDateInput,
 } from '../utils/parseBidAnalysis'
+import { buildKaptRecentBidUrl } from '../utils/kaptLinkUtils'
 import { formatNumber } from '../utils/formatUtils'
 import './BidNoticeAIAnalysis.css'
 
@@ -452,6 +453,23 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
     return out
   }, [parsed])
 
+  // K-apt 최근 3개월 공고 검색 페이지를 새 탭으로 연다.
+  // 크롤링/API 연동 없음 — 사용자가 자주 쓰는 필터(사업자/용역/주민공동시설위탁 + 최근 3개월) URL을 생성해 그대로 새 탭으로 노출한다.
+  // 팝업 차단 등으로 실패하면 사용자에게 짧은 안내 메시지를 노출.
+  const handleOpenKaptSearch = () => {
+    try {
+      const url = buildKaptRecentBidUrl()
+      const win = window.open(url, '_blank', 'noopener,noreferrer')
+      if (!win) {
+        setActionMsg('새 탭 열기에 실패했습니다. 브라우저 팝업 차단을 확인해주세요.')
+        setTimeout(() => setActionMsg(''), 6000)
+      }
+    } catch (e) {
+      setActionMsg('K-apt 링크를 여는 중 오류가 발생했습니다: ' + (e instanceof Error ? e.message : String(e)))
+      setTimeout(() => setActionMsg(''), 6000)
+    }
+  }
+
   const handleAddScheduleOnly = () => {
     if (!parsed || !onAddScheduleEvents) return
     const res = onAddScheduleEvents(parsed)
@@ -537,6 +555,15 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
     <Card title="AI 공고문 분석 (텍스트 붙여넣기)">
       {/* 공고문 파일 업로드 + 추출 결과 미리보기 (Phase B-0). 기본 상태에서는 compact 노출. */}
       <div className="notice-upload-card notice-upload-card--compact">
+        {/* 상단 액션: K-apt 단축 검색 링크. 분석 버튼과 혼동되지 않게 secondary로 처리. */}
+        <div className="kapt-quick-link">
+          <Button variant="secondary" onClick={handleOpenKaptSearch}>
+            K-apt 최근 3개월 검색 열기
+          </Button>
+          <span className="kapt-quick-link-desc">
+            사업자 · 용역 · 주민공동시설위탁 공고를 K-apt에서 최근 3개월 기준으로 엽니다.
+          </span>
+        </div>
         <h4>공고문 파일 업로드</h4>
         <p className="desc">
           파일을 업로드하면 분석용 텍스트를 먼저 추출합니다. 확인·수정 후 분석하세요.
