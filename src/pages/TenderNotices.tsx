@@ -664,6 +664,13 @@ const TenderNotices = () => {
 
   const eventsByDate = useMemo(() => {
     const map: Record<string, CalendarItem[]> = {}
+    // 단지명 → 관리소 전화번호 빠른 룩업. ScheduleEvent에 전화번호가 비어 있을 때 같은 단지명의 공고에서 폴백.
+    const phoneByName: Record<string, string> = {}
+    notices.forEach((n) => {
+      if (n.siteName && n.managementOfficePhone && !phoneByName[n.siteName]) {
+        phoneByName[n.siteName] = n.managementOfficePhone
+      }
+    })
     notices.forEach((notice) => {
       eventDefinitions.forEach((eventDef) => {
         const value = notice[eventDef.field]
@@ -712,7 +719,8 @@ const TenderNotices = () => {
         staffingCount: ev.staffingCount,
         staffCountText: ev.staffCountText,
         content: ev.content,
-        managementOfficePhone: ev.managementOfficePhone,
+        // 단지명이 같은 공고가 등록되어 있고 ScheduleEvent에 전화번호가 비어 있으면 공고의 전화번호로 폴백.
+        managementOfficePhone: ev.managementOfficePhone || phoneByName[ev.complexName || ''] || undefined,
         // 전화번호 alias도 그대로 전달해 board/agenda/calendar 렌더에서 우선순위 fallback 가능하게 한다.
         officePhone: ev.officePhone,
         contactPhone: ev.contactPhone,
@@ -916,10 +924,18 @@ const TenderNotices = () => {
   // noticeText가 함께 전달되면 공고문 원문(fullText)도 채운다.
   const handleApplyAiToForm = (parsed: BidAnalysisParsed, overwrite: boolean, noticeText?: string) => {
     const pick = (prev: string, ai: string) => (overwrite ? ai || prev : prev || ai)
+    // 숫자형 pick: 0은 "빈 값"으로 간주해 AI 값이 있으면 채운다.
+    const pickNum = (prev: number, ai: number | null) => {
+      if (overwrite) return ai != null && ai > 0 ? ai : prev
+      return prev > 0 ? prev : ai != null && ai > 0 ? ai : prev
+    }
 
     const svDate = parsed.siteBriefingStatus === 'individualVisit' ? '' : toDateInput(parsed.siteBriefingDate)
-    const dlDate = toDateInput(parsed.bidDeadline)
+    // 입찰 마감일: bidDeadline 우선, 없으면 documentSubmissionDate fallback (서류제출 = 입찰마감 통합 정책)
+    const dlDate = toDateInput(parsed.bidDeadline) || toDateInput(parsed.documentSubmissionDate)
+    const dlTime = parsed.bidDeadlineTime || parsed.documentSubmissionTime || ''
     const ptDate = toDateInput(parsed.businessPresentationDate || parsed.ptDate)
+    const ptTime = parsed.businessPresentationTime || parsed.ptTime || ''
     const { start, end } = splitContractPeriod(parsed.contractPeriod)
 
     const dateNotes: string[] = []
@@ -929,6 +945,11 @@ const TenderNotices = () => {
     if (parsed.bidDeadline && !dlDate) dateNotes.push(`입찰마감 날짜 확인 필요: ${parsed.bidDeadline}`)
     if (parsed.contractPeriod && !start && !end) dateNotes.push(`계약기간 확인 필요: ${parsed.contractPeriod}`)
     if (parsed.managementOfficePhone) dateNotes.push(`관리소 전화번호: ${parsed.managementOfficePhone}`)
+    // 시간 정보(폼에 시간 필드 없음)를 메모에 남긴다.
+    if (dlTime) dateNotes.push(`입찰마감 시간: ${dlTime}`)
+    if (ptTime) dateNotes.push(`PT/사업설명회 시간: ${ptTime}`)
+    if (parsed.openingDate && parsed.openingTime) dateNotes.push(`개찰: ${parsed.openingDate} ${parsed.openingTime}`)
+    else if (parsed.openingDate) dateNotes.push(`개찰일: ${parsed.openingDate}`)
 
     const gradeMap: Record<string, { p: TenderNoticeParticipation; r: TenderNoticeRiskLevel }> = {
       A: { p: '높음', r: '낮음' },
@@ -954,6 +975,8 @@ const TenderNotices = () => {
       siteName: pick(prev.siteName, parsed.complexName),
       region: pick(prev.region, parsed.region),
       title: pick(prev.title, generatedTitle),
+      // 세대수: 0은 빈 값으로 간주해 parsed.households가 있으면 채운다.
+      totalUnits: pickNum(prev.totalUnits, parsed.households),
       biddingMethod: pick(prev.biddingMethod, parsed.bidMethod),
       siteVisitDate: pick(prev.siteVisitDate, svDate),
       deadlineDate: pick(prev.deadlineDate, dlDate),
@@ -1095,14 +1118,17 @@ const TenderNotices = () => {
           date: sv,
           time: parsed.siteBriefingTime || undefined,
         })
-      const dl = toDateInput(parsed.bidDeadline)
+      // 서류제출 마감 = 입찰마감 통합: bidDeadline 우선, 없으면 documentSubmissionDate fallback.
+      const dl = toDateInput(parsed.bidDeadline) || toDateInput(parsed.documentSubmissionDate)
+      const dlTime = parsed.bidDeadlineTime || parsed.documentSubmissionTime
+      const dlRaw = parsed.bidDeadline || parsed.documentSubmissionDate
       if (dl)
         candidates.push({
           type: 'bidDeadline',
           label: '입찰마감',
-          raw: parsed.bidDeadline,
+          raw: dlRaw,
           date: dl,
-          time: parsed.bidDeadlineTime || undefined,
+          time: dlTime || undefined,
         })
       const op = toDateInput(parsed.openingDate)
       if (op)
@@ -1113,15 +1139,7 @@ const TenderNotices = () => {
           date: op,
           time: parsed.openingTime || undefined,
         })
-      const ds = toDateInput(parsed.documentSubmissionDate)
-      if (ds)
-        candidates.push({
-          type: 'documentSubmission',
-          label: '서류제출',
-          raw: parsed.documentSubmissionDate,
-          date: ds,
-          time: parsed.documentSubmissionTime || undefined,
-        })
+      // documentSubmission은 위에서 bidDeadline으로 통합했으므로 별도 candidate 추가 없음.
       const pt = toDateInput(parsed.ptDate)
       if (pt)
         candidates.push({

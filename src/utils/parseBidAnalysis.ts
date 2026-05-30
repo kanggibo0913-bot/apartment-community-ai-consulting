@@ -34,6 +34,9 @@ export interface BidAnalysisParsed {
   bidMethod: string
   // 단지 전반의 관리소 전화번호 (담당자 연락처/문의처 포함). 정규화 후 저장.
   managementOfficePhone: string
+  // 단지 세대수. AI 응답·공고문 텍스트에서 "999세대"/"1,200 세대"/"753" 등을 흡수해 숫자로 저장.
+  // 못 찾으면 null. 추정값은 만들지 않음.
+  households: number | null
   siteBriefingDate: string
   siteBriefingTime: string
   // 현장설명회 진행 방식:
@@ -266,12 +269,33 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
     ).trim()
   const managementOfficePhoneTop = normalizePhone(rawTopPhone)
 
+  // 세대수 alias 흡수 (영문 5종 + 한글 3종) + 텍스트에서 숫자 추출.
+  // 못 찾으면 summary 텍스트에서 "999세대" 같은 표현 보조 검색.
+  const rawHouseholdsTop =
+    o.households ??
+    o.householdCount ??
+    o.totalHouseholds ??
+    o.units ??
+    o.unitCount ??
+    o['세대수'] ??
+    o['총세대수'] ??
+    o['단지세대수'] ??
+    null
+  let householdsTop = extractHouseholds(rawHouseholdsTop)
+  if (!householdsTop) {
+    // 보조: summary/region/complexName 텍스트에서 "N세대" 패턴 검색
+    const probe = `${asString(o.summary)} ${asString(o.region)} ${asString(o.complexName)}`
+    const m = probe.match(/(\d{2,6})\s*세대/)
+    if (m) householdsTop = Number(m[1]) || null
+  }
+
   return {
     summary: asString(o.summary),
     complexName: asString(o.complexName),
     region: asString(o.region),
     bidMethod: asString(o.bidMethod),
     managementOfficePhone: managementOfficePhoneTop,
+    households: householdsTop,
     siteBriefingDate: siteBriefingDateOut,
     siteBriefingTime: siteBriefingTimeOut,
     siteBriefingStatus,
@@ -431,7 +455,41 @@ export function parseBidAnalysis(text: string): BidAnalysisParsed | null {
         prev.calculatedStaffCount = prev.calculatedStaffCount ?? ev.calculatedStaffCount
         prev.managementOfficePhone = prev.managementOfficePhone || ev.managementOfficePhone
       })
-      return Array.from(byKey.values())
+      // 서류제출 마감 = 입찰마감 통합 정책:
+      // documentSubmission을 일괄 bidDeadline으로 정규화한다. 같은 (date, time)에 별도 bidDeadline이 있으면
+      // 자연스럽게 dedupe 키가 일치해 중복으로 등록되지 않는다. 라벨은 명확성을 위해 "입찰마감"으로 통일.
+      const promoted: ParsedScheduleEvent[] = []
+      const promotedKeys = new Set<string>()
+      for (const ev of byKey.values()) {
+        if (ev.eventType === 'documentSubmission') {
+          ev.eventType = 'bidDeadline'
+          // 사용자 친화 라벨로 통일. 원래 라벨이 "서류제출 마감" 같은 표현이었다면 content에 보존.
+          if (ev.eventTypeLabel && !ev.eventTypeLabel.includes('입찰마감')) {
+            const origLabel = ev.eventTypeLabel
+            ev.eventTypeLabel = '입찰마감'
+            // content에 원래 표현(서류제출 마감 등)을 합쳐 정보 보존.
+            if (!ev.content.includes(origLabel)) {
+              ev.content = ev.content ? `${origLabel} · ${ev.content}` : origLabel
+            }
+          } else {
+            ev.eventTypeLabel = '입찰마감'
+          }
+        }
+        const key = `${ev.eventType}|${ev.date}|${ev.time || ''}`
+        if (promotedKeys.has(key)) {
+          // 같은 키에 이미 항목이 있으면(서로 다른 type에서 promote된 중복) 라벨/콘텐츠만 병합.
+          const exist = promoted.find((p) => `${p.eventType}|${p.date}|${p.time || ''}` === key)
+          if (exist) {
+            if (ev.content && !exist.content.includes(ev.content)) {
+              exist.content = exist.content ? `${exist.content} · ${ev.content}` : ev.content
+            }
+          }
+          continue
+        }
+        promotedKeys.add(key)
+        promoted.push(ev)
+      }
+      return promoted
     })(),
   }
 }
@@ -542,6 +600,22 @@ export function toTimeInput(text: string): string {
 // 입력 예: "2026-06-04 10:00", "2026.06.12. 17:00까지", "2026년 6월 16일 오후 2시"
 export function splitDateTime(text: string): { date: string; time: string } {
   return { date: toDateInput(text), time: toTimeInput(text) }
+}
+
+// 세대수 텍스트에서 숫자만 추출. "999세대", "1,200 세대", "총 753세대", "753" 등 처리.
+// 추정 금지: 명확한 숫자 패턴이 안 잡히면 null 반환.
+export function extractHouseholds(raw: unknown): number | null {
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw
+  if (typeof raw !== 'string') return null
+  const cleaned = raw.replace(/,/g, '').replace(/\s+/g, '')
+  if (!cleaned) return null
+  // 2~6자리 숫자에 선택적으로 "세대"가 붙은 패턴 (예: "999세대" / "753")
+  const m = cleaned.match(/(\d{2,6})\s*세?대?/)
+  if (m) {
+    const n = Number(m[1])
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return null
 }
 
 // 자유 텍스트에서 한국 전화번호를 추출해 "지역코드-국번-끝번호" 형태로 정규화.
