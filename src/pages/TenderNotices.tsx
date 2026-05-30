@@ -108,6 +108,36 @@ const FIELD_EVENT_TYPE: Record<string, ScheduleEventType> = {
   contractEndDate: 'contractEnd',
 }
 
+// 입찰 스케줄러(일정표/월간 달력/AI 일정만 추가 후보)에 표시·등록 허용된 이벤트 타입.
+// 계약 시작/종료(contractStart/contractEnd/contract)는 산출표·공고 상세에서만 사용하고
+// 스케줄러에서는 일관되게 제외한다. 데이터 자체는 보존하고 UI 단계에서만 차단한다.
+const SCHEDULER_ALLOWED_TYPES = new Set<ScheduleEventType>([
+  'siteBriefing',
+  'businessPresentation',
+  'pt',
+  'documentSubmission',
+  'bidDeadline',
+  'opening',
+  'other',
+])
+
+// 다양한 표기를 정규화한 뒤 차단할 키워드 집합.
+// (legacy 데이터의 type/label/category에 '계약'·'operation'·'운영' 등이 섞여 들어와도 차단)
+const CONTRACT_BLOCK_REGEX = /(contract|operation|계약|운영(시작|종료))/i
+
+// 캘린더 cell/agenda 표시 직전에 통과시키는 필터.
+const isSchedulerVisible = (
+  type: ScheduleEventType | undefined,
+  label?: string,
+  category?: string,
+): boolean => {
+  if (type && !SCHEDULER_ALLOWED_TYPES.has(type)) return false
+  if (type === 'contractStart' || type === 'contractEnd') return false
+  const probe = `${label || ''} ${category || ''}`
+  if (CONTRACT_BLOCK_REGEX.test(probe)) return false
+  return true
+}
+
 // 'YYYY-MM-DD'를 더해/빼고 다시 'YYYY-MM-DD'로 변환.
 const addDays = (base: Date, days: number): Date => {
   const next = new Date(base)
@@ -580,47 +610,50 @@ const TenderNotices = () => {
     notices.forEach((notice) => {
       eventDefinitions.forEach((eventDef) => {
         const value = notice[eventDef.field]
-        if (value) {
-          map[value] = map[value] || []
-          map[value].push({
-            uid: `n-${notice.id}-${eventDef.field}`,
-            label: eventDef.label,
-            badge: eventDef.badge,
-            title: notice.siteName,
-            kind: 'notice',
-            notice,
-            // notice 기반 항목은 단지/세대수/산출인원/공고명을 자동 매핑한다.
-            households: notice.totalUnits || undefined,
-            calculatedStaffCount: notice.estimatedStaff || undefined,
-            content: notice.title || undefined,
-            // notice는 시간 필드를 별도로 보유하지 않으므로 빈 값 → 일정표에서 '시간 미정' fallback.
-            time: '',
-            source: '수동',
-            eventType: FIELD_EVENT_TYPE[eventDef.field],
-          })
-        }
+        if (!value) return
+        const eventType = FIELD_EVENT_TYPE[eventDef.field]
+        // 스케줄러 차단: 계약시작·계약종료 일정은 일정표·캘린더에 노출하지 않는다.
+        if (!isSchedulerVisible(eventType, eventDef.label)) return
+        map[value] = map[value] || []
+        map[value].push({
+          uid: `n-${notice.id}-${eventDef.field}`,
+          label: eventDef.label,
+          badge: eventDef.badge,
+          title: notice.siteName,
+          kind: 'notice',
+          notice,
+          // notice 기반 항목은 단지/세대수/산출인원/공고명을 자동 매핑한다.
+          households: notice.totalUnits || undefined,
+          calculatedStaffCount: notice.estimatedStaff || undefined,
+          content: notice.title || undefined,
+          // notice는 시간 필드를 별도로 보유하지 않으므로 빈 값 → 일정표에서 '시간 미정' fallback.
+          time: '',
+          source: '수동',
+          eventType,
+        })
       })
     })
     scheduleEvents.forEach((ev) => {
-      if (ev.date) {
-        map[ev.date] = map[ev.date] || []
-        map[ev.date].push({
-          uid: `s-${ev.id}`,
-          label: ev.label,
-          badge: scheduleBadgeByType[ev.type] || 'schedule-deadline',
-          title: ev.complexName,
-          kind: 'schedule',
-          memo: ev.memo,
-          households: ev.households,
-          calculatedStaffCount: ev.calculatedStaffCount,
-          content: ev.content,
-          managementOfficePhone: ev.managementOfficePhone,
-          time: ev.time || '',
-          location: ev.location,
-          source: ev.source,
-          eventType: ev.type,
-        })
-      }
+      if (!ev.date) return
+      // 저장된 contractStart/contractEnd 일정 또는 '계약'·'operation' 라벨은 표시하지 않는다.
+      if (!isSchedulerVisible(ev.type, ev.label, ev.category)) return
+      map[ev.date] = map[ev.date] || []
+      map[ev.date].push({
+        uid: `s-${ev.id}`,
+        label: ev.label,
+        badge: scheduleBadgeByType[ev.type] || 'schedule-deadline',
+        title: ev.complexName,
+        kind: 'schedule',
+        memo: ev.memo,
+        households: ev.households,
+        calculatedStaffCount: ev.calculatedStaffCount,
+        content: ev.content,
+        managementOfficePhone: ev.managementOfficePhone,
+        time: ev.time || '',
+        location: ev.location,
+        source: ev.source,
+        eventType: ev.type,
+      })
     })
     return map
   }, [notices, scheduleEvents])
@@ -869,13 +902,15 @@ const TenderNotices = () => {
     // 1) AI가 scheduleEvents[]를 반환했으면 그 항목들을 우선 사용. 각 항목은 파서가 이미 정규화한 상태.
     if (parsed.scheduleEvents.length > 0) {
       // 파서의 ParsedScheduleEventType → 내부 ScheduleEventType 매핑.
-      // 'contract'는 내부에 'contractStart/contractEnd'만 존재하므로 시작일로 매핑(start/end 구분은 AI가 명시하지 않음).
+      // 'contract'는 스케줄러 표시 대상이 아니므로 매핑 후 필터에서 자동 제외된다.
       const mapType = (t: ParsedScheduleEvent['eventType']): ScheduleEventType => {
         if (t === 'contract') return 'contractStart'
         return t as ScheduleEventType
       }
       parsed.scheduleEvents.forEach((ev: ParsedScheduleEvent) => {
         const type: ScheduleEventType = mapType(ev.eventType)
+        // AI가 계약 일정을 보내도 스케줄러에는 등록하지 않는다(공고 상세/계약기간에는 남음).
+        if (!isSchedulerVisible(type, ev.eventTypeLabel)) return
         candidates.push({
           type,
           label: ev.eventTypeLabel || type,

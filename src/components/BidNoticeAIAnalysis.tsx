@@ -81,23 +81,32 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
 
   // 버튼3(일정만 추가)에 표시할 마일스톤 후보.
   // 1순위: AI가 반환한 scheduleEvents[] (시간 포함). 2순위: 단일 키 fallback.
+  // 계약 시작/종료는 스케줄러 대상이 아니므로 후보 표시 단계에서도 제외한다.
   const scheduleCandidates = useMemo(() => {
     if (!parsed) return [] as { label: string; value: string }[]
     const fmt = (raw: string) => {
       const d = toDateInput(raw)
       return d || (raw ? `날짜 확인 필요 (원문: ${raw})` : '')
     }
+    const isContractLike = (ev: { eventType?: string; eventTypeLabel?: string }) => {
+      const t = (ev.eventType || '').toLowerCase()
+      const l = ev.eventTypeLabel || ''
+      if (t === 'contract' || t === 'contractstart' || t === 'contractend') return true
+      return /(계약|운영(시작|종료)|operation)/i.test(l)
+    }
     if (parsed.scheduleEvents.length > 0) {
-      return parsed.scheduleEvents.map((ev) => {
-        const parts: string[] = []
-        if (ev.time) parts.push(ev.time)
-        if (ev.location) parts.push(ev.location)
-        const valueBase = ev.date
-        return {
-          label: ev.eventTypeLabel || ev.eventType,
-          value: parts.length > 0 ? `${valueBase} (${parts.join(' · ')})` : `${valueBase}${ev.time ? '' : ' · 시간 미정'}`,
-        }
-      })
+      return parsed.scheduleEvents
+        .filter((ev) => !isContractLike(ev))
+        .map((ev) => {
+          const parts: string[] = []
+          if (ev.time) parts.push(ev.time)
+          if (ev.location) parts.push(ev.location)
+          const valueBase = ev.date
+          return {
+            label: ev.eventTypeLabel || ev.eventType,
+            value: parts.length > 0 ? `${valueBase} (${parts.join(' · ')})` : `${valueBase}${ev.time ? '' : ' · 시간 미정'}`,
+          }
+        })
     }
     const out: { label: string; value: string }[] = []
     if (parsed.siteBriefingDate) out.push({ label: '현장설명회', value: fmt(parsed.siteBriefingDate) })
