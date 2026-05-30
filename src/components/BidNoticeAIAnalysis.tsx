@@ -106,14 +106,16 @@ const UPLOAD_HELPER_NOTE =
   '추출된 내용은 자동 분석 전 반드시 확인해주세요. 표·금액·시간·세대수는 원본과 다를 수 있으므로 수정 후 분석하는 것을 권장합니다.'
 
 interface BidNoticeAIAnalysisProps {
-  // 버튼1: 분석 결과를 공고 등록 폼에 반영
-  onApplyToForm?: (parsed: BidAnalysisParsed, overwrite: boolean) => void
+  // 버튼1: 분석 결과를 공고 등록 폼에 반영. noticeText가 함께 전달되면 form.fullText도 채운다.
+  onApplyToForm?: (parsed: BidAnalysisParsed, overwrite: boolean, noticeText?: string) => void
   // 버튼2: 분석 결과로 공고(TenderNotice) 1건 등록
   onRegisterNotice?: (parsed: BidAnalysisParsed) => { added: number; duplicate: boolean }
   // 버튼3: 주요 일정만 캘린더에 추가
   onAddScheduleEvents?: (parsed: BidAnalysisParsed) => { added: number; duplicate: boolean }
   // 일정 등록 직후 입찰 스케줄러 탭으로 이동(분석 탭 ↔ 스케줄러 탭 전환용)
   onJumpToScheduler?: () => void
+  // 분석 완료 직후 공고 목록·관리 탭으로 이동
+  onJumpToList?: () => void
 }
 
 const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
@@ -121,6 +123,7 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
   onRegisterNotice,
   onAddScheduleEvents,
   onJumpToScheduler,
+  onJumpToList,
 }) => {
   const [form, setForm] = useState<BidForm>(emptyForm)
   const [loading, setLoading] = useState(false)
@@ -445,6 +448,18 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
           setError('AI가 빈 응답을 반환했습니다. 잠시 후 다시 시도해주세요.')
         } else {
           setResult(text)
+          // 분석 완료 직후 공고 등록 폼에 자동 반영(빈 항목만, 사용자 입력 보호).
+          // 이력 로드(onLoadSaved) 경로에서는 noticeText 전달이 없어 자동 반영하지 않으므로 분석 전용 흐름.
+          const parsedNow = parseBidAnalysis(text)
+          if (parsedNow && onApplyToForm) {
+            try {
+              onApplyToForm(parsedNow, false, form.noticeText)
+              setApplyMsg('AI 분석 결과가 공고 등록 폼에 반영되었습니다. 공고 목록·관리 탭에서 확인 후 등록하세요.')
+              setTimeout(() => setApplyMsg(''), 9000)
+            } catch {
+              // applyForm 실패는 분석 결과 자체에는 영향 없음
+            }
+          }
         }
       } else {
         setError(res.error || 'AI 응답 생성 중 알 수 없는 오류가 발생했습니다.')
@@ -466,7 +481,7 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
 
   const handleApply = (overwrite: boolean) => {
     if (!parsed || !onApplyToForm) return
-    onApplyToForm(parsed, overwrite)
+    onApplyToForm(parsed, overwrite, form.noticeText)
     setApplyMsg(
       overwrite
         ? '공고 등록 폼을 분석 결과로 덮어썼습니다. 폼에서 확인 후 "공고 등록"을 누르면 스케줄러에도 반영됩니다.'
@@ -768,7 +783,17 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
                   <Button variant="secondary" onClick={() => handleApply(false)}>분석 결과를 공고 정보에 반영 (빈 항목만)</Button>
                   <Button variant="secondary" onClick={() => handleApply(true)}>전체 덮어쓰기</Button>
                 </div>
-                {applyMsg && <p className="bid-apply-msg">{applyMsg}</p>}
+                {applyMsg && (
+                  <div className="bid-action-banner">
+                    <p className="bid-apply-msg" style={{ margin: 0 }}>{applyMsg}</p>
+                    {onJumpToList && (
+                      <>
+                        <span className="bid-action-banner-hint">→ 공고 목록·관리 탭에서 폼 값을 확인하고 등록하세요.</span>
+                        <Button variant="secondary" onClick={onJumpToList}>공고 목록·관리로 이동</Button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

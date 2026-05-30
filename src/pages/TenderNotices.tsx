@@ -57,6 +57,10 @@ interface ScheduleEvent {
   requiredPersonnel?: number | string
   staffingCount?: number | string
   staffCountText?: string
+  // 전화번호 alias 호환 필드(옵셔널). pickPhoneDisplay에서 우선순위로 사용.
+  officePhone?: string
+  contactPhone?: string
+  phone?: string
 }
 
 const scheduleBadgeByType: Record<ScheduleEventType, string> = {
@@ -97,6 +101,20 @@ type CalendarItem = {
   requiredPersonnel?: number | string
   staffingCount?: number | string
   staffCountText?: string
+  // 전화번호 alias 호환 필드 (pickPhoneDisplay에서 사용)
+  officePhone?: string
+  contactPhone?: string
+  phone?: string
+}
+
+// 관리소 전화번호 표시용 우선순위 fallback.
+// managementOfficePhone → officePhone → contactPhone → phone → 빈 문자열.
+// 빈 문자열을 반환하면 호출자가 "전화번호 확인 필요"로 표시한다.
+const pickPhoneDisplay = (...candidates: (string | undefined | null)[]): string => {
+  for (const v of candidates) {
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  return ''
 }
 
 // 일정 항목 정렬을 위한 우선순위. 같은 시간(또는 시간 미정)일 때 적용.
@@ -205,6 +223,7 @@ const defaultForm: Omit<TenderNotice, 'id' | 'autoAnalysis' | 'generatedSummary'
   estimatedMonthlyRevenue: 0,
   reviewMemo: '',
   status: '검토중',
+  managementOfficePhone: '',
 }
 
 type AnalysisSchedule = {
@@ -660,10 +679,11 @@ const TenderNotices = () => {
           title: notice.siteName,
           kind: 'notice',
           notice,
-          // notice 기반 항목은 단지/세대수/산출인원/공고명을 자동 매핑한다.
+          // notice 기반 항목은 단지/세대수/산출인원/공고명/연락처를 자동 매핑한다.
           households: notice.totalUnits || undefined,
           calculatedStaffCount: notice.estimatedStaff || undefined,
           content: notice.title || undefined,
+          managementOfficePhone: notice.managementOfficePhone || undefined,
           // notice는 시간 필드를 별도로 보유하지 않으므로 빈 값 → 일정표에서 '시간 미정' fallback.
           time: '',
           source: '수동',
@@ -693,6 +713,10 @@ const TenderNotices = () => {
         staffCountText: ev.staffCountText,
         content: ev.content,
         managementOfficePhone: ev.managementOfficePhone,
+        // 전화번호 alias도 그대로 전달해 board/agenda/calendar 렌더에서 우선순위 fallback 가능하게 한다.
+        officePhone: ev.officePhone,
+        contactPhone: ev.contactPhone,
+        phone: ev.phone,
         time: ev.time || '',
         location: ev.location,
         source: ev.source,
@@ -887,17 +911,24 @@ const TenderNotices = () => {
   }
 
   // AI 공고문 분석(JSON) 결과를 공고 등록 폼에 반영. overwrite=false면 빈 항목만 채운다.
-  const handleApplyAiToForm = (parsed: BidAnalysisParsed, overwrite: boolean) => {
+  // AI 공고문 분석 결과를 공고 등록 폼 state에 반영한다.
+  // overwrite=false면 빈 항목만 채운다(사용자 입력 보호). overwrite=true면 AI 값으로 덮어쓴다.
+  // noticeText가 함께 전달되면 공고문 원문(fullText)도 채운다.
+  const handleApplyAiToForm = (parsed: BidAnalysisParsed, overwrite: boolean, noticeText?: string) => {
     const pick = (prev: string, ai: string) => (overwrite ? ai || prev : prev || ai)
 
-    const svDate = toDateInput(parsed.siteBriefingDate)
+    const svDate = parsed.siteBriefingStatus === 'individualVisit' ? '' : toDateInput(parsed.siteBriefingDate)
     const dlDate = toDateInput(parsed.bidDeadline)
+    const ptDate = toDateInput(parsed.businessPresentationDate || parsed.ptDate)
     const { start, end } = splitContractPeriod(parsed.contractPeriod)
 
     const dateNotes: string[] = []
-    if (parsed.siteBriefingDate && !svDate) dateNotes.push(`현장설명회 날짜 확인 필요: ${parsed.siteBriefingDate}`)
+    if (parsed.siteBriefingStatus === 'individualVisit') dateNotes.push(`현장설명회 미개최: ${parsed.siteBriefingNote || '개별 방문으로 현장 확인 필요'}`)
+    if (parsed.siteBriefingDate && !svDate && parsed.siteBriefingStatus !== 'individualVisit')
+      dateNotes.push(`현장설명회 날짜 확인 필요: ${parsed.siteBriefingDate}`)
     if (parsed.bidDeadline && !dlDate) dateNotes.push(`입찰마감 날짜 확인 필요: ${parsed.bidDeadline}`)
     if (parsed.contractPeriod && !start && !end) dateNotes.push(`계약기간 확인 필요: ${parsed.contractPeriod}`)
+    if (parsed.managementOfficePhone) dateNotes.push(`관리소 전화번호: ${parsed.managementOfficePhone}`)
 
     const gradeMap: Record<string, { p: TenderNoticeParticipation; r: TenderNoticeRiskLevel }> = {
       A: { p: '높음', r: '낮음' },
@@ -908,25 +939,34 @@ const TenderNotices = () => {
     const g = gradeMap[parsed.participationGrade]
 
     const memoParts: string[] = []
+    if (parsed.summary) memoParts.push(`[AI 분석] ${parsed.summary}`)
     if (parsed.participationGrade) memoParts.push(`[참여등급 ${parsed.participationGrade}] ${parsed.participationReason}`.trim())
     if (parsed.recommendedAction) memoParts.push(`다음 조치: ${parsed.recommendedAction}`)
     if (parsed.risks.length) memoParts.push(`주요 리스크: ${parsed.risks.join(' / ')}`)
     memoParts.push(...dateNotes)
     const aiMemo = memoParts.filter(Boolean).join('\n')
 
+    // 공고명: AI가 별도 키로 주지 않으므로 단지명 기반 자동 생성("○○ 입찰 공고 (AI 분석)").
+    const generatedTitle = parsed.complexName ? `${parsed.complexName} 입찰 공고 (AI 분석)` : ''
+
     setForm((prev) => ({
       ...prev,
       siteName: pick(prev.siteName, parsed.complexName),
       region: pick(prev.region, parsed.region),
+      title: pick(prev.title, generatedTitle),
       biddingMethod: pick(prev.biddingMethod, parsed.bidMethod),
       siteVisitDate: pick(prev.siteVisitDate, svDate),
       deadlineDate: pick(prev.deadlineDate, dlDate),
+      ptDate: pick(prev.ptDate, ptDate),
       contractStartDate: pick(prev.contractStartDate, start),
       contractEndDate: pick(prev.contractEndDate, end),
       specialConditions: pick(prev.specialConditions, parsed.specialConditions.join(', ')),
       participationLikelihood: g ? g.p : prev.participationLikelihood,
       riskLevel: g ? g.r : prev.riskLevel,
       reviewMemo: pick(prev.reviewMemo, aiMemo),
+      managementOfficePhone: pick(prev.managementOfficePhone || '', parsed.managementOfficePhone || ''),
+      // 공고문 원문도 함께 반영(없으면 그대로). 이력 로드시에는 noticeText 미전달이므로 prev 유지.
+      fullText: noticeText ? pick(prev.fullText, noticeText) : prev.fullText,
     }))
   }
 
@@ -967,12 +1007,14 @@ const TenderNotices = () => {
       biddingMethod: parsed.bidMethod || defaultForm.biddingMethod,
       siteVisitDate: sv,
       deadlineDate: dl,
+      ptDate: toDateInput(parsed.businessPresentationDate || parsed.ptDate) || defaultForm.ptDate,
       contractStartDate: start,
       contractEndDate: end,
       specialConditions: parsed.specialConditions.join(', '),
       participationLikelihood: g ? g.p : defaultForm.participationLikelihood,
       riskLevel: g ? g.r : defaultForm.riskLevel,
       reviewMemo: [`[AI 분석] ${parsed.summary}`.trim(), ...dateNotes].filter(Boolean).join('\n'),
+      managementOfficePhone: parsed.managementOfficePhone || '',
     }
 
     const notice: TenderNotice = {
@@ -1234,6 +1276,7 @@ const TenderNotices = () => {
         onRegisterNotice={handleRegisterAiNotice}
         onAddScheduleEvents={handleAddAiScheduleEvents}
         onJumpToScheduler={() => setBidPageTab('scheduler')}
+        onJumpToList={() => setBidPageTab('list')}
       />
       )}
 
@@ -1389,9 +1432,15 @@ const TenderNotices = () => {
                                       : staff.text
                                       ? staff.text
                                       : '산출인원 확인 필요'
-                                    const phoneText = item.managementOfficePhone
-                                      ? item.managementOfficePhone
-                                      : '전화번호 확인 필요'
+                                    // 전화번호 fallback: 다수 alias 중 첫 유효 값. notice 기반 항목은 notice.managementOfficePhone까지.
+                                    const phoneText =
+                                      pickPhoneDisplay(
+                                        item.managementOfficePhone,
+                                        item.officePhone,
+                                        item.contactPhone,
+                                        item.phone,
+                                        item.notice?.managementOfficePhone,
+                                      ) || '전화번호 확인 필요'
                                     return (
                                       <div key={item.uid} className={`bid-board-item ${colorCls}`}>
                                         <div className="bid-board-item-title">{item.title || '단지명 확인 필요'}</div>
@@ -1508,7 +1557,13 @@ const TenderNotices = () => {
                                 )}
                               </td>
                               <td className="agenda-phone">
-                                {item.managementOfficePhone || '전화번호 확인 필요'}
+                                {pickPhoneDisplay(
+                                  item.managementOfficePhone,
+                                  item.officePhone,
+                                  item.contactPhone,
+                                  item.phone,
+                                  item.notice?.managementOfficePhone,
+                                ) || '전화번호 확인 필요'}
                               </td>
                               <td>
                                 <span
@@ -1577,9 +1632,18 @@ const TenderNotices = () => {
                           {item.content && (
                             <div className="calendar-event-card-content">{item.content}</div>
                           )}
-                          {item.managementOfficePhone && (
-                            <div className="calendar-event-card-phone">관리소 {item.managementOfficePhone}</div>
-                          )}
+                          {(() => {
+                            const phone = pickPhoneDisplay(
+                              item.managementOfficePhone,
+                              item.officePhone,
+                              item.contactPhone,
+                              item.phone,
+                              item.notice?.managementOfficePhone,
+                            )
+                            return phone ? (
+                              <div className="calendar-event-card-phone">관리소 {phone}</div>
+                            ) : null
+                          })()}
                         </div>
                       </div>
                     )
@@ -1603,7 +1667,16 @@ const TenderNotices = () => {
                     <span>일정: {selectedDate}</span>
                     {item.households ? <span>세대수: {formatNumber(item.households)}세대</span> : null}
                     {item.calculatedStaffCount ? <span>산출인원: {item.calculatedStaffCount}명</span> : null}
-                    {item.managementOfficePhone ? <span>관리소: {item.managementOfficePhone}</span> : null}
+                    {(() => {
+                      const phone = pickPhoneDisplay(
+                        item.managementOfficePhone,
+                        item.officePhone,
+                        item.contactPhone,
+                        item.phone,
+                        item.notice?.managementOfficePhone,
+                      )
+                      return phone ? <span>관리소: {phone}</span> : null
+                    })()}
                     {item.kind === 'notice' && item.notice ? (
                       <>
                         <span>참여 가능성: {item.notice.participationLikelihood}</span>
@@ -1830,6 +1903,14 @@ const TenderNotices = () => {
                 <option value="완료">완료</option>
               </select>
             </div>
+            <div className="form-group">
+              <label>관리소 전화번호</label>
+              <input
+                value={form.managementOfficePhone || ''}
+                onChange={(e) => handleFormChange('managementOfficePhone', e.target.value)}
+                placeholder="예: 02-1234-5678"
+              />
+            </div>
             <div className="form-group form-group-full">
               <label>공고문 원문</label>
               <textarea value={form.fullText} rows={8} onChange={(e) => handleFormChange('fullText', e.target.value)} />
@@ -1935,6 +2016,10 @@ const TenderNotices = () => {
             <div>
               <strong>리스크 등급</strong>
               <p>{selectedNotice.riskLevel}</p>
+            </div>
+            <div>
+              <strong>관리소 전화번호</strong>
+              <p>{selectedNotice.managementOfficePhone || '-'}</p>
             </div>
           </div>
           <div className="detail-schedule-list">

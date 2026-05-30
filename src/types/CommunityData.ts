@@ -266,6 +266,8 @@ export interface TenderNotice {
   estimatedMonthlyRevenue: number
   reviewMemo: string
   status: TenderNoticeStatus
+  // 관리사무소/담당자 연락처 (옵셔널, 기존 저장 데이터 하위호환)
+  managementOfficePhone?: string
   autoAnalysis: {
     siteVisitRequired: boolean
     ptRequired: boolean
