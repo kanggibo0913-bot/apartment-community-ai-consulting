@@ -589,11 +589,20 @@ function App() {
   }
 
   const handleSaveProject = (projectData: any) => {
+    // ⚠️ ProjectForm은 새 단지 추가 시 data={}(빈 객체)를 전달한다.
+    // CommunityData 깊은 필드(data.apartmentInfo.name 등)에 접근하는 페이지들이
+    // undefined.property 에러로 React 트리를 unmount해 빈 페이지가 되는 것을 막기 위해
+    // 항상 normalizeCommunityData()로 누락 필드를 default로 채워 보강한다.
     if (editingProject) {
       // Update existing project
-      setProjects(prev => prev.map(p => 
+      setProjects(prev => prev.map(p =>
         p.id === editingProject.id
-          ? { ...p, ...projectData, updatedAt: new Date().toISOString() }
+          ? {
+              ...p,
+              ...projectData,
+              data: normalizeCommunityData(projectData.data ?? p.data),
+              updatedAt: new Date().toISOString(),
+            }
           : p
       ))
       showStatusMessage(`"${projectData.name}" 단지가 수정되었습니다.`)
@@ -606,6 +615,8 @@ function App() {
         id: projectId,
         createdAt: now,
         updatedAt: now,
+        // ⚠️ data: {}로 들어와도 normalize로 모든 필수 필드 채움 → 빈페이지 방지.
+        data: normalizeCommunityData(projectData.data),
       }
       setProjects(prev => [...prev, newProject])
       setActiveProjectId(projectId)

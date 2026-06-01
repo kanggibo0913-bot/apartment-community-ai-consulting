@@ -347,6 +347,8 @@ const SiteLaborCostPage: React.FC = () => {
     const [yStr, mStr] = cal.month.split('-')
     const y = Number(yStr); const m = Number(mStr)
     const lastDay = new Date(y, m, 0).getDate()
+    // 직원명 — 캘린더가 비어 있으면 현장 인건비 직원명으로 fallback.
+    const empName = resolveEmployeeName(cal.base.employeeName)
     for (let d = 1; d <= lastDay; d++) {
       const dateKey = `${y}-${mStr}-${d.toString().padStart(2, '0')}`
       const dow = new Date(y, m - 1, d).getDay()
@@ -355,7 +357,7 @@ const SiteLaborCostPage: React.FC = () => {
       lines.push(
         [
           cal.month,
-          cal.base.employeeName,
+          empName,
           dateKey,
           DOW_LABELS[dow],
           day?.start || '',
@@ -385,6 +387,23 @@ const SiteLaborCostPage: React.FC = () => {
   }
 
   const hasEmployees = employees.length > 0
+
+  // 직원명 fallback — 근무표/급여요약 CSV/저장본/UI에서 공통 사용.
+  // 우선순위:
+  //   1) calendar.base.employeeName  (월간 근무시간 달력에 직접 입력한 직원명)
+  //   2) payrollDraft.employeeName    (급여 초안에 보존된 직원명 — 보통 1과 동일)
+  //   3) 현장 인건비 직원별 입력의 첫 직원명 (기존 CSV 내보내기와 같은 기준)
+  //   4) "직원명 미입력"
+  // 이렇게 4단계로 두면 사용자가 어디서 입력했든 한 곳만 정상이면 모든 출력에 동일 이름이 노출된다.
+  const resolveEmployeeName = (calendarName?: string, draftName?: string): string => {
+    const fromCal = (calendarName || '').trim()
+    if (fromCal) return fromCal
+    const fromDraft = (draftName || '').trim()
+    if (fromDraft) return fromDraft
+    const fromEmp = (employees[0]?.name || '').trim()
+    if (fromEmp) return fromEmp
+    return '직원명 미입력'
+  }
   // PDF 출력 시점에 현재 달력 스냅샷을 한 번 더 읽어 인쇄 영역에 함께 노출.
   // 인쇄 영역은 portal로 렌더되므로 매 렌더마다 loadCalendarStorage()를 호출해도 비용 작음.
   const printCalendar: CalendarSnapshotPart | null = printing ? buildCalendarSnapshot() : null
@@ -413,9 +432,11 @@ const SiteLaborCostPage: React.FC = () => {
       '세전총지급액','국민연금','건강보험','장기요양','고용보험','소득세','지방소득세','기타공제',
       '공제합계','예상실지급액','비과세항목내역','비과세합계','과세대상급여참고액','비고',
     ]
+    // 직원명 — 캘린더/draft가 비어 있으면 현장 인건비 직원명으로 fallback.
+    const empName = resolveEmployeeName(cal?.base.employeeName, draft.employeeName)
     const row = [
       draft.month,
-      draft.employeeName,
+      empName,
       draft.totalHours.toFixed(1),
       r0(draft.gross.basePay),
       r0(draft.gross.holidayPay),
@@ -479,6 +500,13 @@ const SiteLaborCostPage: React.FC = () => {
     // 급여 초안: localStorage(siteLaborPayrollDraft) 입력값 + 캘린더 monthSummary 기반.
     // 캘린더가 없어도 사용자가 기타수당/공제만 입력했을 가능성이 있으므로 무조건 빌드.
     const payrollDraft = buildPayrollDraftFromCalendar(calendar || null, loadPayrollState())
+    // 직원명 fallback — 저장본도 동일한 우선순위로 보강해 후속 CSV/PDF 일관성 유지.
+    if (!payrollDraft.employeeName?.trim()) {
+      payrollDraft.employeeName = resolveEmployeeName(
+        calendar?.base.employeeName,
+        payrollDraft.employeeName,
+      )
+    }
     const snap: LaborCostSnapshot = {
       id: 'slc-snap-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
       title: saveTitle.trim() || `${month || ''} 현장 인건비 산출`.trim() || '현장 인건비 산출',
@@ -511,6 +539,12 @@ const SiteLaborCostPage: React.FC = () => {
     // 덮어쓰기 시점에도 캘린더/급여초안 스냅샷을 갱신해 함께 보존.
     const calendar = buildCalendarSnapshot() || undefined
     const payrollDraft = buildPayrollDraftFromCalendar(calendar || null, loadPayrollState())
+    if (!payrollDraft.employeeName?.trim()) {
+      payrollDraft.employeeName = resolveEmployeeName(
+        calendar?.base.employeeName,
+        payrollDraft.employeeName,
+      )
+    }
     setSnapshots((prev) =>
       prev.map((s) =>
         s.id === id
