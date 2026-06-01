@@ -576,4 +576,44 @@
     color: #555;
     line-height: 1.6;
   }
+
+  /* 월간 근무시간 달력 PDF 섹션 */
+  .slc-print-calendar {
+    margin-top: 14px;
+    border-top: 1px solid #999;
+    padding-top: 10px;
+  }
+
+  .slc-print-subtitle {
+    margin: 10px 0 4px;
+    font-size: 11pt;
+    color: #222;
+  }
+
+  .slc-print-calendar-days {
+    font-size: 8.5pt;
+  }
+
+  .slc-print-calendar-days td {
+    padding: 2px 4px;
+  }
+
+  .slc-print-calendar-note {
+    margin-top: 6px;
+    font-size: 9pt;
+    color: #555;
+  }
+}
+
+/* 저장본 목록 — 근무표 포함 배지 (인쇄 외 일반 화면용) */
+.slc-snap-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  background: #e7f6ee;
+  border: 1px solid #b6e3c8;
+  border-radius: 999px;
+  font-size: 10.5px;
+  color: #0a7f3f;
+  white-space: nowrap;
 }

@@ -97,6 +97,11 @@ export interface LaborCostSnapshot {
   savedAt: string
   updatedAt?: string
   data: SiteLaborCostData
+  // 월간 근무시간 달력 스냅샷(옵셔널, 하위호환).
+  // 저장 시점의 siteLaborCalendarInputs 데이터와 주차/월간 합계를 함께 보존해
+  // 저장본/PDF/CSV 출력에 같이 포함된다. 과거 저장본에는 이 필드가 없을 수 있다.
+  // 타입은 src/utils/siteLaborCalendarUtils.ts의 CalendarSnapshotPart와 구조적으로 동일.
+  calendar?: import('./siteLaborCalendarUtils').CalendarSnapshotPart
 }
 
 // ─── 시간 파싱 유틸 ──────────────────────────────────────────────────────────

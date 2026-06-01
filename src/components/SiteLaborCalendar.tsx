@@ -1,149 +1,33 @@
 import { useEffect, useMemo, useState } from 'react'
 import Card from './Card'
 import Button from './Button'
+import {
+  CalendarBase,
+  CalendarDayEntry as DayEntry,
+  CALENDAR_STORAGE_KEY,
+  DOW_LABELS,
+  buildWeeksForMonth,
+  calculateMonthSummary,
+  calculateWeekSummary,
+  dayWorkHours,
+  emptyDay,
+  fmtHours,
+  fmtWon,
+  loadCalendarStorage,
+  toMin,
+  todayMonth,
+} from '../utils/siteLaborCalendarUtils'
 import './SiteLaborCalendar.css'
 
 // 월간 근무시간 달력 (현장 운영 - 현장 인건비 산출 보조 섹션).
 // ⚠️ 입찰용 산출표/EstimateCalculator와 별개 기능.
 // ⚠️ 기존 SiteLaborCostPage의 직원별 입력/계산 로직은 손대지 않는다.
 // ⚠️ 본 계산은 내부 검토용 참고 계산 — 실제 급여 확정 전 근로계약/근로기준법 기준 검토 필요.
-
-const STORAGE_KEY = 'siteLaborCalendarInputs'
-
-// 기본 입력값 (사양 §2 예시값). 사용자 변경 즉시 localStorage에 반영된다.
-const DEFAULT_BASE = {
-  employeeName: '',
-  hourlyWage: 10320,
-  defaultBreakHours: 1,
-  monthlySalary: 1993820,
-  lessonAllowance: 350000,
-  weeklyHolidayApplied: true,
-  nightApplied: false,
-}
-
-interface DayEntry {
-  start: string // HH:mm
-  end: string // HH:mm
-  breakHours: number
-  nightHours: number // 야간 가산 적용 시간(시간 단위)
-  isHoliday: boolean // 수동 공휴일 체크
-  // 휴무(연차/휴무/출근하지 않은 날) 체크. true면 출근/퇴근/휴게/야간/메모는 비워지고 근로시간 0으로 계산.
-  // 옵셔널 — 기존 저장 데이터 하위호환.
-  isOff?: boolean
-  memo: string
-}
-
-interface CalendarBase {
-  employeeName: string
-  hourlyWage: number
-  defaultBreakHours: number
-  monthlySalary: number
-  lessonAllowance: number
-  weeklyHolidayApplied: boolean
-  nightApplied: boolean
-  selectedMonth: string // YYYY-MM
-}
-
-interface CalendarStorage {
-  base: CalendarBase
-  monthDays: Record<string, Record<string, DayEntry>> // YYYY-MM → dateKey(YYYY-MM-DD) → DayEntry
-}
-
-// 로컬 타임존 기준 YYYY-MM (UTC 변환에 따른 월 밀림 방지).
-const todayMonth = (): string => {
-  const d = new Date()
-  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`
-}
-
-const emptyDay = (): DayEntry => ({
-  start: '',
-  end: '',
-  breakHours: 0,
-  nightHours: 0,
-  isHoliday: false,
-  isOff: false,
-  memo: '',
-})
-
-const loadStorage = (): CalendarStorage => {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) {
-      return {
-        base: { ...DEFAULT_BASE, selectedMonth: todayMonth() },
-        monthDays: {},
-      }
-    }
-    const parsed = JSON.parse(raw) as Partial<CalendarStorage>
-    return {
-      base: { ...DEFAULT_BASE, selectedMonth: todayMonth(), ...(parsed.base || {}) },
-      monthDays: parsed.monthDays || {},
-    }
-  } catch {
-    return { base: { ...DEFAULT_BASE, selectedMonth: todayMonth() }, monthDays: {} }
-  }
-}
-
-const fmtWon = (n: number): string => Math.round(Number.isFinite(n) ? n : 0).toLocaleString('ko-KR')
-const fmtHours = (n: number): string => (Number.isFinite(n) ? n : 0).toFixed(1)
-
-// "HH:mm" → 분. 잘못된 입력이면 null.
-const toMin = (s: string): number | null => {
-  const m = s.match(/^(\d{1,2}):(\d{2})$/)
-  if (!m) return null
-  const h = Number(m[1])
-  const min = Number(m[2])
-  if (h < 0 || h > 23 || min < 0 || min > 59) return null
-  return h * 60 + min
-}
-
-// 일자별 근로시간 (시간 단위, 소수 허용).
-// 퇴근 < 출근이면 익일 퇴근으로 간주 (예: 22:00 ~ 02:00 → 4시간 + 휴게 차감).
-// isOff=true(휴무)이면 입력값과 무관하게 0 — 주차/월간 합계에서 자연스럽게 제외된다.
-const dayWorkHours = (d: DayEntry): number => {
-  if (d.isOff) return 0
-  const s = toMin(d.start)
-  const e = toMin(d.end)
-  if (s == null || e == null) return 0
-  let diff = e - s
-  if (diff < 0) diff += 24 * 60
-  diff -= (d.breakHours || 0) * 60
-  if (diff <= 0) return 0
-  return diff / 60
-}
-
-// 월별 주차 구성 — 일요일 시작, 토요일 종료. 다른 월에 걸친 cell은 inMonth=false로 표시.
-const buildWeeks = (
-  yearMonth: string,
-): { date: Date; inMonth: boolean; dateKey: string }[][] => {
-  const [y, m] = yearMonth.split('-').map(Number)
-  if (!y || !m) return []
-  const firstDay = new Date(y, m - 1, 1)
-  const startDay = new Date(firstDay)
-  startDay.setDate(firstDay.getDate() - firstDay.getDay()) // 그 주의 일요일로
-  const lastDay = new Date(y, m, 0) // 해당 월 마지막 날
-  const weeks: { date: Date; inMonth: boolean; dateKey: string }[][] = []
-  const cursor = new Date(startDay)
-  // 마지막 주의 토요일까지 채운다.
-  while (cursor <= lastDay || cursor.getDay() !== 0) {
-    const week: { date: Date; inMonth: boolean; dateKey: string }[] = []
-    for (let i = 0; i < 7; i++) {
-      const dd = new Date(cursor)
-      const inMonth = dd.getMonth() === m - 1
-      const key = `${dd.getFullYear()}-${(dd.getMonth() + 1)
-        .toString()
-        .padStart(2, '0')}-${dd.getDate().toString().padStart(2, '0')}`
-      week.push({ date: dd, inMonth, dateKey: key })
-      cursor.setDate(cursor.getDate() + 1)
-    }
-    weeks.push(week)
-    if (cursor > lastDay && cursor.getDay() === 0) break
-  }
-  return weeks
-}
+// ⚠️ 계산/저장 로직은 src/utils/siteLaborCalendarUtils.ts에 모여 있다(저장본/PDF/CSV와 공용).
+const STORAGE_KEY = CALENDAR_STORAGE_KEY
 
 const SiteLaborCalendar: React.FC = () => {
-  const initial = loadStorage()
+  const initial = loadCalendarStorage()
   const [base, setBase] = useState<CalendarBase>(initial.base)
   const [monthDays, setMonthDays] = useState<
     Record<string, Record<string, DayEntry>>
@@ -165,7 +49,7 @@ const SiteLaborCalendar: React.FC = () => {
   }
 
   const currentDays = monthDays[base.selectedMonth] || {}
-  const weeks = useMemo(() => buildWeeks(base.selectedMonth), [base.selectedMonth])
+  const weeks = useMemo(() => buildWeeksForMonth(base.selectedMonth), [base.selectedMonth])
 
   // 일자별 입력 수정.
   const updateDay = (key: string, patch: Partial<DayEntry>) => {
@@ -207,63 +91,14 @@ const SiteLaborCalendar: React.FC = () => {
     })
   }
 
-  // 주차별 계산 (사양 §6).
+  // 주차별 계산 — utility(calculateWeekSummary)로 위임. 동일 식 사용.
   const weeklyComp = useMemo(
-    () =>
-      weeks.map((week) => {
-        let totalHours = 0
-        let nightHours = 0
-        week.forEach((cell) => {
-          if (!cell.inMonth) return
-          const day = currentDays[cell.dateKey]
-          if (!day) return
-          totalHours += dayWorkHours(day)
-          if (base.nightApplied) nightHours += day.nightHours || 0
-        })
-        // 주휴수당 MVP 기준:
-        //  - 주 근로시간 ≥ 15 + 주휴 적용 시에만 발생
-        //  - 주휴시간 = min(8, 주 근로시간 / 40 * 8)
-        //  - 주휴수당 = 주휴시간 × 시급
-        const eligibleHoliday = base.weeklyHolidayApplied && totalHours >= 15
-        const holidayHours = eligibleHoliday ? Math.min(8, (totalHours / 40) * 8) : 0
-        const holidayPay = holidayHours * base.hourlyWage
-        // 야간수당: 야간 적용 시 야간시간 × 시급 × 0.5 (가산).
-        const nightPay = base.nightApplied ? nightHours * base.hourlyWage * 0.5 : 0
-        const weekPay = totalHours * base.hourlyWage + holidayPay + nightPay
-        return {
-          totalHours,
-          eligibleHoliday,
-          holidayHours,
-          holidayPay,
-          nightHours,
-          nightPay,
-          weekPay,
-        }
-      }),
+    () => weeks.map((week) => calculateWeekSummary(week, currentDays, base)),
     [weeks, currentDays, base],
   )
 
-  // 월간 합계 (사양 §7).
-  const monthly = useMemo(() => {
-    const totalHours = weeklyComp.reduce((s, w) => s + w.totalHours, 0)
-    const totalHolidayHours = weeklyComp.reduce((s, w) => s + w.holidayHours, 0)
-    const totalHolidayPay = weeklyComp.reduce((s, w) => s + w.holidayPay, 0)
-    const totalNightPay = weeklyComp.reduce((s, w) => s + w.nightPay, 0)
-    const basePay = totalHours * base.hourlyWage
-    const expectedTotal = basePay + totalHolidayPay + totalNightPay + base.lessonAllowance
-    // 월급여 기준 총액 — 월급여 + 레슨수당 + 주휴수당 + 야간수당.
-    const salaryBasedTotal =
-      base.monthlySalary + base.lessonAllowance + totalHolidayPay + totalNightPay
-    return {
-      totalHours,
-      totalHolidayHours,
-      totalHolidayPay,
-      totalNightPay,
-      basePay,
-      expectedTotal,
-      salaryBasedTotal,
-    }
-  }, [weeklyComp, base])
+  // 월간 합계 — utility(calculateMonthSummary)로 위임. 동일 식 사용.
+  const monthly = useMemo(() => calculateMonthSummary(weeklyComp, base), [weeklyComp, base])
 
   // 평일 일괄 입력 (월~금).
   const bulkFillWeekdays = () => {
@@ -309,8 +144,7 @@ const SiteLaborCalendar: React.FC = () => {
     return Number.isFinite(n) ? n : 0
   }
 
-  // 요일 이름 (헤더용).
-  const DOW_LABELS = ['일', '월', '화', '수', '목', '금', '토']
+  // 요일 이름은 utility에서 import.
 
   return (
     <Card title="월간 근무시간 달력 (참고 계산)" className="labor-calendar-card">

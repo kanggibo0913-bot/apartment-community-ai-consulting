@@ -5,6 +5,15 @@ import Card from '../components/Card'
 import Button from '../components/Button'
 import SiteLaborCalendar from '../components/SiteLaborCalendar'
 import {
+  CalendarSnapshotPart,
+  DOW_LABELS,
+  buildCalendarSnapshot,
+  dayWorkHours,
+  fmtHours as fmtHoursCal,
+  fmtWon as fmtWonCal,
+  loadCalendarStorage,
+} from '../utils/siteLaborCalendarUtils'
+import {
   CalcSettings,
   DAYS,
   Employee,
@@ -307,7 +316,69 @@ const SiteLaborCostPage: React.FC = () => {
     flash('CSV 파일을 내보냈습니다.')
   }
 
+  // ─── 월간 근무표 CSV 내보내기 (기존 인건비 CSV와 분리) ────────────────────
+  // 파일명: site-labor-calendar-YYYY-MM.csv. 해당 월의 모든 날짜 포함(빈 날짜는 근로시간 0).
+  // 컬럼: 기준월, 직원명, 날짜, 요일, 출근, 퇴근, 휴게시간, 야간시간, 근로시간, 휴무여부, 공휴일여부, 메모.
+  const exportCalendarCsv = () => {
+    const storage = loadCalendarStorage()
+    const cal = buildCalendarSnapshot(storage)
+    if (!cal) {
+      flash('근무표 데이터가 없습니다. 월간 근무시간 달력에서 기준 월을 선택해주세요.')
+      return
+    }
+    const lines: string[] = []
+    const header = [
+      '기준월', '직원명', '날짜', '요일', '출근', '퇴근', '휴게시간', '야간시간',
+      '근로시간', '휴무여부', '공휴일여부', '메모',
+    ]
+    lines.push(header.map(csvField).join(','))
+    // 해당 월의 in-month 날짜만 순회. 빈 날짜는 입력 없음 → 근로 0으로 표시.
+    cal.weeksSummary // weeks 구조에서 in-month 추출 — weeksSummary는 합계만, 일자 순회는 별도.
+    // 일자 순회는 storage.monthDays[cal.month] + 빈 일자 보강을 위해 weeks 재생성 활용.
+    const [yStr, mStr] = cal.month.split('-')
+    const y = Number(yStr); const m = Number(mStr)
+    const lastDay = new Date(y, m, 0).getDate()
+    for (let d = 1; d <= lastDay; d++) {
+      const dateKey = `${y}-${mStr}-${d.toString().padStart(2, '0')}`
+      const dow = new Date(y, m - 1, d).getDay()
+      const day = cal.days[dateKey]
+      const work = day ? dayWorkHours(day) : 0
+      lines.push(
+        [
+          cal.month,
+          cal.base.employeeName,
+          dateKey,
+          DOW_LABELS[dow],
+          day?.start || '',
+          day?.end || '',
+          day ? day.breakHours : 0,
+          day ? day.nightHours : 0,
+          work.toFixed(1),
+          day?.isOff ? 'Y' : 'N',
+          day?.isHoliday ? 'Y' : 'N',
+          day?.memo || '',
+        ]
+          .map(csvField)
+          .join(','),
+      )
+    }
+    const csv = '﻿' + lines.join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `site-labor-calendar-${cal.month}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    flash('근무표 CSV 파일을 내보냈습니다.')
+  }
+
   const hasEmployees = employees.length > 0
+  // PDF 출력 시점에 현재 달력 스냅샷을 한 번 더 읽어 인쇄 영역에 함께 노출.
+  // 인쇄 영역은 portal로 렌더되므로 매 렌더마다 loadCalendarStorage()를 호출해도 비용 작음.
+  const printCalendar: CalendarSnapshotPart | null = printing ? buildCalendarSnapshot() : null
 
   // ─── 저장본 관리 ───────────────────────────────────────────────────────────
   const [snapshots, setSnapshots] = useState<LaborCostSnapshot[]>(loadSnapshots)
@@ -332,6 +403,8 @@ const SiteLaborCostPage: React.FC = () => {
   const doSave = () => {
     const now = new Date().toISOString()
     const month = saveMonth.trim() || settings.baseMonth
+    // 저장 시점의 월간 근무시간 달력 스냅샷 동시 보존(옵셔널).
+    const calendar = buildCalendarSnapshot() || undefined
     const snap: LaborCostSnapshot = {
       id: 'slc-snap-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
       title: saveTitle.trim() || `${month || ''} 현장 인건비 산출`.trim() || '현장 인건비 산출',
@@ -339,10 +412,15 @@ const SiteLaborCostPage: React.FC = () => {
       baseMonth: month,
       savedAt: now,
       data: { settings, employees },
+      calendar,
     }
     setSnapshots((prev) => [snap, ...prev])
     setSaveOpen(false)
-    flash('현재 산출이 저장본으로 저장되었습니다.')
+    flash(
+      calendar
+        ? '현장 인건비 저장본에 월간 근무표가 함께 저장되었습니다.'
+        : '현재 산출이 저장본으로 저장되었습니다.',
+    )
   }
 
   const loadSnapshot = (snap: LaborCostSnapshot) => {
@@ -355,9 +433,19 @@ const SiteLaborCostPage: React.FC = () => {
   const overwriteSnapshot = (id: string) => {
     if (!window.confirm('현재 입력 중인 내용으로 이 저장본을 덮어쓰시겠습니까?')) return
     const now = new Date().toISOString()
+    // 덮어쓰기 시점에도 캘린더 스냅샷을 갱신해 함께 보존.
+    const calendar = buildCalendarSnapshot() || undefined
     setSnapshots((prev) =>
       prev.map((s) =>
-        s.id === id ? { ...s, data: { settings, employees }, baseMonth: settings.baseMonth || s.baseMonth, updatedAt: now } : s,
+        s.id === id
+          ? {
+              ...s,
+              data: { settings, employees },
+              baseMonth: settings.baseMonth || s.baseMonth,
+              updatedAt: now,
+              calendar,
+            }
+          : s,
       ),
     )
     flash('저장본을 현재 내용으로 덮어썼습니다.')
@@ -479,6 +567,8 @@ const SiteLaborCostPage: React.FC = () => {
         <Button variant="primary" onClick={openSaveModal}>현재 산출 저장</Button>
         <Button variant="secondary" onClick={handlePrint} disabled={!hasEmployees}>PDF 저장 / 인쇄</Button>
         <Button variant="secondary" onClick={exportCsv} disabled={!hasEmployees}>CSV 내보내기</Button>
+        {/* 근무표 CSV는 직원 등록 없이도 달력 입력만으로 내보낼 수 있다. */}
+        <Button variant="secondary" onClick={exportCalendarCsv}>근무표 CSV 내보내기</Button>
         {!hasEmployees && !msg && <span className="slc-actions-hint">직원 데이터를 먼저 추가해주세요.</span>}
         {msg && <span className="slc-msg">{msg}</span>}
       </div>
@@ -759,7 +849,14 @@ const SiteLaborCostPage: React.FC = () => {
               <tbody>
                 {visibleSnapshots.map(({ s, total, count }) => (
                   <tr key={s.id}>
-                    <td>{s.title}</td>
+                    <td>
+                      {s.title}
+                      {s.calendar && (
+                        <span className="slc-snap-badge" title="월간 근무표가 함께 저장됨">
+                          근무표 포함
+                        </span>
+                      )}
+                    </td>
                     <td>{s.apartmentName || '-'}</td>
                     <td>{s.baseMonth || '-'}</td>
                     <td>
@@ -922,6 +1019,105 @@ const SiteLaborCostPage: React.FC = () => {
                   </tfoot>
                 </table>
               </section>
+
+              {/* 월간 근무시간 달력 — 직원 등록과 별개의 보조 섹션. 데이터가 있을 때만 노출. */}
+              {printCalendar && (
+                <section className="slc-print-section slc-print-calendar">
+                  <h2>월간 근무시간 달력 (참고 계산)</h2>
+                  <div className="slc-print-kv">
+                    <span>직원명: {printCalendar.base.employeeName || '-'}</span>
+                    <span>기준 월: {printCalendar.month}</span>
+                    <span>시급: {fmtWonCal(printCalendar.base.hourlyWage)}원</span>
+                    <span>월급여: {fmtWonCal(printCalendar.base.monthlySalary)}원</span>
+                    <span>레슨수당: {fmtWonCal(printCalendar.base.lessonAllowance)}원</span>
+                    <span>주휴 적용: {printCalendar.base.weeklyHolidayApplied ? '예' : '아니오'}</span>
+                    <span>야간 적용: {printCalendar.base.nightApplied ? '예' : '아니오'}</span>
+                  </div>
+                  <div className="slc-print-kv">
+                    <span>총 근로시간: {fmtHoursCal(printCalendar.monthSummary.totalHours)}h</span>
+                    <span>총 주휴시간: {fmtHoursCal(printCalendar.monthSummary.totalHolidayHours)}h</span>
+                    <span>총 주휴수당: {fmtWonCal(printCalendar.monthSummary.totalHolidayPay)}원</span>
+                    <span>총 야간수당: {fmtWonCal(printCalendar.monthSummary.totalNightPay)}원</span>
+                    <span>기본급: {fmtWonCal(printCalendar.monthSummary.basePay)}원</span>
+                    <span className="slc-print-grand">
+                      예상 총지급액 (시급 기준): {fmtWonCal(printCalendar.monthSummary.expectedTotal)}원
+                    </span>
+                    {printCalendar.base.monthlySalary > 0 && (
+                      <span>월급여 기준 총액: {fmtWonCal(printCalendar.monthSummary.salaryBasedTotal)}원</span>
+                    )}
+                  </div>
+                  <h3 className="slc-print-subtitle">주차별 요약</h3>
+                  <table className="slc-print-table">
+                    <thead>
+                      <tr>
+                        <th>주차</th><th>기간</th><th>근로시간</th>
+                        <th>주휴시간</th><th>주휴수당</th>
+                        {printCalendar.base.nightApplied && (<><th>야간시간</th><th>야간수당</th></>)}
+                        <th>주급</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {printCalendar.weeksSummary.map((w) => (
+                        <tr key={w.weekIndex}>
+                          <td>{w.weekIndex}주차</td>
+                          <td>{w.range.start} ~ {w.range.end}</td>
+                          <td>{fmtHoursCal(w.summary.totalHours)}</td>
+                          <td>{w.summary.eligibleHoliday ? fmtHoursCal(w.summary.holidayHours) : '-'}</td>
+                          <td>{fmtWonCal(w.summary.holidayPay)}</td>
+                          {printCalendar.base.nightApplied && (
+                            <>
+                              <td>{fmtHoursCal(w.summary.nightHours)}</td>
+                              <td>{fmtWonCal(w.summary.nightPay)}</td>
+                            </>
+                          )}
+                          <td>{fmtWonCal(w.summary.weekPay)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <h3 className="slc-print-subtitle">일자별 요약</h3>
+                  <table className="slc-print-table slc-print-calendar-days">
+                    <thead>
+                      <tr>
+                        <th>날짜</th><th>요일</th>
+                        <th>출근</th><th>퇴근</th><th>휴게</th><th>근로</th>
+                        <th>휴무</th><th>공휴일</th><th>메모</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const [yStr, mStr] = printCalendar.month.split('-')
+                        const y = Number(yStr); const m = Number(mStr)
+                        const lastDay = new Date(y, m, 0).getDate()
+                        const rows = []
+                        for (let d = 1; d <= lastDay; d++) {
+                          const key = `${y}-${mStr}-${d.toString().padStart(2, '0')}`
+                          const dow = new Date(y, m - 1, d).getDay()
+                          const day = printCalendar.days[key]
+                          const work = day ? dayWorkHours(day) : 0
+                          rows.push(
+                            <tr key={key}>
+                              <td>{key}</td>
+                              <td>{DOW_LABELS[dow]}</td>
+                              <td>{day?.start || '-'}</td>
+                              <td>{day?.end || '-'}</td>
+                              <td>{day ? day.breakHours : 0}</td>
+                              <td>{fmtHoursCal(work)}</td>
+                              <td>{day?.isOff ? 'Y' : ''}</td>
+                              <td>{day?.isHoliday ? 'Y' : ''}</td>
+                              <td>{day?.memo || ''}</td>
+                            </tr>,
+                          )
+                        }
+                        return rows
+                      })()}
+                    </tbody>
+                  </table>
+                  <p className="slc-print-calendar-note">
+                    본 계산은 내부 검토용 참고 계산입니다. 실제 급여 확정 전 근로계약 조건과 근로기준법 기준을 확인하세요.
+                  </p>
+                </section>
+              )}
 
               <footer className="slc-print-footer">
                 본 산출 결과는 내부 운영비 검토를 위한 참고 자료입니다. 실제 급여 지급 및 노무 처리는 근로계약, 취업규칙, 최신 법령 및 전문가 검토에 따라 확정해야 합니다.
