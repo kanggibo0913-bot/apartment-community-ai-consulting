@@ -140,34 +140,47 @@ const FIELD_EVENT_TYPE: Record<string, ScheduleEventType> = {
   contractEndDate: 'contractEnd',
 }
 
-// 입찰 스케줄러(일정표/월간 달력/AI 일정만 추가 후보)에 표시·등록 허용된 이벤트 타입.
-// 계약 시작/종료(contractStart/contractEnd/contract)는 산출표·공고 상세에서만 사용하고
-// 스케줄러에서는 일관되게 제외한다. 데이터 자체는 보존하고 UI 단계에서만 차단한다.
+// 입찰 스케줄러(2주 보드/일정표/월간 달력/AI 후보)에 표시·등록 허용된 이벤트 타입.
+// 정책: 현장설명회 / 마감(서류제출=입찰마감 통합) / PT 3종 계열만 허용.
+// 개찰(opening) / 계약(contractStart/End) / 운영시작·종료 / 기타(other) 는 일정 자체는 보존하고
+// 스케줄러 뷰에서만 일관되게 숨긴다. (AI 분석 결과 카드·공고 상세보기에는 개찰 정보 그대로 노출.)
 const SCHEDULER_ALLOWED_TYPES = new Set<ScheduleEventType>([
   'siteBriefing',
   'businessPresentation',
   'pt',
   'documentSubmission',
   'bidDeadline',
-  'opening',
-  'other',
 ])
 
-// 다양한 표기를 정규화한 뒤 차단할 키워드 집합.
-// (legacy 데이터의 type/label/category에 '계약'·'operation'·'운영' 등이 섞여 들어와도 차단)
-const CONTRACT_BLOCK_REGEX = /(contract|operation|계약|운영(시작|종료))/i
+// 스케줄러에서 명시적으로 차단할 키워드 — 라벨/카테고리에 이 단어가 있으면 무조건 false.
+// type이 'other'/undefined인 legacy 데이터에서 개찰·계약·운영이 라벨로만 들어와도 차단된다.
+const SCHEDULER_BLOCK_REGEX = /(개찰|opening|contract|operation|계약|운영(시작|종료))/i
 
-// 캘린더 cell/agenda 표시 직전에 통과시키는 필터.
+// 'other' 타입을 라벨 키워드로 살릴 허용 패턴 — block보다 우선순위 낮음.
+// (label/category에 현장설명·서류제출·입찰마감·PT·사업설명·제안설명·발표 등이 있으면 통과)
+const SCHEDULER_OTHER_ALLOW_REGEX =
+  /(현장설명|현장확인|개별방문|서류마감|서류제출|입찰마감|전자입찰|pt|사업설명|제안설명|발표)/i
+
+// 캘린더 cell/agenda/보드 진입 직전에 통과시키는 필터. (모든 스케줄러 뷰가 같은 결과를 보게 한다.)
+// 우선순위: 1) 차단 키워드 → false / 2) 명시 차단 타입(opening·contract*) → false /
+//          3) 허용 타입 → true / 4) other에서 허용 키워드 매칭 → true / 5) 그 외 → false.
 const isSchedulerVisible = (
   type: ScheduleEventType | undefined,
   label?: string,
   category?: string,
 ): boolean => {
-  if (type && !SCHEDULER_ALLOWED_TYPES.has(type)) return false
-  if (type === 'contractStart' || type === 'contractEnd') return false
   const probe = `${label || ''} ${category || ''}`
-  if (CONTRACT_BLOCK_REGEX.test(probe)) return false
-  return true
+  // 1) 라벨/카테고리 기반 명시 차단
+  if (SCHEDULER_BLOCK_REGEX.test(probe)) return false
+  // 2) 타입 기반 명시 차단
+  if (type === 'opening' || type === 'contractStart' || type === 'contractEnd') return false
+  // 3) 허용 타입
+  if (type && SCHEDULER_ALLOWED_TYPES.has(type)) return true
+  // 4) other/undefined 는 키워드 매칭 시 통과
+  if (!type || type === 'other') {
+    if (SCHEDULER_OTHER_ALLOW_REGEX.test(probe)) return true
+  }
+  return false
 }
 
 // 'YYYY-MM-DD'를 더해/빼고 다시 'YYYY-MM-DD'로 변환.
@@ -923,6 +936,32 @@ const TenderNotices = () => {
     return 'bid-board-item--other'
   }
 
+  // 일정표/월간 달력용 표준 라벨 (실무 용어).
+  //   siteBriefing                       → 현장설명회
+  //   documentSubmission / bidDeadline   → 입찰마감 (서류제출 = 입찰마감 통합 정책)
+  //   businessPresentation / pt          → PT발표일
+  //   other 라벨에 의미 있는 키워드가 있으면 동일 표준 라벨로 매핑.
+  // (스케줄러 필터에서 이미 opening/계약/운영을 차단했으므로 여기는 도달하지 않는다.)
+  const agendaLabelByType = (t?: ScheduleEventType, fallback?: string): string => {
+    switch (t) {
+      case 'siteBriefing':
+        return '현장설명회'
+      case 'documentSubmission':
+      case 'bidDeadline':
+        return '입찰마감'
+      case 'businessPresentation':
+      case 'pt':
+        return 'PT발표일'
+      default: {
+        const l = (fallback || '').toLowerCase()
+        if (/(현장설명|현장확인|개별방문)/i.test(l)) return '현장설명회'
+        if (/(서류마감|서류제출|입찰마감|전자입찰)/i.test(l)) return '입찰마감'
+        if (/(pt|사업설명|제안설명|발표)/i.test(l)) return 'PT발표일'
+        return fallback || ''
+      }
+    }
+  }
+
   // 2주 보드용 라벨: 매우 짧은 한국어 라벨 (현설 / 마감 / PT).
   // 개찰은 보드에서 숨겨지지만 다른 뷰가 같은 함수를 호출할 가능성에 대비해 케이스는 보존.
   const boardLabelByType = (t?: ScheduleEventType, fallback?: string): string => {
@@ -1183,15 +1222,8 @@ const TenderNotices = () => {
           date: dl,
           time: dlTime || undefined,
         })
-      const op = toDateInput(parsed.openingDate)
-      if (op)
-        candidates.push({
-          type: 'opening',
-          label: '개찰',
-          raw: parsed.openingDate,
-          date: op,
-          time: parsed.openingTime || undefined,
-        })
+      // 개찰(opening) candidate는 스케줄러 정책상 등록하지 않는다 (현설/마감/PT 3종만).
+      // parsed.openingDate는 AI 분석 결과 카드와 공고 상세 메모에서 정보로 활용된다.
       // documentSubmission은 위에서 bidDeadline으로 통합했으므로 별도 candidate 추가 없음.
       const pt = toDateInput(parsed.ptDate)
       if (pt)
@@ -1450,10 +1482,9 @@ const TenderNotices = () => {
           <div className="bid-board-view">
             <div className="bid-board-toolbar">
               <ul className="bid-board-legend" aria-label="색상 범례">
-                <li><span className="legend-dot legend-briefing" /> 현설/개별방문 (초록)</li>
-                <li><span className="legend-dot legend-deadline" /> 마감/서류제출 (파랑)</li>
-                <li><span className="legend-dot legend-pt" /> PT/사업설명회 (빨강)</li>
-                <li><span className="legend-dot legend-opening" /> 개찰 (회색)</li>
+                <li><span className="legend-dot legend-briefing" /> 현장설명회/개별방문 (초록)</li>
+                <li><span className="legend-dot legend-deadline" /> 서류마감/입찰마감 (파랑)</li>
+                <li><span className="legend-dot legend-pt" /> PT발표/사업설명회 (빨강)</li>
               </ul>
               <span className="bid-board-count">
                 오늘부터 2주 · 총 {boardTotalCount}건
@@ -1626,7 +1657,9 @@ const TenderNotices = () => {
                                 {dateTimeLabel}
                               </td>
                               <td>
-                                <span className={`event-badge ${item.badge}`}>{item.label}</span>
+                                <span className={`event-badge ${item.badge}`}>
+                                  {agendaLabelByType(item.eventType, item.label)}
+                                </span>
                               </td>
                               <td className="agenda-name">{item.title || '(미입력 단지)'}</td>
                               <td className="agenda-num">
@@ -1710,7 +1743,9 @@ const TenderNotices = () => {
                     const timeLabel = item.time || '시간 미정'
                     return (
                       <div key={item.uid} className={`calendar-event-card ${item.badge}`}>
-                        <span className={`event-badge ${item.badge}`}>{item.label}</span>
+                        <span className={`event-badge ${item.badge}`}>
+                          {agendaLabelByType(item.eventType, item.label)}
+                        </span>
                         <div className="calendar-event-card-body">
                           <div className="calendar-event-card-time">{timeLabel}</div>
                           <div className="calendar-event-card-title">{item.title || '(미입력 단지)'}</div>
@@ -1747,7 +1782,9 @@ const TenderNotices = () => {
           {selectedEvents.length > 0 ? (
             selectedEvents.map((item) => (
               <div key={item.uid} className="calendar-event-row">
-                <span className={`event-badge ${item.badge}`}>{item.label}</span>
+                <span className={`event-badge ${item.badge}`}>
+                  {agendaLabelByType(item.eventType, item.label)}
+                </span>
                 <div>
                   <strong>{item.title}</strong>
                   {item.kind === 'notice' && item.notice ? ` | ${item.notice.title}` : ' | AI 일정'}

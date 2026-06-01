@@ -386,11 +386,19 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
       const d = toDateInput(raw)
       return d || (raw ? `날짜 확인 필요 (원문: ${raw})` : '')
     }
-    const isContractLike = (ev: { eventType?: string; eventTypeLabel?: string }) => {
+    // 스케줄러 후보에서 제외할 이벤트 — 정책상 현설/마감/PT만 후보에 노출.
+    // 개찰(opening) / 계약(contractStart/End) / 운영시작·종료 / 기타 일정은 차단.
+    // (AI 분석 결과 카드와 공고 상세 메모에는 그대로 정보가 노출되어 사용자가 직접 확인 가능.)
+    const isExcludedFromScheduler = (ev: { eventType?: string; eventTypeLabel?: string; content?: string }) => {
       const t = (ev.eventType || '').toLowerCase()
-      const l = ev.eventTypeLabel || ''
-      if (t === 'contract' || t === 'contractstart' || t === 'contractend') return true
-      return /(계약|운영(시작|종료)|operation)/i.test(l)
+      const probe = `${ev.eventTypeLabel || ''} ${ev.content || ''}`
+      if (
+        t === 'opening' ||
+        t === 'contract' ||
+        t === 'contractstart' ||
+        t === 'contractend'
+      ) return true
+      return /(개찰|opening|계약|운영(시작|종료)|operation)/i.test(probe)
     }
     const out: { label: string; value: string; disabledReason?: string }[] = []
 
@@ -419,7 +427,7 @@ const BidNoticeAIAnalysis: React.FC<BidNoticeAIAnalysisProps> = ({
 
     if (parsed.scheduleEvents.length > 0) {
       parsed.scheduleEvents
-        .filter((ev) => !isContractLike(ev))
+        .filter((ev) => !isExcludedFromScheduler(ev))
         .forEach((ev) => {
           const parts: string[] = []
           if (ev.time) parts.push(ev.time)
