@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import Button from '../components/Button'
+import { loadProjectScoped, saveProjectScoped } from '../utils/projectScopedStorage'
 import './MaintenanceRecordsPage.css'
 
 type MaintenanceCategory = '헬스장' | '골프연습장' | 'GX룸' | '샤워실' | '탈의실' | '공용부' | '기타'
@@ -26,6 +27,7 @@ export interface MaintenanceRecord {
 }
 
 const STORAGE_KEY = 'maintenanceRecords'
+const STORAGE_KEY_BY_PROJECT = 'maintenanceRecordsByProject'
 const CATEGORIES: MaintenanceCategory[] = ['헬스장', '골프연습장', 'GX룸', '샤워실', '탈의실', '공용부', '기타']
 const STATUSES: MaintenanceStatus[] = ['접수', '점검중', '보수중', '완료', '보류']
 const STATUS_CLASS: Record<MaintenanceStatus, string> = {
@@ -36,15 +38,15 @@ const STATUS_CLASS: Record<MaintenanceStatus, string> = {
   보류: 'st-hold',
 }
 
-const loadRecords = (): MaintenanceRecord[] => {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as MaintenanceRecord[]) : []
-  } catch {
-    return []
-  }
+// projectId 기반 로드 — byProject 없으면 전역 1회 fallback.
+const loadRecordsScoped = (projectId: string | undefined): MaintenanceRecord[] => {
+  const raw = loadProjectScoped<MaintenanceRecord[] | null>(
+    STORAGE_KEY,
+    STORAGE_KEY_BY_PROJECT,
+    projectId,
+    null,
+  )
+  return Array.isArray(raw) ? raw : []
 }
 
 const emptyForm = {
@@ -64,8 +66,13 @@ const emptyForm = {
 
 type FormState = typeof emptyForm
 
-const MaintenanceRecordsPage: React.FC = () => {
-  const [records, setRecords] = useState<MaintenanceRecord[]>(loadRecords)
+interface MaintenanceRecordsPageProps {
+  projectId?: string
+  projectName?: string
+}
+
+const MaintenanceRecordsPage: React.FC<MaintenanceRecordsPageProps> = ({ projectId, projectName }) => {
+  const [records, setRecords] = useState<MaintenanceRecord[]>(() => loadRecordsScoped(projectId))
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [catFilter, setCatFilter] = useState<'all' | MaintenanceCategory>('all')
@@ -73,9 +80,15 @@ const MaintenanceRecordsPage: React.FC = () => {
   const [query, setQuery] = useState('')
   const [msg, setMsg] = useState('')
 
+  // 단지 전환 시 새 단지의 records로 reload.
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
-  }, [records])
+    setRecords(loadRecordsScoped(projectId))
+  }, [projectId])
+
+  // ByProject 슬롯에 자동 저장. 전역 STORAGE_KEY는 손대지 않음(legacy 보존).
+  useEffect(() => {
+    saveProjectScoped(STORAGE_KEY_BY_PROJECT, projectId, records)
+  }, [records, projectId])
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -156,6 +169,12 @@ const MaintenanceRecordsPage: React.FC = () => {
         title="시설 보수 내역"
         description="커뮤니티센터 시설의 점검·고장·보수·교체·완료 현황을 기록하고 관리합니다."
       />
+      <div className="mnt-project-banner">
+        <strong>현재 단지:</strong> {projectName || '(단지 선택 없음)'}
+        <span className="mnt-project-banner-hint">
+          · 시설 보수 내역은 현재 단지({projectId || 'default'})에만 저장됩니다.
+        </span>
+      </div>
 
       <Card title={editingId ? '보수 기록 수정' : '보수 기록 등록'}>
         <div className="form-row">

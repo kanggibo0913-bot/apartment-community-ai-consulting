@@ -1,4 +1,5 @@
 import { PublishedReport } from './publishedReport'
+import { loadProjectScoped, saveProjectScoped } from './projectScopedStorage'
 
 // 입주민 공개 보고서 발행 이력 저장소.
 // 저장 데이터는 반드시 PublishedReport(위생처리됨) 기준 필드만 담는다.
@@ -7,8 +8,27 @@ import { PublishedReport } from './publishedReport'
 // ⚠️ 한계: 현재 공개 링크는 URL 해시(#/report/<encoded>)에 데이터가 들어있는 방식이라,
 // 이미 공유·복사된 링크는 서버에서 차단할 수 없다. 따라서 아래 "공개 중지(disabled)"와
 // "삭제"는 내부 관리용 표시일 뿐, 이미 배포된 URL 자체를 무효화하지는 못한다.
-// 실사용 단계에서는 서버 저장(예: Netlify Blobs/DB) + 서버측 shareId 차단 방식으로 전환해야 한다.
+//
+// 단지별 분리:
+//   기존 전역 key 'publishedResidentReports'는 그대로 두고(legacy 보존),
+//   새 byProject key 'publishedResidentReportsByProject'에 { [projectId]: StoredPublishedReport[] }로 저장한다.
+//   모든 함수는 optional projectId를 받는다. 미지정시 'default' 슬롯에 저장된다.
 const STORAGE_KEY = 'publishedResidentReports'
+const STORAGE_KEY_BY_PROJECT = 'publishedResidentReportsByProject'
+
+const loadAll = (projectId?: string): StoredPublishedReport[] => {
+  const arr = loadProjectScoped<StoredPublishedReport[] | null>(
+    STORAGE_KEY,
+    STORAGE_KEY_BY_PROJECT,
+    projectId,
+    null,
+  )
+  return Array.isArray(arr) ? arr : []
+}
+
+const saveAll = (list: StoredPublishedReport[], projectId?: string) => {
+  saveProjectScoped(STORAGE_KEY_BY_PROJECT, projectId, list)
+}
 
 export type PublishedStatus = 'published' | 'disabled'
 
@@ -29,19 +49,10 @@ export interface StoredPublishedReport {
   republishedAt?: string
 }
 
-export function loadPublishedReports(): StoredPublishedReport[] {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as StoredPublishedReport[]) : []
-  } catch {
-    return []
-  }
-}
-
-function persist(list: StoredPublishedReport[]) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+// 모든 함수는 optional projectId를 받아 단지별 슬롯을 조작한다.
+// projectId 미지정 시 'default' 슬롯 (projectScopedStorage가 처리).
+export function loadPublishedReports(projectId?: string): StoredPublishedReport[] {
+  return loadAll(projectId)
 }
 
 // PublishedReport(위생처리됨)에서만 발행 이력 레코드를 구성한다.
@@ -49,8 +60,9 @@ export function savePublishedReport(
   report: PublishedReport,
   encodedUrl: string,
   meta?: { sourceType?: string; sourceReportId?: string },
+  projectId?: string,
 ): StoredPublishedReport {
-  const list = loadPublishedReports()
+  const list = loadAll(projectId)
   // 동일 링크 중복 저장 방지
   const existing = list.find((r) => r.encodedUrl === encodedUrl)
   if (existing) return existing
@@ -69,29 +81,29 @@ export function savePublishedReport(
     ...(meta?.sourceType ? { sourceType: meta.sourceType } : {}),
     ...(meta?.sourceReportId ? { sourceReportId: meta.sourceReportId } : {}),
   }
-  persist([record, ...list].slice(0, 200))
+  saveAll([record, ...list].slice(0, 200), projectId)
   return record
 }
 
 // 공개 중지/재개. ⚠️ 이미 공유된 URL 자체는 차단되지 않으며 내부 표시만 바뀐다.
-export function updatePublishedReportStatus(id: string, status: PublishedStatus): void {
-  persist(loadPublishedReports().map((r) => (r.id === id ? { ...r, status } : r)))
+export function updatePublishedReportStatus(id: string, status: PublishedStatus, projectId?: string): void {
+  saveAll(loadAll(projectId).map((r) => (r.id === id ? { ...r, status } : r)), projectId)
 }
 
 // 발행 이력에서 제거. ⚠️ 삭제해도 이미 복사·공유된 URL 자체는 무효화되지 않는다.
-export function deletePublishedReport(id: string): void {
-  persist(loadPublishedReports().filter((r) => r.id !== id))
+export function deletePublishedReport(id: string, projectId?: string): void {
+  saveAll(loadAll(projectId).filter((r) => r.id !== id), projectId)
 }
 
 // 출처 기준으로 기존 발행본 조회 (최신순)
-export function findPublishedBySource(sourceType: string, sourceReportId: string): StoredPublishedReport[] {
-  return loadPublishedReports().filter((r) => r.sourceType === sourceType && r.sourceReportId === sourceReportId)
+export function findPublishedBySource(sourceType: string, sourceReportId: string, projectId?: string): StoredPublishedReport[] {
+  return loadAll(projectId).filter((r) => r.sourceType === sourceType && r.sourceReportId === sourceReportId)
 }
 
 // 기존 발행본 갱신(재발행). id/shareId/publishedAt/source/status는 유지하고
 // 공개 내용(섹션)·링크만 새로 반영하며 republishedAt을 기록한다.
-export function updatePublishedReport(id: string, report: PublishedReport, encodedUrl: string): StoredPublishedReport | null {
-  const list = loadPublishedReports()
+export function updatePublishedReport(id: string, report: PublishedReport, encodedUrl: string, projectId?: string): StoredPublishedReport | null {
+  const list = loadAll(projectId)
   let updated: StoredPublishedReport | null = null
   const next = list.map((r) => {
     if (r.id !== id) return r
@@ -106,6 +118,6 @@ export function updatePublishedReport(id: string, report: PublishedReport, encod
     }
     return updated
   })
-  if (updated) persist(next)
+  if (updated) saveAll(next, projectId)
   return updated
 }

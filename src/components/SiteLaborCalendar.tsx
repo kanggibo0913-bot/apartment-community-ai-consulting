@@ -5,6 +5,8 @@ import {
   CalendarBase,
   CalendarDayEntry as DayEntry,
   CALENDAR_STORAGE_KEY,
+  CalendarStorage,
+  DEFAULT_BASE,
   DOW_LABELS,
   buildWeeksForMonth,
   calculateMonthSummary,
@@ -17,6 +19,7 @@ import {
   toMin,
   todayMonth,
 } from '../utils/siteLaborCalendarUtils'
+import { loadProjectScoped, saveProjectScoped } from '../utils/projectScopedStorage'
 import './SiteLaborCalendar.css'
 
 // 월간 근무시간 달력 (현장 운영 - 현장 인건비 산출 보조 섹션).
@@ -25,15 +28,33 @@ import './SiteLaborCalendar.css'
 // ⚠️ 본 계산은 내부 검토용 참고 계산 — 실제 급여 확정 전 근로계약/근로기준법 기준 검토 필요.
 // ⚠️ 계산/저장 로직은 src/utils/siteLaborCalendarUtils.ts에 모여 있다(저장본/PDF/CSV와 공용).
 const STORAGE_KEY = CALENDAR_STORAGE_KEY
+const STORAGE_KEY_BY_PROJECT = 'siteLaborCalendarInputsByProject'
+
+// projectId 기반 캘린더 storage 로드. byProject 슬롯 없으면 전역 key 1회 fallback,
+// 그것도 없으면 utility의 default값. 기존 전역 key는 그대로 보존.
+const loadCalendarStorageScoped = (projectId: string | undefined): CalendarStorage => {
+  const raw = loadProjectScoped<Partial<CalendarStorage> | null>(
+    STORAGE_KEY,
+    STORAGE_KEY_BY_PROJECT,
+    projectId,
+    null,
+  )
+  if (!raw) return loadCalendarStorage()
+  return {
+    base: { ...DEFAULT_BASE, selectedMonth: todayMonth(), ...(raw.base || {}) },
+    monthDays: raw.monthDays || {},
+  }
+}
 
 // 부모 컴포넌트가 캘린더 데이터 변경(저장)을 감지해 다른 패널(SitePayrollPanel 등)을
 // 즉시 갱신할 수 있도록 callback prop을 제공. localStorage 저장이 일어날 때마다 호출.
 interface SiteLaborCalendarProps {
+  projectId?: string
   onCalendarChange?: () => void
 }
 
-const SiteLaborCalendar: React.FC<SiteLaborCalendarProps> = ({ onCalendarChange }) => {
-  const initial = loadCalendarStorage()
+const SiteLaborCalendar: React.FC<SiteLaborCalendarProps> = ({ projectId, onCalendarChange }) => {
+  const initial = loadCalendarStorageScoped(projectId)
   const [base, setBase] = useState<CalendarBase>(initial.base)
   const [monthDays, setMonthDays] = useState<
     Record<string, Record<string, DayEntry>>
@@ -44,12 +65,19 @@ const SiteLaborCalendar: React.FC<SiteLaborCalendarProps> = ({ onCalendarChange 
   const [bulkBreak, setBulkBreak] = useState(1)
   const [msg, setMsg] = useState('')
 
-  // localStorage 자동 저장 + 부모에 변경 통지 (있을 때만).
-  // 초기 마운트 시점에도 한 번 호출되지만, 부모가 idempotent nonce 증가만 하므로 안전.
+  // 단지 전환 시 새 단지 데이터로 reload.
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ base, monthDays }))
+    const next = loadCalendarStorageScoped(projectId)
+    setBase(next.base)
+    setMonthDays(next.monthDays)
+  }, [projectId])
+
+  // ByProject 슬롯에 저장 + 부모에 변경 통지 (있을 때만).
+  // 전역 STORAGE_KEY는 손대지 않음(legacy 보존).
+  useEffect(() => {
+    saveProjectScoped(STORAGE_KEY_BY_PROJECT, projectId, { base, monthDays })
     if (onCalendarChange) onCalendarChange()
-  }, [base, monthDays, onCalendarChange])
+  }, [base, monthDays, projectId, onCalendarChange])
 
   const flash = (m: string) => {
     setMsg(m)

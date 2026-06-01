@@ -5,6 +5,7 @@ import { buildCalendarSnapshot, fmtHours, fmtWon } from '../utils/siteLaborCalen
 import {
   DEDUCTION_LABELS,
   NON_TAXABLE_PRESETS,
+  PAYROLL_STORAGE_KEY,
   PayrollDeductions,
   PayrollExtra,
   PayrollNonTaxableItem,
@@ -14,8 +15,29 @@ import {
   loadPayrollState,
   newExtra,
   newNonTaxableItem,
-  savePayrollState,
 } from '../utils/sitePayrollUtils'
+import { loadProjectScoped, saveProjectScoped } from '../utils/projectScopedStorage'
+
+const PAYROLL_BY_PROJECT_KEY = 'siteLaborPayrollDraftByProject'
+
+// projectId 기반 PayrollPersistedState 로드 — byProject 없으면 전역 1회 fallback.
+const loadPayrollStateScoped = (projectId: string | undefined): PayrollPersistedState => {
+  const raw = loadProjectScoped<Partial<PayrollPersistedState> | null>(
+    PAYROLL_STORAGE_KEY,
+    PAYROLL_BY_PROJECT_KEY,
+    projectId,
+    null,
+  )
+  if (!raw) return loadPayrollState()
+  // sitePayrollUtils의 emptyPayrollState 구조에 맞춰 안전 정규화.
+  return {
+    extras: Array.isArray(raw.extras) ? raw.extras : [],
+    nonTaxableItems: Array.isArray(raw.nonTaxableItems) ? raw.nonTaxableItems : [],
+    deductions: { ...emptyPayrollState().deductions, ...(raw.deductions || {}) },
+    payDate: raw.payDate || '',
+    note: raw.note || '',
+  }
+}
 import './SitePayrollPanel.css'
 
 // 세전 급여 요약 + 급여명세서 초안 패널.
@@ -26,20 +48,26 @@ import './SitePayrollPanel.css'
 // (Calendar는 별도 localStorage라 React state 변경이 자동 전파되지 않음 — refreshNonce가 변하면
 //  re-read 한다)
 interface SitePayrollPanelProps {
+  projectId?: string
   refreshNonce?: number
 }
 
-const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ refreshNonce = 0 }) => {
-  const [state, setState] = useState<PayrollPersistedState>(() => loadPayrollState())
+const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ projectId, refreshNonce = 0 }) => {
+  const [state, setState] = useState<PayrollPersistedState>(() => loadPayrollStateScoped(projectId))
   // 캘린더 스냅샷은 캘린더 입력에 따라 매번 새로 읽는다. 캘린더 변경 후 refreshNonce 증감으로 강제 갱신.
   const [calRevision, setCalRevision] = useState(0)
   // 펼치기 토글
   const [openDraft, setOpenDraft] = useState(true)
 
-  // localStorage 자동 저장.
+  // 단지 전환 시 새 단지의 payroll state로 reload.
   useEffect(() => {
-    savePayrollState(state)
-  }, [state])
+    setState(loadPayrollStateScoped(projectId))
+  }, [projectId])
+
+  // ByProject 슬롯에 자동 저장. 전역 PAYROLL_STORAGE_KEY는 손대지 않음(legacy 보존).
+  useEffect(() => {
+    saveProjectScoped(PAYROLL_BY_PROJECT_KEY, projectId, state)
+  }, [state, projectId])
 
   // 부모가 refresh 신호 보내면 calRevision 변경 → snapshot 재계산.
   useEffect(() => {

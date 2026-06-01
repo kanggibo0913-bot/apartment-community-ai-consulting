@@ -796,13 +796,13 @@ function App() {
       case 'tender':
         return <TenderNotices />
       case 'ai-history':
-        return <AiResultHistoryPage />
+        return <AiResultHistoryPage projectId={activeProject?.id} projectName={activeProject?.name} />
       case 'maintenance':
-        return <MaintenanceRecordsPage />
+        return <MaintenanceRecordsPage projectId={activeProject?.id} projectName={activeProject?.name} />
       case 'resident-notice':
-        return <ResidentNoticeReportPage />
+        return <ResidentNoticeReportPage projectId={activeProject?.id} projectName={activeProject?.name} />
       case 'labor-cost':
-        return <SiteLaborCostPage />
+        return <SiteLaborCostPage projectId={activeProject?.id} projectName={activeProject?.name} />
       case 'system-data-sync':
         return <SystemDataSyncPage />
       case 'estimate':

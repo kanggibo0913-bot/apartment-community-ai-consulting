@@ -30,16 +30,23 @@ const ALLOWED_KEYS = new Set<string>([
   // 입찰 산출표
   'estimateSheets',
   'bidCalculationSnapshots',
-  // 현장 인건비
+  // 현장 인건비 (legacy 전역 + 신규 ByProject 양쪽 모두 동기화 대상)
   'siteLaborCalendarInputs',
+  'siteLaborCalendarInputsByProject',
   'siteLaborCostData',
+  'siteLaborCostDataByProject',
   'siteLaborCostSnapshots',
+  'siteLaborCostSnapshotsByProject',
   'siteLaborPayrollDraft',
-  // 시설 보수/입주민 보고서
+  'siteLaborPayrollDraftByProject',
+  // 시설 보수/입주민 보고서 (legacy + ByProject)
   'maintenanceRecords',
+  'maintenanceRecordsByProject',
   'residentNoticeReports',
+  'residentNoticeReportsByProject',
   'publishedResidentReports',
-  // AI 결과 이력
+  'publishedResidentReportsByProject',
+  // AI 결과 이력 — 단일 storage이지만 각 항목에 projectId 메타가 들어가서 분리됨
   'aiResultHistory',
 ])
 

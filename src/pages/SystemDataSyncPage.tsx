@@ -42,20 +42,32 @@ const SYNC_GROUPS: { title: string; items: { key: string; label: string }[] }[] 
     ],
   },
   {
-    title: '현장 인건비',
+    title: '현장 인건비 (단지별)',
     items: [
-      { key: 'siteLaborCalendarInputs', label: '현장 인건비 근무표' },
-      { key: 'siteLaborCostData', label: '현장 인건비 산출 입력값' },
-      { key: 'siteLaborCostSnapshots', label: '현장 인건비 저장본' },
-      { key: 'siteLaborPayrollDraft', label: '급여 초안 (기타수당/공제액)' },
+      { key: 'siteLaborCalendarInputsByProject', label: '현장 인건비 근무표 (단지별)' },
+      { key: 'siteLaborCostDataByProject', label: '현장 인건비 산출 입력값 (단지별)' },
+      { key: 'siteLaborCostSnapshotsByProject', label: '현장 인건비 저장본 (단지별)' },
+      { key: 'siteLaborPayrollDraftByProject', label: '급여 초안 (단지별)' },
     ],
   },
   {
-    title: '시설 보수 / 입주민 보고서',
+    title: '시설 보수 / 입주민 보고서 (단지별)',
     items: [
-      { key: 'maintenanceRecords', label: '시설 보수 내역' },
-      { key: 'residentNoticeReports', label: '입주민 안내 보고서' },
-      { key: 'publishedResidentReports', label: '입주민 공개 발행본' },
+      { key: 'maintenanceRecordsByProject', label: '시설 보수 내역 (단지별)' },
+      { key: 'residentNoticeReportsByProject', label: '입주민 안내 보고서 (단지별)' },
+      { key: 'publishedResidentReportsByProject', label: '입주민 공개 발행본 (단지별)' },
+    ],
+  },
+  {
+    title: 'Legacy (전역, 하위호환용)',
+    items: [
+      { key: 'siteLaborCalendarInputs', label: '구버전 현장 인건비 근무표 (legacy)' },
+      { key: 'siteLaborCostData', label: '구버전 현장 인건비 산출 입력값 (legacy)' },
+      { key: 'siteLaborCostSnapshots', label: '구버전 현장 인건비 저장본 (legacy)' },
+      { key: 'siteLaborPayrollDraft', label: '구버전 급여 초안 (legacy)' },
+      { key: 'maintenanceRecords', label: '구버전 시설 보수 내역 (legacy)' },
+      { key: 'residentNoticeReports', label: '구버전 입주민 안내 보고서 (legacy)' },
+      { key: 'publishedResidentReports', label: '구버전 입주민 공개 발행본 (legacy)' },
     ],
   },
   {

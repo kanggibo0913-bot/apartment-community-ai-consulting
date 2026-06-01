@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  loadProjectScoped,
+  saveProjectScoped,
+} from '../utils/projectScopedStorage'
 import { createPortal } from 'react-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
@@ -41,6 +45,7 @@ import './SiteLaborCostPage.css'
 // 공용 타입·계산 함수는 ../utils/siteLaborSnapshots.ts 로 분리(파일 분리만, 동작/결과 동일).
 
 const STORAGE_KEY = 'siteLaborCostData'
+const STORAGE_KEY_BY_PROJECT = 'siteLaborCostDataByProject'
 
 // 요율 기본값: 법정 수치(최저임금·보험요율)는 0/공란으로 두어 하드코딩을 피한다.
 // 가산 배율(연장 1.5/야간 0.5/휴일 1.5)·월 환산 주수(4.345)만 관행적 기본값을 제공한다.
@@ -109,19 +114,8 @@ const sampleEmployees = (): Employee[] => [
   },
 ]
 
-const loadData = (): SiteLaborCostData => {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { settings: defaultSettings, employees: [] }
-    const parsed = JSON.parse(raw) as Partial<SiteLaborCostData>
-    return {
-      settings: { ...defaultSettings, ...(parsed.settings || {}) },
-      employees: Array.isArray(parsed.employees) ? parsed.employees : [],
-    }
-  } catch {
-    return { settings: defaultSettings, employees: [] }
-  }
-}
+// loadData/loadSnapshots — projectId 기반으로 일원화. legacy 전역 fallback은
+// projectScopedStorage.loadProjectScoped 내부에서 1회 처리한다.
 
 const fmtWon = (n: number) => Math.round(Number.isFinite(n) ? n : 0).toLocaleString('ko-KR')
 const fmtHours = (n: number) => (Number.isFinite(n) ? n : 0).toFixed(1)
@@ -131,20 +125,45 @@ const fmtHours = (n: number) => (Number.isFinite(n) ? n : 0).toFixed(1)
 // ⚠️ 기존 siteLaborCostData 구조는 변경하지 않는다. 저장본은 별도 key(siteLaborCostSnapshots)로만 관리.
 // LaborCostSnapshot 타입과 합계 헬퍼는 ../utils/siteLaborSnapshots 에서 import.
 const SNAPSHOT_KEY = 'siteLaborCostSnapshots'
+const SNAPSHOT_KEY_BY_PROJECT = 'siteLaborCostSnapshotsByProject'
 
-const loadSnapshots = (): LaborCostSnapshot[] => {
-  try {
-    const raw = window.localStorage.getItem(SNAPSHOT_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as LaborCostSnapshot[]) : []
-  } catch {
-    return []
+// ⚠️ projectId 기반 load 보조 함수 — projectScopedStorage 헬퍼 위에 SiteLaborCostData
+//    안전 정규화를 입혀 호환성을 유지한다.
+const loadDataScoped = (projectId: string | undefined): SiteLaborCostData => {
+  const raw = loadProjectScoped<Partial<SiteLaborCostData> | null>(
+    STORAGE_KEY,
+    STORAGE_KEY_BY_PROJECT,
+    projectId,
+    null,
+  )
+  if (!raw) return { settings: defaultSettings, employees: [] }
+  return {
+    settings: { ...defaultSettings, ...(raw.settings || {}) },
+    employees: Array.isArray(raw.employees) ? raw.employees : [],
   }
 }
 
-const SiteLaborCostPage: React.FC = () => {
-  const initial = loadData()
+const loadSnapshotsScoped = (projectId: string | undefined): LaborCostSnapshot[] => {
+  const raw = loadProjectScoped<LaborCostSnapshot[] | null>(
+    SNAPSHOT_KEY,
+    SNAPSHOT_KEY_BY_PROJECT,
+    projectId,
+    null,
+  )
+  return Array.isArray(raw) ? raw : []
+}
+
+interface SiteLaborCostPageProps {
+  // 현재 선택 단지의 id/name. 없으면 'default' 슬롯에 저장된다(기존 전역 데이터 fallback 1회).
+  projectId?: string
+  projectName?: string
+}
+
+const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projectName }) => {
+  // 단지 전환 시 다시 로드되도록 key를 projectId에 묶어 component remount 효과.
+  // (또는 useEffect로 setState 해도 됨. 현재 페이지는 큰 컴포넌트라 단순함을 위해 key remount 권장하지만,
+  //  여러 useEffect/snapshot 흐름이 있어 명시적으로 useEffect로 처리.)
+  const initial = loadDataScoped(projectId)
   const [settings, setSettings] = useState<CalcSettings>(initial.settings)
   const [employees, setEmployees] = useState<Employee[]>(initial.employees)
   const [msg, setMsg] = useState('')
@@ -152,9 +171,21 @@ const SiteLaborCostPage: React.FC = () => {
   // SiteLaborCalendar의 onCalendarChange가 호출될 때마다 증가 → Panel이 monthSummary를 다시 읽음.
   const [payrollRefreshNonce, setPayrollRefreshNonce] = useState(0)
 
+  // 단지 전환 감지 — projectId가 바뀌면 새 단지의 데이터로 setState 재초기화.
+  // 첫 마운트 시점에는 이미 initial로 채워져 있어 동일 projectId로 중복 호출되지 않는다.
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ settings, employees }))
-  }, [settings, employees])
+    const d = loadDataScoped(projectId)
+    setSettings(d.settings)
+    setEmployees(d.employees)
+    setSnapshots(loadSnapshotsScoped(projectId))
+    // 캘린더 패널도 새 단지의 캘린더로 갱신되도록 nonce 강제 증가.
+    setPayrollRefreshNonce((v) => v + 1)
+  }, [projectId])
+
+  useEffect(() => {
+    // ByProject 슬롯에 저장. 전역 STORAGE_KEY는 손대지 않음(legacy 보존).
+    saveProjectScoped(STORAGE_KEY_BY_PROJECT, projectId, { settings, employees })
+  }, [settings, employees, projectId])
 
   const flash = (m: string) => {
     setMsg(m)
@@ -473,7 +504,7 @@ const SiteLaborCostPage: React.FC = () => {
   }
 
   // ─── 저장본 관리 ───────────────────────────────────────────────────────────
-  const [snapshots, setSnapshots] = useState<LaborCostSnapshot[]>(loadSnapshots)
+  const [snapshots, setSnapshots] = useState<LaborCostSnapshot[]>(() => loadSnapshotsScoped(projectId))
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveTitle, setSaveTitle] = useState('')
   const [saveApt, setSaveApt] = useState('')
@@ -482,7 +513,7 @@ const SiteLaborCostPage: React.FC = () => {
   const [snapSort, setSnapSort] = useState<'latest' | 'oldest' | 'month' | 'apartment' | 'totalDesc' | 'totalAsc'>('latest')
 
   useEffect(() => {
-    window.localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshots))
+    saveProjectScoped(SNAPSHOT_KEY_BY_PROJECT, projectId, snapshots)
   }, [snapshots])
 
   const openSaveModal = () => {
@@ -672,6 +703,13 @@ const SiteLaborCostPage: React.FC = () => {
 
       <div className="slc-info-box">
         이 페이지는 실제 현장 운영비 계산용입니다. 입찰용 산출표는 입찰 공고 조건과 제출 양식에 맞춰 별도 작성해야 합니다.
+      </div>
+      {/* 현재 단지 표시 — 단지별 분리 저장 안내 */}
+      <div className="slc-project-banner">
+        <strong>현재 단지:</strong> {projectName || '(단지 선택 없음)'}
+        <span className="slc-project-banner-hint">
+          · 직원/근무표/저장본/급여 초안은 현재 단지({projectId || 'default'})에만 저장됩니다.
+        </span>
       </div>
 
       <div className="slc-actions">
@@ -909,10 +947,13 @@ const SiteLaborCostPage: React.FC = () => {
           캘린더 입력 변경 시 onCalendarChange가 호출되어 payrollRefreshNonce가 증가하고,
           아래 SitePayrollPanel이 monthSummary를 즉시 다시 읽어 세전 급여 요약/급여명세서
           초안을 갱신한다. */}
-      <SiteLaborCalendar onCalendarChange={() => setPayrollRefreshNonce((v) => v + 1)} />
+      <SiteLaborCalendar
+        projectId={projectId}
+        onCalendarChange={() => setPayrollRefreshNonce((v) => v + 1)}
+      />
 
       {/* 세전 급여 요약 + 급여명세서 초안 (보조 섹션). 캘린더 monthSummary를 입력으로 사용. */}
-      <SitePayrollPanel refreshNonce={payrollRefreshNonce} />
+      <SitePayrollPanel projectId={projectId} refreshNonce={payrollRefreshNonce} />
 
       <Card title={`저장본 관리 (${snapshots.length})`}>
         <div className="slc-snap-tools">

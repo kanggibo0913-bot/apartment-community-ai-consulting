@@ -141,6 +141,10 @@ export interface AiResultEntry {
   error?: string
   sourcePage?: string
   meta?: Record<string, unknown>
+  // 단지(프로젝트) 식별자 — 옵셔널, 하위호환. 미지정 시 'default' (legacy).
+  // AiResultHistoryPage가 현재 단지에 해당하는 항목만 필터링해 표시한다.
+  projectId?: string
+  projectName?: string
 }
 
 export function loadAiResults(): AiResultEntry[] {
@@ -174,6 +178,10 @@ export interface SaveAiResultInput {
   error?: string
   sourcePage?: string
   meta?: Record<string, unknown>
+  // 현재 선택 단지(프로젝트) 식별자/이름 (옵셔널, 하위호환).
+  // 미지정 시 'default'로 저장되어 AiResultHistoryPage에서 default 단지 필터에만 노출.
+  projectId?: string
+  projectName?: string
 }
 
 export function saveAiResult(entry: SaveAiResultInput): AiResultEntry {
@@ -193,6 +201,8 @@ export function saveAiResult(entry: SaveAiResultInput): AiResultEntry {
     ...(safeString(entry.error, 1000) ? { error: safeString(entry.error, 1000) } : {}),
     ...(entry.sourcePage ? { sourcePage: entry.sourcePage } : {}),
     ...(entry.meta ? { meta: entry.meta } : {}),
+    ...(entry.projectId ? { projectId: entry.projectId } : {}),
+    ...(entry.projectName ? { projectName: entry.projectName } : {}),
   }
   const next = [full, ...loadAiResults()].slice(0, 100) // 최대 100개 보관
   window.localStorage.setItem(AI_RESULTS_STORAGE_KEY, JSON.stringify(next))

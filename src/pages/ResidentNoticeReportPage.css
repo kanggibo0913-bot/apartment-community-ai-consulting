@@ -3,6 +3,22 @@
   color: #0a7f3f;
 }
 
+/* 단지별 분리 안내 배너 */
+.rnr-project-banner {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: #6f4f00;
+}
+
+.rnr-project-banner-hint {
+  margin-left: 6px;
+  color: #8a6a00;
+}
+
 .rnr-publish-banner {
   display: flex;
   flex-wrap: wrap;

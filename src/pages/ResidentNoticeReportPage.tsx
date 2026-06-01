@@ -6,6 +6,7 @@ import Button from '../components/Button'
 import { buildPublishedReport, buildShareUrl } from '../utils/publishedReport'
 import { StoredPublishedReport, findPublishedBySource, loadPublishedReports, savePublishedReport, updatePublishedReport } from '../utils/publishedReportStorage'
 import type { MaintenanceRecord } from './MaintenanceRecordsPage'
+import { loadProjectScoped, saveProjectScoped } from '../utils/projectScopedStorage'
 import './ResidentNoticeReportPage.css'
 
 type NoticeStatus = 'draft' | 'published'
@@ -32,6 +33,8 @@ export interface ResidentNoticeReport {
 }
 
 const STORAGE_KEY = 'residentNoticeReports'
+const STORAGE_KEY_BY_PROJECT = 'residentNoticeReportsByProject'
+const MAINTENANCE_KEY_BY_PROJECT = 'maintenanceRecordsByProject'
 
 // 본문 섹션 정의 (폼/미리보기 공용)
 const SECTIONS: Array<{ key: keyof FormState; label: string }> = [
@@ -61,24 +64,26 @@ const PUBLISH_SECTION_MAP: Array<{ key: keyof ResidentNoticeReport; title: strin
 const MAINTENANCE_KEY = 'maintenanceRecords'
 const STATUS_PRIORITY: Record<string, number> = { 완료: 0, 보수중: 1, 점검중: 2, 접수: 3, 보류: 4 }
 
-const loadPublicMaintenance = (): MaintenanceRecord[] => {
-  try {
-    const raw = window.localStorage.getItem(MAINTENANCE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return (parsed as MaintenanceRecord[])
-      .filter((r) => r.isPublicVisible === true) // 공개 표시 항목만
-      .sort((a, b) => {
-        const pa = STATUS_PRIORITY[a.status] ?? 9
-        const pb = STATUS_PRIORITY[b.status] ?? 9
-        if (pa !== pb) return pa - pb
-        return a.reportedAt < b.reportedAt ? 1 : a.reportedAt > b.reportedAt ? -1 : 0
-      })
-  } catch {
-    return []
-  }
+// projectId 기반으로 시설 보수 내역(공개 가능 항목) 로드.
+const loadPublicMaintenanceScoped = (projectId: string | undefined): MaintenanceRecord[] => {
+  const parsed = loadProjectScoped<MaintenanceRecord[] | null>(
+    MAINTENANCE_KEY,
+    MAINTENANCE_KEY_BY_PROJECT,
+    projectId,
+    null,
+  )
+  if (!Array.isArray(parsed)) return []
+  return parsed
+    .filter((r) => r.isPublicVisible === true)
+    .sort((a, b) => {
+      const pa = STATUS_PRIORITY[a.status] ?? 9
+      const pb = STATUS_PRIORITY[b.status] ?? 9
+      if (pa !== pb) return pa - pb
+      return a.reportedAt < b.reportedAt ? 1 : a.reportedAt > b.reportedAt ? -1 : 0
+    })
 }
+
+// legacy 전역 key 직접 접근 함수는 제거됨 — loadPublicMaintenanceScoped를 사용한다.
 
 // 안내문 텍스트 변환 (내부 메모/업체명은 절대 포함하지 않음 — 화이트리스트)
 const formatMaintenance = (r: MaintenanceRecord): string => {
@@ -163,15 +168,15 @@ const buildMonthlySummary = (records: MaintenanceRecord[], ym: string): MonthlyS
   return { total: records.length, completed: completedItems.length, inProgress: inProgItems.length, hold: holdItems.length, byCategory, text }
 }
 
-const loadReports = (): ResidentNoticeReport[] => {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as ResidentNoticeReport[]) : []
-  } catch {
-    return []
-  }
+// projectId 기반 보고서 로드.
+const loadReportsScoped = (projectId: string | undefined): ResidentNoticeReport[] => {
+  const raw = loadProjectScoped<ResidentNoticeReport[] | null>(
+    STORAGE_KEY,
+    STORAGE_KEY_BY_PROJECT,
+    projectId,
+    null,
+  )
+  return Array.isArray(raw) ? raw : []
 }
 
 const emptyForm = {
@@ -191,8 +196,13 @@ const emptyForm = {
 
 type FormState = typeof emptyForm
 
-const ResidentNoticeReportPage: React.FC = () => {
-  const [reports, setReports] = useState<ResidentNoticeReport[]>(loadReports)
+interface ResidentNoticeReportPageProps {
+  projectId?: string
+  projectName?: string
+}
+
+const ResidentNoticeReportPage: React.FC<ResidentNoticeReportPageProps> = ({ projectId, projectName }) => {
+  const [reports, setReports] = useState<ResidentNoticeReport[]>(() => loadReportsScoped(projectId))
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<'all' | NoticeStatus>('all')
@@ -201,7 +211,7 @@ const ResidentNoticeReportPage: React.FC = () => {
   const [msg, setMsg] = useState('')
   // 안내 보고서에서 발행된 공개 보고서 목록 (sourceReportId로 연결)
   const [publishedList, setPublishedList] = useState<StoredPublishedReport[]>(
-    () => loadPublishedReports().filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId),
+    () => loadPublishedReports(projectId).filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId),
   )
   const [lastShareUrl, setLastShareUrl] = useState('')
   const [lastPublishMode, setLastPublishMode] = useState<'new' | 'updated'>('new')
@@ -215,7 +225,7 @@ const ResidentNoticeReportPage: React.FC = () => {
   const [mntInsertMode, setMntInsertMode] = useState<'append' | 'overwrite'>('append')
 
   const openMntModal = () => {
-    setMntCandidates(loadPublicMaintenance())
+    setMntCandidates(loadPublicMaintenanceScoped(projectId))
     setMntSelected(new Set())
     setMntInsertMode('append')
     setMntModalOpen(true)
@@ -256,7 +266,7 @@ const ResidentNoticeReportPage: React.FC = () => {
       flash('보고월 형식을 YYYY-MM으로 입력해주세요.')
       return
     }
-    const records = loadPublicMaintenance().filter((r) => inMonth(r, ym))
+    const records = loadPublicMaintenanceScoped(projectId).filter((r) => inMonth(r, ym))
     setSummary({ ym, records, ...buildMonthlySummary(records, ym) })
     setSummaryOpen(true)
   }
@@ -296,7 +306,7 @@ const ResidentNoticeReportPage: React.FC = () => {
   }, [printReport])
 
   const refreshPublished = () =>
-    setPublishedList(loadPublishedReports().filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId))
+    setPublishedList(loadPublishedReports(projectId).filter((p) => p.sourceType === 'residentNoticeReport' && p.sourceReportId))
 
   const relatedPublished = (id: string) => publishedList.filter((p) => p.sourceReportId === id)
 
@@ -311,9 +321,14 @@ const ResidentNoticeReportPage: React.FC = () => {
   }
   const openPub = (url: string) => window.open(url, '_blank', 'noopener')
 
+  // 단지 전환 시 새 단지 reports로 reload.
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reports))
-  }, [reports])
+    setReports(loadReportsScoped(projectId))
+  }, [projectId])
+
+  useEffect(() => {
+    saveProjectScoped(STORAGE_KEY_BY_PROJECT, projectId, reports)
+  }, [reports, projectId])
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -386,22 +401,22 @@ const ResidentNoticeReportPage: React.FC = () => {
     const report = buildPublishedReport({ apartmentName: r.apartmentName, reportMonth: r.reportMonth, title: r.title, sections })
     const url = buildShareUrl(report)
 
-    const existing = findPublishedBySource('residentNoticeReport', r.id)
+    const existing = findPublishedBySource('residentNoticeReport', r.id, projectId)
     let mode: 'new' | 'updated'
     if (existing.length > 0) {
       // 기존 발행본이 있으면 갱신/새발행/취소 선택
       if (window.confirm('이 안내 보고서는 이미 공개 발행된 이력이 있습니다. 기존 공개본을 갱신하시겠습니까?')) {
-        updatePublishedReport(existing[0].id, report, url)
+        updatePublishedReport(existing[0].id, report, url, projectId)
         mode = 'updated'
       } else if (window.confirm('새 공개본으로 발행하시겠습니까?')) {
-        savePublishedReport(report, url, { sourceType: 'residentNoticeReport', sourceReportId: r.id })
+        savePublishedReport(report, url, { sourceType: 'residentNoticeReport', sourceReportId: r.id }, projectId)
         mode = 'new'
       } else {
         return
       }
     } else {
       if (!window.confirm('이 안내 보고서를 입주민 공개용 보고서로 발행하시겠습니까? 발행된 보고서는 공개 링크로 열람할 수 있습니다.')) return
-      savePublishedReport(report, url, { sourceType: 'residentNoticeReport', sourceReportId: r.id })
+      savePublishedReport(report, url, { sourceType: 'residentNoticeReport', sourceReportId: r.id }, projectId)
       mode = 'new'
     }
 
@@ -431,6 +446,12 @@ const ResidentNoticeReportPage: React.FC = () => {
         title="입주민 안내 보고서"
         description="입주민에게 공개할 월간 안내문/운영 안내 보고서를 직접 작성하고 관리합니다. (민감 정보는 입력하지 마세요)"
       />
+      <div className="rnr-project-banner">
+        <strong>현재 단지:</strong> {projectName || '(단지 선택 없음)'}
+        <span className="rnr-project-banner-hint">
+          · 보고서는 현재 단지({projectId || 'default'})에만 저장됩니다.
+        </span>
+      </div>
 
       {lastShareUrl && (
         <div className="rnr-publish-banner">

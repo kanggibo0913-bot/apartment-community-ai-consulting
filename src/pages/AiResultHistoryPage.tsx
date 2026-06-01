@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { AiResultEntry, deleteAiResult, loadAiResults } from '../utils/storage'
 import { RESIDENT_SECTIONS, buildPublishedReport, buildShareUrl } from '../utils/publishedReport'
@@ -84,8 +84,24 @@ const statusOf = (it: AiResultEntry): 'success' | 'error' => {
 const providerOf = (it: AiResultEntry): string => it.provider || 'unknown'
 const statusLabel = (s: 'success' | 'error') => (s === 'success' ? '성공' : '오류')
 
-const AiResultHistoryPage: React.FC = () => {
-  const [items, setItems] = useState<AiResultEntry[]>(() => loadAiResults())
+interface AiResultHistoryPageProps {
+  projectId?: string
+  projectName?: string
+}
+
+// 현재 단지의 AI 결과만 필터. AI 항목에 projectId 메타가 있으면 일치만, 없으면 'default'만.
+const filterByProject = (list: AiResultEntry[], projectId?: string): AiResultEntry[] => {
+  const target = (projectId || 'default').trim() || 'default'
+  return list.filter((e) => {
+    const owner = (e.projectId || 'default').trim() || 'default'
+    return owner === target
+  })
+}
+
+const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, projectName: _projectName }) => {
+  // _projectName은 향후 UI 배너 확장용 (이번 작업 범위 외, prop은 받기만 함).
+  void _projectName
+  const [items, setItems] = useState<AiResultEntry[]>(() => filterByProject(loadAiResults(), projectId))
   const [workFilter, setWorkFilter] = useState<'all' | 'bid' | 'ops'>('all')
   const [filter, setFilter] = useState('all')
   const [query, setQuery] = useState('')
@@ -105,7 +121,7 @@ const AiResultHistoryPage: React.FC = () => {
 
   // 입주민 공개 보고서 발행 이력
   const [view, setView] = useState<'ai' | 'published'>('ai')
-  const [published, setPublished] = useState<StoredPublishedReport[]>(() => loadPublishedReports())
+  const [published, setPublished] = useState<StoredPublishedReport[]>(() => loadPublishedReports(projectId))
   const [pubListMsg, setPubListMsg] = useState('')
 
   // 발행 이력 검색/필터/정렬
@@ -114,8 +130,15 @@ const AiResultHistoryPage: React.FC = () => {
   const [pubSourceFilter, setPubSourceFilter] = useState<'all' | SourceGroup>('all')
   const [pubSort, setPubSort] = useState<'latest' | 'oldest' | 'updated' | 'apartment' | 'reportMonth'>('latest')
 
-  const refresh = () => setItems(loadAiResults())
-  const refreshPublished = () => setPublished(loadPublishedReports())
+  const refresh = () => setItems(filterByProject(loadAiResults(), projectId))
+  const refreshPublished = () => setPublished(loadPublishedReports(projectId))
+
+  // 단지 전환 시 현재 단지 데이터로 다시 로드.
+  useEffect(() => {
+    refresh()
+    refreshPublished()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId])
 
   const openPublish = (entry: AiResultEntry) => {
     setPublishTarget(entry)
@@ -136,7 +159,7 @@ const AiResultHistoryPage: React.FC = () => {
     setShareUrl(url)
     setShareCopyMsg('')
     // 발행 이력에 저장 (위생처리된 PublishedReport 기준 데이터만)
-    savePublishedReport(report, url, { sourceType: 'aiResult' })
+    savePublishedReport(report, url, { sourceType: 'aiResult' }, projectId)
     refreshPublished()
   }
 
@@ -323,7 +346,7 @@ const AiResultHistoryPage: React.FC = () => {
       // 기존 + 중복 제외 신규 병합, 최대 100건 유지(기존 save 정책과 동일).
       const nextItems = [...items, ...uniqueImportedItems].slice(0, 100)
       window.localStorage.setItem('aiResultHistory', JSON.stringify(nextItems))
-      setItems(loadAiResults())
+      setItems(filterByProject(loadAiResults(), projectId))
       setCopyMsg(
         skippedCount > 0
           ? `${uniqueImportedItems.length}개의 AI 이력을 가져왔습니다. 중복 ${skippedCount}개는 건너뛰었습니다.`
@@ -416,13 +439,13 @@ const AiResultHistoryPage: React.FC = () => {
 
   // 공개 중지/재개 — 내부 표시만 변경(이미 공유된 URL은 차단되지 않음)
   const togglePublishedStatus = (id: string, current: PublishedStatus) => {
-    updatePublishedReportStatus(id, current === 'published' ? 'disabled' : 'published')
+    updatePublishedReportStatus(id, current === 'published' ? 'disabled' : 'published', projectId)
     refreshPublished()
   }
 
   const handleDeletePublished = (id: string) => {
     if (!window.confirm('이 발행 이력을 삭제하시겠습니까? (이미 공유된 링크 자체는 무효화되지 않습니다)')) return
-    deletePublishedReport(id)
+    deletePublishedReport(id, projectId)
     refreshPublished()
   }
 
