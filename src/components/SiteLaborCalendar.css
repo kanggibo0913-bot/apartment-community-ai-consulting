@@ -1,0 +1,362 @@
+/* 월간 근무시간 달력 (현장 인건비 산출 보조 섹션) */
+
+.labor-calendar-card {
+  margin-top: 18px;
+}
+
+.labor-calendar-note {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #6f4f00;
+}
+
+/* 1. 기본 입력 그리드 */
+.labor-base-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 14px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e3e8ef;
+}
+
+.labor-base-grid label {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: #475569;
+  gap: 4px;
+}
+
+.labor-base-grid label input[type='text'],
+.labor-base-grid label input[type='number'],
+.labor-base-grid label input[type='month'] {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #ffffff;
+}
+
+.labor-base-flag {
+  flex-direction: row !important;
+  align-items: center;
+  font-size: 13px !important;
+  color: #1f2a44 !important;
+}
+
+.labor-base-flag input {
+  margin-right: 6px;
+}
+
+/* 2. 월 툴바 (빠른 입력) */
+.labor-month-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.labor-bulk-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #f4f7fb;
+  border: 1px dashed #b8c4d6;
+  border-radius: 6px;
+}
+
+.labor-bulk-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.labor-bulk-label {
+  font-weight: 700;
+  font-size: 13px;
+  color: #1d4ed8;
+}
+
+.labor-flash {
+  font-size: 12px;
+  color: #198754;
+  background: #e7f6ee;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* 3. 달력 본체 */
+.site-labor-calendar {
+  margin-bottom: 16px;
+}
+
+.labor-week-table {
+  margin-bottom: 14px;
+  border: 1px solid #e3e8ef;
+  border-radius: 6px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.labor-week-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e3e8ef;
+}
+
+.labor-week-header h4 {
+  margin: 0;
+  font-size: 13px;
+  color: #1f2a44;
+}
+
+.labor-week-range {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.labor-week-grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.labor-week-grid th,
+.labor-week-grid td {
+  border: 1px solid #e3e8ef;
+  padding: 4px;
+  vertical-align: top;
+  text-align: left;
+}
+
+/* 4. 요일 헤더 색상 (사양 §4) */
+.labor-day-header {
+  background: #fafafa;
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+  padding: 4px 6px !important;
+}
+
+.labor-day-date {
+  font-size: 11.5px;
+  color: #1f2a44;
+}
+
+.labor-day-dow {
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: #64748b;
+}
+
+.labor-day-header--saturday {
+  background: #e7f1ff;
+}
+
+.labor-day-header--saturday .labor-day-date,
+.labor-day-header--saturday .labor-day-dow {
+  color: #1d4ed8;
+}
+
+.labor-day-header--sunday {
+  background: #ffe7eb;
+}
+
+.labor-day-header--sunday .labor-day-date,
+.labor-day-header--sunday .labor-day-dow {
+  color: #dc2626;
+}
+
+.labor-day-header--holiday {
+  background: #ffd6d6 !important;
+}
+
+.labor-day-header--holiday .labor-day-date,
+.labor-day-header--holiday .labor-day-dow {
+  color: #b91c1c;
+}
+
+.labor-day-header--outside {
+  background: #f3f4f6;
+  color: #94a3b8;
+}
+
+/* 5. 일자 셀 입력 */
+.labor-day-cell {
+  background: #ffffff;
+  font-size: 11px;
+  min-height: 110px;
+}
+
+.labor-day-cell--outside {
+  background: #f8f9fb;
+}
+
+.labor-day-cell--holiday {
+  background: #fff5f5;
+}
+
+.labor-day-empty {
+  display: block;
+  text-align: center;
+  color: #cbd5e1;
+  font-size: 14px;
+  padding: 30px 0;
+}
+
+.labor-day-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.labor-day-field span {
+  font-size: 10.5px;
+  color: #64748b;
+  min-width: 28px;
+}
+
+.labor-time-input,
+.labor-num-input {
+  width: 100%;
+  max-width: 78px;
+  padding: 2px 4px;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  font-size: 11px;
+  background: #ffffff;
+}
+
+.labor-num-input {
+  max-width: 50px;
+  text-align: right;
+}
+
+.labor-day-result {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0d3b66;
+  text-align: right;
+}
+
+.labor-day-holiday {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: #64748b;
+}
+
+.labor-day-holiday input {
+  margin: 0;
+}
+
+/* 6. 주차 요약 */
+.labor-week-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 6px 12px;
+  background: #f9fafb;
+  border-top: 1px solid #e3e8ef;
+  font-size: 11.5px;
+  color: #334155;
+}
+
+.labor-week-pay {
+  margin-left: auto;
+  font-weight: 700;
+  color: #0d6efd;
+}
+
+/* 7. 월간 합계 */
+.labor-month-summary {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+
+.labor-month-summary h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: #0d3b66;
+}
+
+.labor-month-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 14px;
+}
+
+.labor-month-grid > div {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  background: #ffffff;
+  border: 1px solid #e3e8ef;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.labor-month-grid span {
+  color: #64748b;
+  font-size: 11.5px;
+}
+
+.labor-month-grid strong {
+  font-size: 14px;
+  color: #1f2a44;
+  margin-top: 2px;
+}
+
+.labor-month-grand {
+  background: #e7f1ff !important;
+  border-color: #b4d2ff !important;
+}
+
+.labor-month-grand strong {
+  color: #1d4ed8 !important;
+}
+
+.labor-month-grand--salary {
+  background: #e7f6ee !important;
+  border-color: #b6e3c8 !important;
+}
+
+.labor-month-grand--salary strong {
+  color: #0a7f3f !important;
+}
+
+.labor-month-disclaimer {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.labor-empty {
+  padding: 24px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+}

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import Button from '../components/Button'
+import SiteLaborCalendar from '../components/SiteLaborCalendar'
 import {
   CalcSettings,
   DAYS,
@@ -700,6 +701,9 @@ const SiteLaborCostPage: React.FC = () => {
           </div>
         )}
       </Card>
+
+      {/* 월간 근무시간 달력 (보조 섹션) — 직원별 입력/요율과 별개의 일자별 실제 근무 입력. */}
+      <SiteLaborCalendar />
 
       <Card title={`저장본 관리 (${snapshots.length})`}>
         <div className="slc-snap-tools">
