@@ -4,6 +4,81 @@
   margin-top: 18px;
 }
 
+/* 급여요약 적용 기준 선택 영역 — 두 데이터 소스(직원별 계산결과 / 월별 달력 월간합계) 라디오 + 적용 버튼 */
+.payroll-source-section {
+  background: #f6f9ff;
+  border: 1px solid #c7d7fe;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.payroll-source-applied {
+  font-size: 13px;
+  color: #1d4ed8;
+}
+.payroll-source-applied strong {
+  margin-left: 4px;
+  color: #0d3b66;
+}
+.payroll-source-applied-time {
+  color: #475569;
+  margin-left: 4px;
+  font-weight: 400;
+}
+.payroll-source-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  margin: 8px 0 10px;
+}
+.payroll-source-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #d8e0ee;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+.payroll-source-choice.on {
+  border-color: #1d4ed8;
+  background: #eef4ff;
+}
+.payroll-source-choice input[type='radio'] {
+  margin: 0;
+}
+.payroll-source-choice-label {
+  font-weight: 600;
+  color: #0d3b66;
+  font-size: 13px;
+}
+.payroll-source-choice-sub {
+  flex: 1 1 100%;
+  margin-left: 22px;
+  color: #475569;
+  font-size: 12px;
+}
+.payroll-source-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.payroll-source-msg {
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 600;
+}
+.payroll-source-tag--applied {
+  background: #eef4ff;
+  color: #1d4ed8;
+  border: 1px solid #c7d7fe;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .payroll-info-box {
   margin: 0 0 14px;
   padding: 10px 12px;

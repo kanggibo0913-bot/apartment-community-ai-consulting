@@ -952,8 +952,35 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
         onCalendarChange={() => setPayrollRefreshNonce((v) => v + 1)}
       />
 
-      {/* 세전 급여 요약 + 급여명세서 초안 (보조 섹션). 캘린더 monthSummary를 입력으로 사용. */}
-      <SitePayrollPanel projectId={projectId} refreshNonce={payrollRefreshNonce} />
+      {/* 세전 급여 요약 + 급여명세서 초안 (보조 섹션).
+          calcResultSnapshot — 직원별 계산결과 합계를 panel에 전달. 적용 기준이 'calc'일 때
+          이 스냅샷이 적용 시점에 캡처되어 세전 급여 요약에 매핑된다. */}
+      <SitePayrollPanel
+        projectId={projectId}
+        refreshNonce={payrollRefreshNonce}
+        calcResultSnapshot={{
+          monthlyHours: totals.monthlyHours,
+          basePay: totals.basePay,
+          holidayPay: totals.holidayPay,
+          overtimePay: totals.overtimePay,
+          nightPay: totals.nightPay,
+          directPay: totals.directPay,
+          indirectTotal: totals.indirectTotal,
+          total: totals.total,
+          employeeCount: totals.count,
+          baseMonth: settings.baseMonth || '',
+          // 다수 직원의 payType을 기준으로 권장 default 추정 메타.
+          // 시급 우세 → calendar, 월급 우세 → calc, 동수/혼합 → 'mixed'.
+          dominantPayType: ((): '시급' | '월급' | 'mixed' => {
+            if (employees.length === 0) return 'mixed'
+            let h = 0, m = 0
+            employees.forEach((e) => { if (e.payType === '시급') h++; else if (e.payType === '월급') m++ })
+            if (h > m) return '시급'
+            if (m > h) return '월급'
+            return 'mixed'
+          })(),
+        }}
+      />
 
       <Card title={`저장본 관리 (${snapshots.length})`}>
         <div className="slc-snap-tools">

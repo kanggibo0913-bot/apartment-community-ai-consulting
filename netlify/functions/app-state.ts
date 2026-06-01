@@ -39,6 +39,10 @@ const ALLOWED_KEYS = new Set<string>([
   'siteLaborCostSnapshotsByProject',
   'siteLaborPayrollDraft',
   'siteLaborPayrollDraftByProject',
+  // 급여요약 적용 기준(direct calc vs calendar) — 단지별 분리 저장. 사용자가 다른 PC에서도
+  // 같은 적용 기준을 보고 싶을 가능성이 높아 동기화 대상에 포함.
+  'siteLaborPayrollSourcePref',
+  'siteLaborPayrollSourcePrefByProject',
   // 시설 보수/입주민 보고서 (legacy + ByProject)
   'maintenanceRecords',
   'maintenanceRecordsByProject',

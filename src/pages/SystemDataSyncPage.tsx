@@ -48,6 +48,7 @@ const SYNC_GROUPS: { title: string; items: { key: string; label: string }[] }[] 
       { key: 'siteLaborCostDataByProject', label: '현장 인건비 산출 입력값 (단지별)' },
       { key: 'siteLaborCostSnapshotsByProject', label: '현장 인건비 저장본 (단지별)' },
       { key: 'siteLaborPayrollDraftByProject', label: '급여 초안 (단지별)' },
+      { key: 'siteLaborPayrollSourcePrefByProject', label: '급여요약 적용 기준 (단지별)' },
     ],
   },
   {
@@ -65,6 +66,7 @@ const SYNC_GROUPS: { title: string; items: { key: string; label: string }[] }[] 
       { key: 'siteLaborCostData', label: '구버전 현장 인건비 산출 입력값 (legacy)' },
       { key: 'siteLaborCostSnapshots', label: '구버전 현장 인건비 저장본 (legacy)' },
       { key: 'siteLaborPayrollDraft', label: '구버전 급여 초안 (legacy)' },
+      { key: 'siteLaborPayrollSourcePref', label: '구버전 급여요약 적용 기준 (legacy)' },
       { key: 'maintenanceRecords', label: '구버전 시설 보수 내역 (legacy)' },
       { key: 'residentNoticeReports', label: '구버전 입주민 안내 보고서 (legacy)' },
       { key: 'publishedResidentReports', label: '구버전 입주민 공개 발행본 (legacy)' },

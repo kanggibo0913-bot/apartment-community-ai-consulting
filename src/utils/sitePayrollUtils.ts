@@ -145,6 +145,116 @@ export const sumNonTaxable = (items: PayrollNonTaxableItem[] | undefined): numbe
 export const sumDeductions = (d: PayrollDeductions): number =>
   d.pension + d.health + d.longTermCare + d.employment + d.incomeTax + d.localIncomeTax + d.etc
 
+// ─── 급여요약 적용 기준(소스) ─────────────────────────────────────────────
+// 사용자가 "직원별 계산결과" 또는 "월별 달력 월간합계" 중 하나를 선택해 [적용]하면
+// 그 시점의 값으로 세전 급여 요약/급여 초안이 갱신된다.
+//   - 'calendar': 캘린더 monthSummary + base.lessonAllowance 기반 (시급제 권장)
+//   - 'calc'    : SiteLaborCostPage 직원별 계산결과 합계 스냅샷 기반 (월급제 권장)
+// calc 적용 시에는 적용 시점의 합계 스냅샷을 함께 보존해, 이후 캘린더 입력값이
+// 바뀌어도 calc 기준의 세전 급여 요약은 변하지 않는다(= 적용된 값이 유지된다).
+export type PayrollSource = 'calendar' | 'calc'
+
+// 직원별 계산결과 합계 스냅샷(SiteLaborCostPage.totals의 부분집합).
+// 적용 시점 그대로 보존 → 캘린더 입력/직원 변경에 영향받지 않음.
+// dominantPayType은 권장 기본값 추정용 메타: 시급 우세면 calendar, 월급 우세면 calc 권장.
+export interface CalcResultSnapshot {
+  monthlyHours: number
+  basePay: number
+  holidayPay: number
+  overtimePay: number
+  nightPay: number
+  directPay: number
+  indirectTotal: number
+  total: number
+  employeeCount: number
+  baseMonth?: string // 기준 월 표시용
+  dominantPayType?: '시급' | '월급' | 'mixed'
+}
+
+export interface AppliedPayrollSource {
+  source: PayrollSource
+  appliedAt: string // ISO. 비어 있으면 미적용 상태(기본 표시는 calendar fallback).
+  // calc 적용 시점의 합계 스냅샷(소스가 'calc'일 때만 의미 있음).
+  calcSnapshot?: CalcResultSnapshot
+}
+
+export const emptyAppliedPayrollSource = (): AppliedPayrollSource => ({
+  source: 'calendar',
+  appliedAt: '',
+})
+
+// calc 합계 스냅샷 기반 PayrollDraft 생성.
+// - 직원별 계산결과 합계를 세전 항목(basePay/holidayPay/nightPay)에 매핑한다.
+// - 직원별 계산결과는 시급제 알바의 "달력에서 제외한 레슨수당" 같은 개별 조정값을 가지지 않으므로
+//   lessonAllowance는 항상 0으로 둔다(달력 기준이 살아나서 다시 합산되는 회귀를 차단).
+// - 사용자가 명시적으로 입력한 기타수당(extras)·비과세는 그대로 반영해 표시.
+// ⚠️ 이 함수는 calcSnapshot이 null이면 source='none' 빈 draft를 반환한다.
+export const buildPayrollDraftFromCalcSnapshot = (
+  snap: CalcResultSnapshot | null | undefined,
+  state: PayrollPersistedState,
+  meta?: { employeeName?: string; month?: string },
+): PayrollDraft => {
+  // snap이 비어 있으면 calc 기준이지만 표시할 합계가 없는 상태로 빈 draft를 생성.
+  // 이 경우 source='none'으로 표시해 패널이 "캘린더 데이터 없음"과 동일한 안내를 띄울 수 있게 한다.
+  if (!snap) {
+    const emptyExtras = sumExtras(state.extras)
+    const emptyDed = sumDeductions(state.deductions)
+    const emptyNonTax = sumNonTaxable(state.nonTaxableItems)
+    const empty: PayrollDraft = {
+      employeeName: '',
+      month: '',
+      payDate: state.payDate,
+      workDays: 0,
+      totalHours: 0,
+      gross: { totalHours: 0, basePay: 0, holidayPay: 0, nightPay: 0, lessonAllowance: 0, extrasTotal: emptyExtras, grossTotal: emptyExtras },
+      extras: state.extras,
+      nonTaxableItems: state.nonTaxableItems || [],
+      nonTaxableTotal: emptyNonTax,
+      taxablePayReference: Math.max(0, emptyExtras - emptyNonTax),
+      deductions: state.deductions,
+      deductionsTotal: emptyDed,
+      netPay: emptyExtras - emptyDed,
+      note: state.note,
+      source: 'none',
+      capturedAt: new Date().toISOString(),
+    }
+    return empty
+  }
+  const employeeName = (meta?.employeeName || '').trim()
+  const month = (meta?.month || snap.baseMonth || '').trim()
+  const totalHours = snap.monthlyHours || 0
+  const basePay = snap.basePay || 0
+  const holidayPay = snap.holidayPay || 0
+  const nightPay = snap.nightPay || 0
+  const lessonAllowance = 0 // calc 기준에서는 레슨수당을 다시 가져오지 않는다(회귀 차단)
+  const extrasTotal = sumExtras(state.extras)
+  const grossTotal = basePay + holidayPay + nightPay + lessonAllowance + extrasTotal
+  const deductionsTotal = sumDeductions(state.deductions)
+  const netPay = grossTotal - deductionsTotal
+  const nonTaxableItems = state.nonTaxableItems || []
+  const nonTaxableTotal = sumNonTaxable(nonTaxableItems)
+  const taxablePayReference = Math.max(0, grossTotal - nonTaxableTotal)
+  return {
+    employeeName,
+    month,
+    payDate: state.payDate,
+    workDays: 0, // calc 기준에는 실 출근 일수 개념이 없음(직원별 계산은 월합산값)
+    totalHours,
+    gross: { totalHours, basePay, holidayPay, nightPay, lessonAllowance, extrasTotal, grossTotal },
+    extras: state.extras,
+    nonTaxableItems,
+    nonTaxableTotal,
+    taxablePayReference,
+    deductions: state.deductions,
+    deductionsTotal,
+    netPay,
+    note: state.note,
+    source: 'calendar', // PayrollDraft.source 필드는 기존 union('calendar'|'none')만 허용 →
+    // calc 기준 표시는 AppliedPayrollSource를 별도 추적하므로 PayrollDraft 내부 source는 calendar로 둔다.
+    capturedAt: new Date().toISOString(),
+  }
+}
+
 // 캘린더 스냅샷 기반 PayrollDraft 생성. 캘린더가 없으면 빈 객체(source='none').
 // ⚠️ netPay = grossTotal - deductionsTotal 그대로 — 비과세를 실지급액에서 빼지 않는다.
 // 비과세 합계와 과세대상 급여 참고액은 표시용으로만 계산해 함께 반환.

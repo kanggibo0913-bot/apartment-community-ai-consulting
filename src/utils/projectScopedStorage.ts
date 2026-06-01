@@ -132,6 +132,7 @@ export const PROJECT_SCOPED_KEY_MAP = [
   { global: 'siteLaborCostSnapshots', byProject: 'siteLaborCostSnapshotsByProject', label: '현장 인건비 저장본' },
   { global: 'siteLaborCalendarInputs', byProject: 'siteLaborCalendarInputsByProject', label: '현장 인건비 근무표' },
   { global: 'siteLaborPayrollDraft', byProject: 'siteLaborPayrollDraftByProject', label: '급여 초안 (기타수당/공제액)' },
+  { global: 'siteLaborPayrollSourcePref', byProject: 'siteLaborPayrollSourcePrefByProject', label: '급여요약 적용 기준' },
   { global: 'maintenanceRecords', byProject: 'maintenanceRecordsByProject', label: '시설 보수 내역' },
   { global: 'residentNoticeReports', byProject: 'residentNoticeReportsByProject', label: '입주민 안내 보고서' },
   { global: 'publishedResidentReports', byProject: 'publishedResidentReportsByProject', label: '입주민 공개 발행본' },
