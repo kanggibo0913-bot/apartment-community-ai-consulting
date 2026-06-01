@@ -15,6 +15,11 @@ interface AIResultPanelProps {
   showHistory?: boolean
   // 통합 이력 메타데이터(옵셔널, 기존 사용처 미변경)
   sourcePage?: string
+  // 현재 선택 단지(프로젝트) 식별자/이름 — saveAiResult에 메타로 첨부되어
+  // AiResultHistoryPage에서 단지별 필터링에 사용된다. 입찰용 전역 페이지는
+  // projectId를 전달하지 않아 모든 단지에서 보이게 한다(legacy 동일).
+  projectId?: string
+  projectName?: string
 }
 
 const AIResultPanel: React.FC<AIResultPanelProps> = ({
@@ -29,6 +34,8 @@ const AIResultPanel: React.FC<AIResultPanelProps> = ({
   onLoadSaved,
   showHistory = false,
   sourcePage,
+  projectId,
+  projectName,
 }) => {
   const [statusMsg, setStatusMsg] = useState('')
   const [history, setHistory] = useState<AiResultEntry[]>([])
@@ -66,6 +73,8 @@ const AIResultPanel: React.FC<AIResultPanelProps> = ({
       status: 'success',
       provider: 'netlify',
       ...(sourcePage ? { sourcePage } : {}),
+      ...(projectId ? { projectId } : {}),
+      ...(projectName ? { projectName } : {}),
     })
     refreshHistory()
     flash('저장되었습니다.')

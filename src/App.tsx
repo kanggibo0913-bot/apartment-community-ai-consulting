@@ -782,13 +782,13 @@ function App() {
       case 'complaint':
         return <ComplaintInfo complaints={data.complaints} onChange={updateComplaints} />
       case 'document':
-        return <DocumentCenter data={data.documentCenter} onChange={updateDocumentCenter} />
+        return <DocumentCenter data={data.documentCenter} onChange={updateDocumentCenter} projectId={activeProject?.id} projectName={activeProject?.name} />
       case 'contract':
-        return <ContractGenerator data={data.contractGenerator} onChange={updateContractGenerator} />
+        return <ContractGenerator data={data.contractGenerator} onChange={updateContractGenerator} projectId={activeProject?.id} projectName={activeProject?.name} />
       case 'review':
-        return <ContractReview data={data.contractReview} onChange={updateContractReview} />
+        return <ContractReview data={data.contractReview} onChange={updateContractReview} projectId={activeProject?.id} projectName={activeProject?.name} />
       case 'agenda':
-        return <AgendaPredictor data={data.agendaPredictor} onChange={updateAgendaPredictor} />
+        return <AgendaPredictor data={data.agendaPredictor} onChange={updateAgendaPredictor} projectId={activeProject?.id} projectName={activeProject?.name} />
       case 'analysis':
         return <AIAnalysis data={data} />
       case 'report':
@@ -825,6 +825,8 @@ function App() {
               data={data}
               reportData={data.monthlyReport}
               onChange={updateMonthlyReport}
+              projectId={activeProject?.id}
+              projectName={activeProject?.name}
             />
           </>
         )

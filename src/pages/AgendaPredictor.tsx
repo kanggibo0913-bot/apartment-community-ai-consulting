@@ -12,6 +12,9 @@ import './Pages.css'
 interface AgendaPredictorProps {
   data: AgendaPredictorData
   onChange: (next: Partial<AgendaPredictorData>) => void
+  // 단지 식별자 — saveAiResult에 첨부되어 AiResultHistoryPage에서 단지별로 분리 표시된다.
+  projectId?: string
+  projectName?: string
 }
 
 const sourceTypes: SourceType[] = ['게시판 공지', '민원자료', '회의록', '운영일지', '기타']
@@ -19,7 +22,7 @@ const facilities: AgendaFacility[] = ['헬스장', '골프장', 'GX룸', '독서
 const urgencyLevels = ['낮음', '보통', '높음'] as const
 const frequencyLevels = ['낮음', '보통', '높음'] as const
 
-const AgendaPredictor: React.FC<AgendaPredictorProps> = ({ data, onChange }) => {
+const AgendaPredictor: React.FC<AgendaPredictorProps> = ({ data, onChange, projectId, projectName }) => {
   const [copyMessage, setCopyMessage] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
@@ -39,7 +42,7 @@ const AgendaPredictor: React.FC<AgendaPredictorProps> = ({ data, onChange }) => 
     const response = await callAiFunction('agendaPredict', data)
     if (response.success && response.result) {
       onChange({ generatedAgenda: response.result })
-      saveAiResult({ title: `${data.apartmentName?.trim() || '입대의'} 안건 예상`, taskType: 'agendaPredict', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'agenda' })
+      saveAiResult({ title: `${data.apartmentName?.trim() || '입대의'} 안건 예상`, taskType: 'agendaPredict', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'agenda', ...(projectId ? { projectId } : {}), ...(projectName ? { projectName } : {}) })
     } else {
       const errMsg = response.error || 'AI 안건 예측 중 오류가 발생했습니다.'
       setAiError(errMsg)
@@ -50,6 +53,8 @@ const AgendaPredictor: React.FC<AgendaPredictorProps> = ({ data, onChange }) => 
         error: errMsg,
         prompt: `단지명: ${data.apartmentName || '-'} / 시설: ${data.relatedFacility || '-'} / 출처유형: ${data.sourceType || '-'} / 긴급도: ${data.urgency || '-'}`,
         sourcePage: 'agenda',
+        ...(projectId ? { projectId } : {}),
+        ...(projectName ? { projectName } : {}),
       })
     }
     setAiLoading(false)

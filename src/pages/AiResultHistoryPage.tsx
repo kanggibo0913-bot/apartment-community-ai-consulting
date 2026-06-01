@@ -89,18 +89,22 @@ interface AiResultHistoryPageProps {
   projectName?: string
 }
 
-// 현재 단지의 AI 결과만 필터. AI 항목에 projectId 메타가 있으면 일치만, 없으면 'default'만.
+// 현재 단지의 AI 결과만 필터.
+// 정책:
+// - 항목에 projectId가 없는(=legacy or 입찰용 전역) 데이터는 모든 단지에서 노출.
+// - 항목에 projectId가 있으면 현재 단지와 일치할 때만 노출.
+// - 현재 projectId가 비어 있으면 안전하게 전부 노출(단지 미선택 상태 보호).
 const filterByProject = (list: AiResultEntry[], projectId?: string): AiResultEntry[] => {
-  const target = (projectId || 'default').trim() || 'default'
+  const cur = (projectId || '').trim()
   return list.filter((e) => {
-    const owner = (e.projectId || 'default').trim() || 'default'
-    return owner === target
+    const owner = (e.projectId || '').trim()
+    if (!owner) return true
+    if (!cur) return true
+    return owner === cur
   })
 }
 
-const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, projectName: _projectName }) => {
-  // _projectName은 향후 UI 배너 확장용 (이번 작업 범위 외, prop은 받기만 함).
-  void _projectName
+const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, projectName }) => {
   const [items, setItems] = useState<AiResultEntry[]>(() => filterByProject(loadAiResults(), projectId))
   const [workFilter, setWorkFilter] = useState<'all' | 'bid' | 'ops'>('all')
   const [filter, setFilter] = useState('all')
@@ -455,6 +459,16 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
         title="AI 결과 이력"
         description="공고문 분석, 월간 리포트, 계약서 검토, 공문 작성 등 AI가 생성한 결과를 한 곳에서 확인할 수 있습니다."
       />
+
+      {/* 단지 컨텍스트 배너 — 현재 어떤 단지의 이력을 보고 있는지 명시.
+          단지 메타 없는 항목(legacy/입찰 전역)은 모든 단지에서 동일하게 노출됨을 안내. */}
+      <div className="ai-history-project-banner">
+        <span className="ai-history-project-banner-label">현재 단지</span>
+        <strong className="ai-history-project-banner-name">{projectName?.trim() || '(단지 미선택)'}</strong>
+        <span className="ai-history-project-banner-note">
+          단지에 귀속된 AI 결과만 표시됩니다. 단지 메타가 없는 과거 이력 및 입찰 전역 결과(공고문 분석 등)는 모든 단지에서 동일하게 노출됩니다.
+        </span>
+      </div>
 
       <div className="ai-history-tabs">
         <button

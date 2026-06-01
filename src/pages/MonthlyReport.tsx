@@ -124,6 +124,9 @@ interface MonthlyReportProps {
   data: CommunityData
   reportData: MonthlyReportData
   onChange: (next: Partial<MonthlyReportData>) => void
+  // 단지 식별자 — AI 결과/오류 이력에 첨부되어 AiResultHistoryPage에서 단지별로 분리 표시.
+  projectId?: string
+  projectName?: string
 }
 
 const defaultMonthlyReportData: MonthlyReportData = {
@@ -135,7 +138,7 @@ const defaultMonthlyReportData: MonthlyReportData = {
   generatedReport: '',
 }
 
-const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData: reportDataProp, onChange }) => {
+const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData: reportDataProp, onChange, projectId, projectName }) => {
   const reportData = reportDataProp ?? defaultMonthlyReportData
   const currentMonth = new Date().toISOString().slice(0, 7)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -312,7 +315,7 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
         if (!text) {
           const errMsg = 'AI가 빈 응답을 반환했습니다. 잠시 후 다시 시도해주세요.'
           setAiError(errMsg)
-          saveAiErrorResult({ title: `${reportData.reportMonth || ''} 월간 리포트 오류`.trim(), taskType: 'monthlyReport', error: errMsg, prompt: promptSummary, sourcePage: 'monthly-report' })
+          saveAiErrorResult({ title: `${reportData.reportMonth || ''} 월간 리포트 오류`.trim(), taskType: 'monthlyReport', error: errMsg, prompt: promptSummary, sourcePage: 'monthly-report', ...(projectId ? { projectId } : {}), ...(projectName ? { projectName } : {}) })
         } else {
           onChange({ generatedReport: text })
           showMessage('AI 리포트 생성이 완료되었습니다.')
@@ -320,14 +323,14 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
       } else {
         const errMsg = result.error || 'AI 응답 생성 중 알 수 없는 오류가 발생했습니다.'
         setAiError(errMsg)
-        saveAiErrorResult({ title: `${reportData.reportMonth || ''} 월간 리포트 오류`.trim(), taskType: 'monthlyReport', error: errMsg, prompt: promptSummary, sourcePage: 'monthly-report' })
+        saveAiErrorResult({ title: `${reportData.reportMonth || ''} 월간 리포트 오류`.trim(), taskType: 'monthlyReport', error: errMsg, prompt: promptSummary, sourcePage: 'monthly-report', ...(projectId ? { projectId } : {}), ...(projectName ? { projectName } : {}) })
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       const errMsg = msg || 'AI 응답 생성 중 알 수 없는 오류가 발생했습니다.'
       setAiError(errMsg)
       const promptSummary = `보고월: ${reportData.reportMonth || '-'} / 요약메모: ${(reportData.summaryMemo || '').slice(0, 120)} / 주요이슈: ${(reportData.keyIssues || '').slice(0, 120)}`
-      saveAiErrorResult({ title: `${reportData.reportMonth || ''} 월간 리포트 오류`.trim(), taskType: 'monthlyReport', error: errMsg, prompt: promptSummary, sourcePage: 'monthly-report' })
+      saveAiErrorResult({ title: `${reportData.reportMonth || ''} 월간 리포트 오류`.trim(), taskType: 'monthlyReport', error: errMsg, prompt: promptSummary, sourcePage: 'monthly-report', ...(projectId ? { projectId } : {}), ...(projectName ? { projectName } : {}) })
     } finally {
       setAiLoading(false)
     }
@@ -510,6 +513,8 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
         onClear={() => onChange({ generatedReport: '' })}
         onLoadSaved={(content) => onChange({ generatedReport: content })}
         showHistory
+        {...(projectId ? { projectId } : {})}
+        {...(projectName ? { projectName } : {})}
       />
     </div>
   )

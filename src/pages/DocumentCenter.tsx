@@ -12,11 +12,14 @@ import './Pages.css'
 interface DocumentCenterProps {
   data: DocumentCenterData
   onChange: (next: Partial<DocumentCenterData>) => void
+  // 단지 식별자 — AI 결과에 첨부되어 AiResultHistoryPage에서 단지별로 분리 표시.
+  projectId?: string
+  projectName?: string
 }
 
 const documentTypes: DocumentType[] = ['공문', '안내문', '운영보고서', '정산요청서', '시설보수 요청서']
 
-const DocumentCenter: React.FC<DocumentCenterProps> = ({ data, onChange }) => {
+const DocumentCenter: React.FC<DocumentCenterProps> = ({ data, onChange, projectId, projectName }) => {
   const [copyMessage, setCopyMessage] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
@@ -36,7 +39,7 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ data, onChange }) => {
     const response = await callAiFunction('document', data)
     if (response.success && response.result) {
       onChange({ generatedDocument: response.result })
-      saveAiResult({ title: data.title?.trim() || `${data.documentType} 문서`, taskType: 'document', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'document' })
+      saveAiResult({ title: data.title?.trim() || `${data.documentType} 문서`, taskType: 'document', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'document', ...(projectId ? { projectId } : {}), ...(projectName ? { projectName } : {}) })
     } else {
       const errMsg = response.error || 'AI 생성 중 오류가 발생했습니다.'
       setAiError(errMsg)
@@ -47,6 +50,8 @@ const DocumentCenter: React.FC<DocumentCenterProps> = ({ data, onChange }) => {
         error: errMsg,
         prompt: `문서 종류: ${data.documentType || '-'} / 제목: ${data.title || '-'}`,
         sourcePage: 'document',
+        ...(projectId ? { projectId } : {}),
+        ...(projectName ? { projectName } : {}),
       })
     }
     setAiLoading(false)

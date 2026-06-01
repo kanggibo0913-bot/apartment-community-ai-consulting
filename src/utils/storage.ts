@@ -228,6 +228,9 @@ export function saveAiErrorResult(input: {
   sourcePage?: string
   provider?: string
   meta?: Record<string, unknown>
+  // 단지 식별자 — 단지별 분리 표시용 메타. 미설정 시 'default'.
+  projectId?: string
+  projectName?: string
 }): void {
   try {
     saveAiResult({
@@ -240,6 +243,8 @@ export function saveAiErrorResult(input: {
       error: input.error,
       ...(input.sourcePage ? { sourcePage: input.sourcePage } : {}),
       ...(input.meta ? { meta: input.meta } : {}),
+      ...(input.projectId ? { projectId: input.projectId } : {}),
+      ...(input.projectName ? { projectName: input.projectName } : {}),
     })
   } catch (e) {
     // 이력 저장이 실패해도 AI 호출 UX는 유지한다. 콘솔 경고만 남긴다.

@@ -12,9 +12,12 @@ import './Pages.css'
 interface ContractReviewProps {
   data: ContractReviewData
   onChange: (next: Partial<ContractReviewData>) => void
+  // 단지 식별자 — AI 결과에 첨부되어 AiResultHistoryPage에서 단지별로 분리 표시.
+  projectId?: string
+  projectName?: string
 }
 
-const ContractReview: React.FC<ContractReviewProps> = ({ data, onChange }) => {
+const ContractReview: React.FC<ContractReviewProps> = ({ data, onChange, projectId, projectName }) => {
   const [note, setNote] = useState('')
   const [copyMessage, setCopyMessage] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
@@ -53,7 +56,7 @@ const ContractReview: React.FC<ContractReviewProps> = ({ data, onChange }) => {
     })
     if (response.success && response.result) {
       onChange({ reviewResult: response.result })
-      saveAiResult({ title: `${data.uploadedFileName?.trim() || '계약서'} 검토 결과`, taskType: 'contractReview', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'review' })
+      saveAiResult({ title: `${data.uploadedFileName?.trim() || '계약서'} 검토 결과`, taskType: 'contractReview', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'review', ...(projectId ? { projectId } : {}), ...(projectName ? { projectName } : {}) })
     } else {
       const errMsg = response.error || 'AI 검토 중 오류가 발생했습니다.'
       setAiError(errMsg)
@@ -64,6 +67,8 @@ const ContractReview: React.FC<ContractReviewProps> = ({ data, onChange }) => {
         error: errMsg,
         prompt: `파일명: ${data.uploadedFileName || '-'} / 본문 길이: ${(data.contractText || '').length}자 (원문은 저장하지 않음)`,
         sourcePage: 'review',
+        ...(projectId ? { projectId } : {}),
+        ...(projectName ? { projectName } : {}),
       })
     }
     setAiLoading(false)

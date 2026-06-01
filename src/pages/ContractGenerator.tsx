@@ -12,6 +12,9 @@ import './Pages.css'
 interface ContractGeneratorProps {
   data: ContractGeneratorData
   onChange: (next: Partial<ContractGeneratorData>) => void
+  // 단지 식별자 — AI 결과에 첨부되어 AiResultHistoryPage에서 단지별로 분리 표시.
+  projectId?: string
+  projectName?: string
 }
 
 const contractTypes: ContractDocumentType[] = [
@@ -23,7 +26,7 @@ const contractTypes: ContractDocumentType[] = [
   '업무협약서',
 ]
 
-const ContractGenerator: React.FC<ContractGeneratorProps> = ({ data, onChange }) => {
+const ContractGenerator: React.FC<ContractGeneratorProps> = ({ data, onChange, projectId, projectName }) => {
   const [copyMessage, setCopyMessage] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
@@ -43,7 +46,7 @@ const ContractGenerator: React.FC<ContractGeneratorProps> = ({ data, onChange })
     const response = await callAiFunction('contractGenerate', data)
     if (response.success && response.result) {
       onChange({ generatedContract: response.result })
-      saveAiResult({ title: data.contractTitle?.trim() || data.contractType, taskType: 'contractGenerate', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'contract' })
+      saveAiResult({ title: data.contractTitle?.trim() || data.contractType, taskType: 'contractGenerate', content: response.result, status: 'success', provider: 'netlify', sourcePage: 'contract', ...(projectId ? { projectId } : {}), ...(projectName ? { projectName } : {}) })
     } else {
       const errMsg = response.error || 'AI 생성 중 오류가 발생했습니다.'
       setAiError(errMsg)
@@ -54,6 +57,8 @@ const ContractGenerator: React.FC<ContractGeneratorProps> = ({ data, onChange })
         error: errMsg,
         prompt: `계약 종류: ${data.contractType || '-'} / 제목: ${data.contractTitle || '-'}`,
         sourcePage: 'contract',
+        ...(projectId ? { projectId } : {}),
+        ...(projectName ? { projectName } : {}),
       })
     }
     setAiLoading(false)
