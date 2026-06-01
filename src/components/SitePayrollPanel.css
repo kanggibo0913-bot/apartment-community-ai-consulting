@@ -102,6 +102,61 @@
   font-size: 15px !important;
 }
 
+/* 세전 요약 그리드 — 비과세 합계: 보라 강조 */
+.payroll-nontaxable {
+  background: #f3e8ff !important;
+  border-color: #d8b4fe !important;
+}
+
+.payroll-nontaxable strong {
+  color: #7c3aed !important;
+}
+
+/* 세전 요약 그리드 — 과세대상 급여 참고액: 주황 강조 */
+.payroll-taxable-ref {
+  background: #ffedd5 !important;
+  border-color: #fdba74 !important;
+}
+
+.payroll-taxable-ref strong {
+  color: #c2410c !important;
+}
+
+/* 비과세 섹션 액션 버튼 그룹 (프리셋 + 빈 항목) */
+.payroll-nontax-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 비과세 합계 박스 — 공제 합계와 동일 베이스, 보라 강조 */
+.payroll-nontax-total {
+  background: #f3e8ff !important;
+  border-color: #d8b4fe !important;
+}
+
+.payroll-nontax-total strong {
+  color: #7c3aed !important;
+}
+
+/* 과세대상 급여 참고액 박스 — 주황 강조 */
+.payroll-taxable-ref-total {
+  background: #ffedd5 !important;
+  border-color: #fdba74 !important;
+}
+
+.payroll-taxable-ref-total strong {
+  color: #c2410c !important;
+}
+
+/* 급여명세서 초안의 비과세 표 */
+.payroll-doc-nontax th:nth-child(3),
+.payroll-doc-nontax td:nth-child(3) {
+  font-size: 11.5px;
+  color: #475569;
+  text-align: left;
+}
+
 .payroll-input-label {
   display: flex !important;
   flex-direction: column !important;

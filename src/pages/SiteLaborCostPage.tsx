@@ -403,10 +403,15 @@ const SiteLaborCostPage: React.FC = () => {
       return
     }
     const r0 = (n: number) => String(Math.round(Number.isFinite(n) ? n : 0))
+    // 비과세 항목 내역 — "항목명 금액 / 항목명 금액" 형태로 한 셀에 직렬화.
+    // 금액은 콤마 포맷(엑셀 표시 편의)으로 직렬화하되 CSV escape는 csvField가 처리.
+    const nontaxDetail = (draft.nonTaxableItems || [])
+      .map((e) => `${e.label || '비과세'} ${(e.amount || 0).toLocaleString('ko-KR')}`)
+      .join(' / ')
     const header = [
       '기준월','직원명','총근로시간','기본급','주휴수당','야간수당','레슨수당','기타수당',
       '세전총지급액','국민연금','건강보험','장기요양','고용보험','소득세','지방소득세','기타공제',
-      '공제합계','예상실지급액','비고',
+      '공제합계','예상실지급액','비과세항목내역','비과세합계','과세대상급여참고액','비고',
     ]
     const row = [
       draft.month,
@@ -427,6 +432,9 @@ const SiteLaborCostPage: React.FC = () => {
       r0(draft.deductions.etc),
       r0(draft.deductionsTotal),
       r0(draft.netPay),
+      nontaxDetail,
+      r0(draft.nonTaxableTotal || 0),
+      r0(draft.taxablePayReference || 0),
       draft.note,
     ]
     const csv = '﻿' + [header, row].map((cols) => cols.map(csvField).join(',')).join('\r\n')
@@ -1272,6 +1280,41 @@ const SiteLaborCostPage: React.FC = () => {
                       예상 실지급액: {fmtWonCal(printPayroll.netPay)}원
                     </span>
                   </div>
+
+                  {/* 비과세 항목 (세무사 확인용 참고) — 입력 있을 때만 노출. compact table. */}
+                  {(printPayroll.nonTaxableItems || []).length > 0 && (
+                    <>
+                      <h3 className="slc-print-subtitle">비과세 항목 (세무사 확인용 참고)</h3>
+                      <table className="slc-print-table slc-print-payroll-table slc-print-nontax-table">
+                        <thead>
+                          <tr><th>항목명</th><th>금액</th><th>참고한도/비고</th></tr>
+                        </thead>
+                        <tbody>
+                          {(printPayroll.nonTaxableItems || []).map((e) => (
+                            <tr key={e.id}>
+                              <th>{e.label || '비과세'}</th>
+                              <td>{fmtWonCal(e.amount)}</td>
+                              <td>{e.limitNote || ''}{e.memo ? ` · ${e.memo}` : ''}</td>
+                            </tr>
+                          ))}
+                          <tr className="slc-print-payroll-total">
+                            <th>비과세 합계</th>
+                            <td>{fmtWonCal(printPayroll.nonTaxableTotal || 0)}</td>
+                            <td></td>
+                          </tr>
+                          <tr>
+                            <th>과세대상 급여 참고액</th>
+                            <td>{fmtWonCal(printPayroll.taxablePayReference || 0)}</td>
+                            <td>세전 - 비과세 (표시용)</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      <p className="slc-print-payroll-note">
+                        과세대상 급여 참고액은 비과세 입력액을 차감한 내부 검토용 금액입니다. 실제 과세/공제 계산은 세무사 확정값을 따르세요.
+                      </p>
+                    </>
+                  )}
+
                   {printPayroll.note && (
                     <p className="slc-print-payroll-note">비고: {printPayroll.note}</p>
                   )}

@@ -4,13 +4,16 @@ import Button from './Button'
 import { buildCalendarSnapshot, fmtHours, fmtWon } from '../utils/siteLaborCalendarUtils'
 import {
   DEDUCTION_LABELS,
+  NON_TAXABLE_PRESETS,
   PayrollDeductions,
   PayrollExtra,
+  PayrollNonTaxableItem,
   PayrollPersistedState,
   buildPayrollDraftFromCalendar,
   emptyPayrollState,
   loadPayrollState,
   newExtra,
+  newNonTaxableItem,
   savePayrollState,
 } from '../utils/sitePayrollUtils'
 import './SitePayrollPanel.css'
@@ -67,6 +70,25 @@ const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ refreshNonce = 0 })
       extras: prev.extras.map((e) => (e.id === id ? { ...e, ...patch } : e)),
     }))
 
+  // 비과세 항목 핸들러 — nonTaxableItems가 옵셔널이라 빈 배열로 정규화한 뒤 조작.
+  const addNonTaxable = (preset?: { label?: string; limitNote?: string }) =>
+    setState((prev) => ({
+      ...prev,
+      nonTaxableItems: [...(prev.nonTaxableItems || []), newNonTaxableItem(preset)],
+    }))
+  const removeNonTaxable = (id: string) =>
+    setState((prev) => ({
+      ...prev,
+      nonTaxableItems: (prev.nonTaxableItems || []).filter((e) => e.id !== id),
+    }))
+  const updateNonTaxable = (id: string, patch: Partial<PayrollNonTaxableItem>) =>
+    setState((prev) => ({
+      ...prev,
+      nonTaxableItems: (prev.nonTaxableItems || []).map((e) =>
+        e.id === id ? { ...e, ...patch } : e,
+      ),
+    }))
+
   const resetAll = () => {
     if (!window.confirm('기타수당과 공제액 입력값을 모두 초기화하시겠습니까?')) return
     setState(emptyPayrollState())
@@ -105,6 +127,19 @@ const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ refreshNonce = 0 })
             <span>세전 총지급액</span>
             <strong>{fmtWon(draft.gross.grossTotal)}원</strong>
           </div>
+          {/* 비과세 입력이 있을 때만 노출. 실지급액에서 차감하지 않는 표시용 참고 값. */}
+          {(draft.nonTaxableTotal ?? 0) > 0 && (
+            <>
+              <div className="payroll-nontaxable">
+                <span>비과세 합계</span>
+                <strong>{fmtWon(draft.nonTaxableTotal || 0)}원</strong>
+              </div>
+              <div className="payroll-taxable-ref">
+                <span>과세대상 급여 참고액</span>
+                <strong>{fmtWon(draft.taxablePayReference || 0)}원</strong>
+              </div>
+            </>
+          )}
         </div>
       </section>
 
@@ -162,6 +197,96 @@ const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ refreshNonce = 0 })
             </tbody>
           </table>
         )}
+      </section>
+
+      {/* 2-bis. 비과세 항목 입력 (세무사 확인용 참고) */}
+      <section className="payroll-section payroll-nontax-section">
+        <div className="payroll-section-head">
+          <h4>비과세 항목</h4>
+          <div className="payroll-nontax-actions">
+            {NON_TAXABLE_PRESETS.map((p) => (
+              <Button
+                key={p.label}
+                variant="secondary"
+                onClick={() => addNonTaxable(p)}
+              >
+                + {p.label}
+              </Button>
+            ))}
+            <Button variant="secondary" onClick={() => addNonTaxable()}>+ 빈 항목</Button>
+          </div>
+        </div>
+        <p className="payroll-note">
+          비과세 항목은 <strong>세무사 확인용 참고 입력</strong>입니다. 실제 비과세 적용 여부와 한도는 세무사 검토 후 확정하세요.
+          비과세 합계는 표시용 참고 값이며, <strong>예상 실지급액에서 차감되지 않습니다.</strong>
+        </p>
+        {(state.nonTaxableItems || []).length === 0 ? (
+          <p className="payroll-empty">
+            예: 식대 / 자가운전보조금 / 출산·보육수당. 위 프리셋 버튼 또는 "빈 항목"으로 추가하세요.
+          </p>
+        ) : (
+          <table className="payroll-extras-table">
+            <thead>
+              <tr>
+                <th>항목명</th>
+                <th>금액 (원)</th>
+                <th>참고한도/비고</th>
+                <th>메모</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(state.nonTaxableItems || []).map((e) => (
+                <tr key={e.id}>
+                  <td>
+                    <input
+                      type="text"
+                      value={e.label}
+                      onChange={(ev) => updateNonTaxable(e.id, { label: ev.target.value })}
+                      placeholder="예: 식대"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={e.amount}
+                      onChange={(ev) => updateNonTaxable(e.id, { amount: numVal(ev.target.value) })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      value={e.limitNote || ''}
+                      onChange={(ev) => updateNonTaxable(e.id, { limitNote: ev.target.value })}
+                      placeholder="예: 세무사 확인 (월 한도 참고)"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      value={e.memo || ''}
+                      onChange={(ev) => updateNonTaxable(e.id, { memo: ev.target.value })}
+                      placeholder="내부 메모"
+                    />
+                  </td>
+                  <td>
+                    <Button variant="danger" onClick={() => removeNonTaxable(e.id)}>삭제</Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div className="payroll-deductions-total payroll-nontax-total">
+          <span>비과세 합계 (참고)</span>
+          <strong>{fmtWon(draft.nonTaxableTotal || 0)}원</strong>
+        </div>
+        <div className="payroll-deductions-total payroll-taxable-ref-total">
+          <span>과세대상 급여 참고액 (세전 - 비과세)</span>
+          <strong>{fmtWon(draft.taxablePayReference || 0)}원</strong>
+        </div>
       </section>
 
       {/* 3. 공제액 입력 */}
@@ -252,6 +377,40 @@ const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ refreshNonce = 0 })
                 </tr>
               </tbody>
             </table>
+
+            {/* 비과세 항목 (입력이 있을 때만) — 표시용 참고 표 */}
+            {(draft.nonTaxableItems || []).length > 0 && (
+              <>
+                <h5 className="payroll-subtitle">비과세 항목 (세무사 확인용 참고)</h5>
+                <table className="payroll-doc-table payroll-doc-nontax">
+                  <thead>
+                    <tr><th>항목명</th><th>금액</th><th>참고한도/비고</th></tr>
+                  </thead>
+                  <tbody>
+                    {(draft.nonTaxableItems || []).map((e) => (
+                      <tr key={e.id}>
+                        <th>{e.label || '비과세'}</th>
+                        <td className="num">{fmtWon(e.amount)}</td>
+                        <td>{e.limitNote || ''}{e.memo ? ` · ${e.memo}` : ''}</td>
+                      </tr>
+                    ))}
+                    <tr className="payroll-doc-total">
+                      <th>비과세 합계</th>
+                      <td className="num">{fmtWon(draft.nonTaxableTotal || 0)}</td>
+                      <td></td>
+                    </tr>
+                    <tr>
+                      <th>과세대상 급여 참고액</th>
+                      <td className="num">{fmtWon(draft.taxablePayReference || 0)}</td>
+                      <td>세전 - 비과세 (표시용)</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p className="payroll-doc-disclaimer">
+                  과세대상 급여 참고액은 비과세 입력액을 차감한 내부 검토용 금액입니다. 실제 과세/공제 계산은 세무사 확정값을 따르세요.
+                </p>
+              </>
+            )}
 
             <h5 className="payroll-subtitle">공제 항목</h5>
             <table className="payroll-doc-table">
