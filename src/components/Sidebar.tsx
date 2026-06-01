@@ -57,6 +57,13 @@ const menuGroups: MenuGroup[] = [
       { id: 'ai-history', label: 'AI 결과 이력', icon: '🗂️' },
     ],
   },
+  {
+    id: 'system',
+    title: '시스템',
+    items: [
+      { id: 'system-data-sync', label: '데이터 동기화', icon: '☁️' },
+    ],
+  },
 ]
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, isOpen, onClose }) => {
