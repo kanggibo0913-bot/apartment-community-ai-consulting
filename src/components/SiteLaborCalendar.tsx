@@ -27,6 +27,9 @@ interface DayEntry {
   breakHours: number
   nightHours: number // 야간 가산 적용 시간(시간 단위)
   isHoliday: boolean // 수동 공휴일 체크
+  // 휴무(연차/휴무/출근하지 않은 날) 체크. true면 출근/퇴근/휴게/야간/메모는 비워지고 근로시간 0으로 계산.
+  // 옵셔널 — 기존 저장 데이터 하위호환.
+  isOff?: boolean
   memo: string
 }
 
@@ -58,6 +61,7 @@ const emptyDay = (): DayEntry => ({
   breakHours: 0,
   nightHours: 0,
   isHoliday: false,
+  isOff: false,
   memo: '',
 })
 
@@ -95,7 +99,9 @@ const toMin = (s: string): number | null => {
 
 // 일자별 근로시간 (시간 단위, 소수 허용).
 // 퇴근 < 출근이면 익일 퇴근으로 간주 (예: 22:00 ~ 02:00 → 4시간 + 휴게 차감).
+// isOff=true(휴무)이면 입력값과 무관하게 0 — 주차/월간 합계에서 자연스럽게 제외된다.
 const dayWorkHours = (d: DayEntry): number => {
+  if (d.isOff) return 0
   const s = toMin(d.start)
   const e = toMin(d.end)
   if (s == null || e == null) return 0
@@ -169,6 +175,34 @@ const SiteLaborCalendar: React.FC = () => {
       return {
         ...prev,
         [month]: { ...(prev[month] || {}), [key]: { ...cur, ...patch } },
+      }
+    })
+  }
+
+  // 일자별 입력 초기화 (휴지통). 해당 날짜의 출근/퇴근/휴게/야간/메모/공휴일 체크/휴무 체크 모두 비운다.
+  // 다른 날짜·다른 월 데이터는 손대지 않는다. localStorage는 useEffect로 자동 동기화.
+  const clearDay = (key: string) => {
+    setMonthDays((prev) => {
+      const month = base.selectedMonth
+      const curMonth = prev[month] || {}
+      if (!curMonth[key]) return prev // 이미 비어 있으면 변경 없음
+      const { [key]: _removed, ...rest } = curMonth
+      return { ...prev, [month]: rest }
+    })
+  }
+
+  // 휴무(연차/휴무) 토글. 휴무로 체크하면 해당 날짜의 입력값은 비우고 isOff=true로 표시.
+  // 다시 휴무를 해제하면 isOff=false로 두어 입력 가능 상태로 돌아온다(입력값은 빈 채 유지).
+  const toggleOff = (key: string, on: boolean) => {
+    setMonthDays((prev) => {
+      const month = base.selectedMonth
+      const cur = (prev[month] || {})[key] || emptyDay()
+      const next: DayEntry = on
+        ? { ...emptyDay(), isOff: true }
+        : { ...cur, isOff: false }
+      return {
+        ...prev,
+        [month]: { ...(prev[month] || {}), [key]: next },
       }
     })
   }
@@ -447,22 +481,38 @@ const SiteLaborCalendar: React.FC = () => {
                       {week.map((cell) => {
                         const day = currentDays[cell.dateKey] || emptyDay()
                         const hours = dayWorkHours(day)
+                        const isOff = !!day.isOff
+                        // 휴무가 우선 시각적으로 표시되지만 공휴일도 같이 체크된 경우 공휴일 색상을 유지(사양 §3).
                         const cellCls =
                           'labor-day-cell' +
                           (!cell.inMonth ? ' labor-day-cell--outside' : '') +
-                          (day.isHoliday ? ' labor-day-cell--holiday' : '')
+                          (day.isHoliday ? ' labor-day-cell--holiday' : '') +
+                          (isOff && !day.isHoliday ? ' labor-day-cell--off' : '')
                         return (
                           <td key={cell.dateKey} className={cellCls}>
                             {!cell.inMonth ? (
                               <span className="labor-day-empty">·</span>
                             ) : (
                               <>
+                                {/* 셀 우측 상단 휴지통 — 이 날짜만 초기화 (다른 날짜·다른 월 영향 없음) */}
+                                <div className="labor-day-actions">
+                                  <button
+                                    type="button"
+                                    className="labor-day-clear"
+                                    onClick={() => clearDay(cell.dateKey)}
+                                    title="이 날짜 입력 초기화"
+                                    aria-label="이 날짜 입력 초기화"
+                                  >
+                                    🗑
+                                  </button>
+                                </div>
                                 <div className="labor-day-field">
                                   <span>출근</span>
                                   <input
                                     type="time"
                                     className="labor-time-input"
                                     value={day.start}
+                                    disabled={isOff}
                                     onChange={(e) => updateDay(cell.dateKey, { start: e.target.value })}
                                   />
                                 </div>
@@ -472,6 +522,7 @@ const SiteLaborCalendar: React.FC = () => {
                                     type="time"
                                     className="labor-time-input"
                                     value={day.end}
+                                    disabled={isOff}
                                     onChange={(e) => updateDay(cell.dateKey, { end: e.target.value })}
                                   />
                                 </div>
@@ -483,6 +534,7 @@ const SiteLaborCalendar: React.FC = () => {
                                     min="0"
                                     className="labor-num-input"
                                     value={day.breakHours}
+                                    disabled={isOff}
                                     onChange={(e) =>
                                       updateDay(cell.dateKey, { breakHours: numVal(e.target.value) })
                                     }
@@ -497,13 +549,16 @@ const SiteLaborCalendar: React.FC = () => {
                                       min="0"
                                       className="labor-num-input"
                                       value={day.nightHours}
+                                      disabled={isOff}
                                       onChange={(e) =>
                                         updateDay(cell.dateKey, { nightHours: numVal(e.target.value) })
                                       }
                                     />
                                   </div>
                                 )}
-                                <div className="labor-day-result">근로 {fmtHours(hours)}</div>
+                                <div className="labor-day-result">
+                                  {isOff ? '휴무' : `근로 ${fmtHours(hours)}`}
+                                </div>
                                 <label className="labor-day-holiday">
                                   <input
                                     type="checkbox"
@@ -513,6 +568,14 @@ const SiteLaborCalendar: React.FC = () => {
                                     }
                                   />
                                   공휴일
+                                </label>
+                                <label className="labor-day-off">
+                                  <input
+                                    type="checkbox"
+                                    checked={isOff}
+                                    onChange={(e) => toggleOff(cell.dateKey, e.target.checked)}
+                                  />
+                                  휴무
                                 </label>
                               </>
                             )}

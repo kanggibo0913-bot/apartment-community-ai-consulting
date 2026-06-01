@@ -210,6 +210,53 @@
   background: #fff5f5;
 }
 
+/* 휴무(연차/휴무) — 연한 회색 (공휴일이 같이 체크된 경우엔 공휴일 색상 유지) */
+.labor-day-cell--off {
+  background: #f3f4f6;
+}
+
+/* 셀 우측 상단 액션 영역 (휴지통 등). 평소 흐릿하게, hover/focus 시 또렷하게. */
+.labor-day-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.labor-day-clear {
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  color: #94a3b8;
+  opacity: 0.55;
+  border-radius: 3px;
+}
+
+.labor-day-clear:hover,
+.labor-day-clear:focus {
+  opacity: 1;
+  color: #dc2626;
+  background: #fef2f2;
+  outline: none;
+}
+
+/* 휴무 체크 라벨 (공휴일 라벨과 같은 톤·작은 글자) */
+.labor-day-off {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: #64748b;
+}
+
+.labor-day-off input {
+  margin: 0;
+}
+
 .labor-day-empty {
   display: block;
   text-align: center;
