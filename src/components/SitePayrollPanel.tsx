@@ -3,6 +3,7 @@ import Card from './Card'
 import Button from './Button'
 import { buildCalendarSnapshot, fmtHours, fmtWon } from '../utils/siteLaborCalendarUtils'
 import {
+  AbsenceDeductionMode,
   AppliedPayrollSource,
   CalcResultSnapshot,
   DEDUCTION_LABELS,
@@ -11,12 +12,15 @@ import {
   PayrollDeductions,
   PayrollDraft,
   PayrollExtra,
+  PayrollMonthlyAdjustment,
   PayrollNonTaxableItem,
   PayrollPersistedState,
   PayrollSource,
   buildPayrollDraftFromCalcSnapshot,
   buildPayrollDraftFromCalendar,
+  computeMonthDays,
   emptyAppliedPayrollSource,
+  emptyMonthlyAdjustment,
   emptyPayrollState,
   loadPayrollState,
   newExtra,
@@ -40,12 +44,14 @@ const loadPayrollStateScoped = (projectId: string | undefined): PayrollPersisted
   )
   if (!raw) return loadPayrollState()
   // sitePayrollUtils의 emptyPayrollState 구조에 맞춰 안전 정규화.
+  // monthlyAdjustment는 옵셔널 — 과거 저장본은 이 필드가 없을 수 있어 emptyMonthlyAdjustment로 보강.
   return {
     extras: Array.isArray(raw.extras) ? raw.extras : [],
     nonTaxableItems: Array.isArray(raw.nonTaxableItems) ? raw.nonTaxableItems : [],
     deductions: { ...emptyPayrollState().deductions, ...(raw.deductions || {}) },
     payDate: raw.payDate || '',
     note: raw.note || '',
+    monthlyAdjustment: { ...emptyMonthlyAdjustment(), ...(raw.monthlyAdjustment || {}) },
   }
 }
 import './SitePayrollPanel.css'
@@ -155,6 +161,14 @@ const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ projectId, refreshN
   const updateDeduction = (key: keyof PayrollDeductions, value: number) =>
     setState((prev) => ({ ...prev, deductions: { ...prev.deductions, [key]: value } }))
 
+  // 월급제 예외 조정(실비) — state.monthlyAdjustment를 부분 패치. 옵셔널 필드라 emptyMonthlyAdjustment로 보강.
+  const adjustment: PayrollMonthlyAdjustment = state.monthlyAdjustment ?? emptyMonthlyAdjustment()
+  const updateAdjustment = (patch: Partial<PayrollMonthlyAdjustment>) =>
+    setState((prev) => ({
+      ...prev,
+      monthlyAdjustment: { ...emptyMonthlyAdjustment(), ...(prev.monthlyAdjustment || {}), ...patch },
+    }))
+
   const addExtra = () => setState((prev) => ({ ...prev, extras: [...prev.extras, newExtra()] }))
   const removeExtra = (id: string) =>
     setState((prev) => ({ ...prev, extras: prev.extras.filter((e) => e.id !== id) }))
@@ -226,17 +240,20 @@ const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ projectId, refreshN
         세무사 또는 급여명세서 확정 금액을 사용자가 직접 입력하는 내부 검토용 초안입니다.
       </div>
 
-      {/* 0. 급여요약 적용 기준 — 사용자가 두 데이터 소스 중 하나를 명시적으로 선택 + [적용] */}
+      {/* 0. 급여/실비 적용 기준 — 사용자가 두 데이터 소스 중 하나를 명시적으로 선택 + [적용]
+              월급제 직원은 calc + 월급제 예외 조정(결근/무급/추가수당)으로 실제 지급액(실비)을 산출. */}
       <section className="payroll-section payroll-source-section">
         <div className="payroll-section-head">
-          <h4>급여요약 적용 기준</h4>
+          <h4>급여/실비 적용 기준</h4>
           <span className="payroll-source-applied">
             적용 기준: <strong>{sourceLabel(applied.source)}</strong>
             <span className="payroll-source-applied-time"> · 적용일시: {appliedAtLabel}</span>
           </span>
         </div>
         <p className="payroll-note">
-          월급제 직원은 <strong>직원별 계산결과</strong> 기준을 사용할 수 있습니다. 시급제·알바 직원은 실제 근무일 기준의 <strong>월별 달력 월간합계</strong> 적용을 권장합니다.
+          실비 적용 금액은 단순 자동계산값이 아니라 <strong>실제 지급/정산에 사용할 최종 적용값</strong>입니다.
+          시급제·알바 직원은 실제 근무일 기준의 <strong>월별 달력 월간합계</strong> 적용을 권장합니다.
+          월급제·고정급 직원은 매월 달력으로 전체 산출하기보다 <strong>기본 월급 기준 + 결근/무급 등 예외 조정</strong>을 권장합니다.
           적용 후 세전급여요약은 선택한 기준으로 재산출되며, 달력에서 제외한 레슨수당·수당·조정값은 다시 나타나지 않습니다.
         </p>
         <div className="payroll-source-choices">
@@ -276,6 +293,99 @@ const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ projectId, refreshN
           {applyMsg && <span className="payroll-source-msg">{applyMsg}</span>}
         </div>
       </section>
+
+      {/* 0-bis. 월급제 예외 조정 (실비 적용) — calc 기준 선택 또는 적용 상태일 때만 노출.
+                결근/무급휴가/추가수당/기타공제를 입력해 최종 실제 지급 세전급여를 산출. */}
+      {(pendingSource === 'calc' || applied.source === 'calc') && (
+        <section className="payroll-section payroll-adjust-section">
+          <div className="payroll-section-head">
+            <h4>월급제 예외 조정 (실비 적용)</h4>
+            <label className="payroll-adjust-toggle">
+              <input
+                type="checkbox"
+                checked={!!adjustment.enabled}
+                onChange={(e) => updateAdjustment({ enabled: e.target.checked })}
+              />
+              조정 사용
+            </label>
+          </div>
+          <p className="payroll-note">
+            월급제·고정급 직원의 결근/무급휴가/추가수당/기타공제를 반영해 <strong>실제 지급 세전급여(실비)</strong>를 산출합니다.
+            "조정 사용" 체크 시 calc 적용 기준의 최종 세전급여가 아래 입력값으로 재계산됩니다.
+          </p>
+          <div className="payroll-grid">
+            <label className="payroll-input-label">
+              기본 월급
+              <input
+                type="number" min="0" step="1"
+                value={adjustment.baseMonthlySalary}
+                onChange={(e) => updateAdjustment({ baseMonthlySalary: numVal(e.target.value) })}
+                placeholder="비워두면 직원별 계산결과 합계 사용"
+              />
+            </label>
+            <label className="payroll-input-label">
+              결근일수
+              <input type="number" min="0" step="1" value={adjustment.absenceDays}
+                onChange={(e) => updateAdjustment({ absenceDays: numVal(e.target.value) })} />
+            </label>
+            <label className="payroll-input-label">
+              무급휴가일수
+              <input type="number" min="0" step="1" value={adjustment.unpaidLeaveDays}
+                onChange={(e) => updateAdjustment({ unpaidLeaveDays: numVal(e.target.value) })} />
+            </label>
+            <label className="payroll-input-label">
+              추가수당
+              <input type="number" min="0" step="1" value={adjustment.additionalAllowance}
+                onChange={(e) => updateAdjustment({ additionalAllowance: numVal(e.target.value) })} />
+            </label>
+            <label className="payroll-input-label">
+              기타공제
+              <input type="number" min="0" step="1" value={adjustment.otherDeduction}
+                onChange={(e) => updateAdjustment({ otherDeduction: numVal(e.target.value) })} />
+            </label>
+            <label className="payroll-input-label">
+              계산 방식
+              <select
+                value={adjustment.deductionMode}
+                onChange={(e) => updateAdjustment({ deductionMode: e.target.value as AbsenceDeductionMode })}
+              >
+                <option value="calendarDays">월급 × 결근일수 ÷ 당월일수</option>
+                <option value="workDays">월급 × 결근일수 ÷ 소정근무일수</option>
+                <option value="manual">직접 입력</option>
+              </select>
+            </label>
+            {adjustment.deductionMode === 'workDays' && (
+              <label className="payroll-input-label">
+                소정근무일수
+                <input type="number" min="0" step="1" value={adjustment.workDaysOverride}
+                  onChange={(e) => updateAdjustment({ workDaysOverride: numVal(e.target.value) })}
+                  placeholder="예: 22" />
+              </label>
+            )}
+            {adjustment.deductionMode === 'manual' && (
+              <label className="payroll-input-label">
+                공제액(직접 입력)
+                <input type="number" min="0" step="1" value={adjustment.manualDeduction}
+                  onChange={(e) => updateAdjustment({ manualDeduction: numVal(e.target.value) })} />
+              </label>
+            )}
+            <label className="payroll-input-label payroll-adjust-reason">
+              조정 사유 메모
+              <textarea
+                rows={2}
+                value={adjustment.reason}
+                onChange={(e) => updateAdjustment({ reason: e.target.value })}
+                placeholder="예: 06/12~06/13 결근 2일, 무급휴가 1일 차감"
+              />
+            </label>
+          </div>
+          {applied.source !== 'calc' && (
+            <p className="payroll-note payroll-adjust-pending">
+              실비 조정은 <strong>직원별 계산결과 적용</strong> 후 세전급여요약에 반영됩니다. 위에서 [선택 기준 적용]을 눌러주세요.
+            </p>
+          )}
+        </section>
+      )}
 
       {/* 1. 세전 급여 요약 */}
       <section className="payroll-section">
@@ -324,6 +434,48 @@ const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ projectId, refreshN
             </>
           )}
         </div>
+
+        {/* 월급제 실비 적용 결과 — adjustment가 적용된 경우에만 표시.
+            기본 금액 / 공제 금액 / 추가 금액 / 최종 세전급여 / 조정 사유 / 적용 기준·적용일시 */}
+        {draft.adjustment?.enabled && (
+          <div className="payroll-adjust-summary">
+            <h5 className="payroll-subtitle">월급제 실비 적용 결과</h5>
+            <div className="payroll-grid">
+              <div><span>적용 기준</span><strong>{sourceLabel(applied.source)}</strong></div>
+              <div><span>기본 금액</span><strong>{fmtWon(draft.adjustment.baseAmount)}원</strong></div>
+              <div>
+                <span>공제 금액</span>
+                <strong>
+                  -{fmtWon(draft.adjustment.deductionAmount + draft.adjustment.otherDeduction)}원
+                  <span className="payroll-adjust-sub">
+                    {' '}(결근/무급 {fmtWon(draft.adjustment.deductionAmount)} + 기타 {fmtWon(draft.adjustment.otherDeduction)})
+                  </span>
+                </strong>
+              </div>
+              <div><span>추가 금액</span><strong>+{fmtWon(draft.adjustment.additionAmount)}원</strong></div>
+              <div className="payroll-grand payroll-adjust-final">
+                <span>최종 세전급여</span>
+                <strong>{fmtWon(draft.adjustment.finalGross)}원</strong>
+              </div>
+              <div className="payroll-adjust-meta">
+                <span>적용일시</span><strong>{appliedAtLabel}</strong>
+              </div>
+              {draft.adjustment.reason && (
+                <div className="payroll-adjust-meta">
+                  <span>조정 사유</span><strong>{draft.adjustment.reason}</strong>
+                </div>
+              )}
+            </div>
+            <p className="payroll-note">
+              공식: {draft.adjustment.basis === 'manual'
+                ? '공제액 직접 입력'
+                : draft.adjustment.basis === 'workDays'
+                  ? `공제액 = 월급 × (결근${draft.adjustment.absenceDays} + 무급${draft.adjustment.unpaidLeaveDays}) ÷ 소정근무일수 ${draft.adjustment.workDaysOverride ?? '-'}`
+                  : `공제액 = 월급 × (결근${draft.adjustment.absenceDays} + 무급${draft.adjustment.unpaidLeaveDays}) ÷ 당월일수 ${draft.adjustment.monthDays ?? computeMonthDays(draft.month)}`}
+              {' '}/ 최종 세전급여 = 기본 월급 - 공제액 - 기타공제 + 추가수당
+            </p>
+          </div>
+        )}
       </section>
 
       {/* 2. 기타수당 입력 */}

@@ -61,14 +61,56 @@ export const emptyDeductions = (): PayrollDeductions => ({
   etc: 0,
 })
 
+// ─── 월급제 예외 조정 (실비 적용) ────────────────────────────────────────────
+// 월급제 직원은 매월 달력으로 전체 산출하기보다 "기본 월급 + 결근/무급 조정 + 추가수당"으로
+// 실제 지급액을 정한다. 시급제(calendar) 모드에서는 일별 입력에 이미 결근이 반영되므로
+// 이 조정은 calc 모드일 때만 의미가 있다(UI에서도 calc 적용 시에만 노출).
+//
+// 결근 공제 계산 방식 — 사용자가 선택:
+//   - 'calendarDays': 공제액 = 월급 × (결근일수 + 무급휴가일수) ÷ 당월일수(28~31)
+//   - 'workDays'    : 공제액 = 월급 × (결근일수 + 무급휴가일수) ÷ 소정근무일수(사용자 입력)
+//   - 'manual'      : 공제액 = manualDeduction (직접 입력값 그대로)
+// 최종 세전급여 = 기본 월급 - 공제액 - 기타공제 + 추가수당
+//
+// ⚠️ 이 입력은 PayrollPersistedState에 옵셔널로 추가되며, 기존 저장본은 이 필드 없이도 그대로 동작.
+export type AbsenceDeductionMode = 'calendarDays' | 'workDays' | 'manual'
+
+export interface PayrollMonthlyAdjustment {
+  enabled: boolean // 체크 시 calc draft의 최종 세전급여를 finalGross로 대체
+  baseMonthlySalary: number // 기본 월급(입력 비어 있으면 calcSnapshot.basePay fallback)
+  absenceDays: number
+  unpaidLeaveDays: number
+  additionalAllowance: number
+  otherDeduction: number
+  reason: string
+  deductionMode: AbsenceDeductionMode
+  workDaysOverride: number // workDays 모드 분모(소정근무일수)
+  manualDeduction: number // manual 모드 직접 입력 공제액
+}
+
+export const emptyMonthlyAdjustment = (): PayrollMonthlyAdjustment => ({
+  enabled: false,
+  baseMonthlySalary: 0,
+  absenceDays: 0,
+  unpaidLeaveDays: 0,
+  additionalAllowance: 0,
+  otherDeduction: 0,
+  reason: '',
+  deductionMode: 'calendarDays',
+  workDaysOverride: 0,
+  manualDeduction: 0,
+})
+
 // localStorage에 보존되는 입력값 (사용자가 직접 채우는 부분).
-// nonTaxableItems는 옵셔널 — 과거 저장된 데이터에는 이 필드가 없을 수 있다(하위호환).
+// nonTaxableItems / monthlyAdjustment는 옵셔널 — 과거 저장된 데이터에는 이 필드가 없을 수 있다(하위호환).
 export interface PayrollPersistedState {
   extras: PayrollExtra[]
   nonTaxableItems?: PayrollNonTaxableItem[]
   deductions: PayrollDeductions
   payDate: string // YYYY-MM-DD (예상 임금지급일)
   note: string
+  // 월급제 예외 조정(실비 적용). 옵셔널 — 미존재 시 emptyMonthlyAdjustment 적용.
+  monthlyAdjustment?: PayrollMonthlyAdjustment
 }
 
 export const emptyPayrollState = (): PayrollPersistedState => ({
@@ -77,6 +119,7 @@ export const emptyPayrollState = (): PayrollPersistedState => ({
   deductions: emptyDeductions(),
   payDate: '',
   note: '',
+  monthlyAdjustment: emptyMonthlyAdjustment(),
 })
 
 export const loadPayrollState = (): PayrollPersistedState => {
@@ -90,6 +133,7 @@ export const loadPayrollState = (): PayrollPersistedState => {
       deductions: { ...emptyDeductions(), ...(parsed.deductions || {}) },
       payDate: parsed.payDate || '',
       note: parsed.note || '',
+      monthlyAdjustment: { ...emptyMonthlyAdjustment(), ...(parsed.monthlyAdjustment || {}) },
     }
   } catch {
     return emptyPayrollState()
@@ -134,6 +178,24 @@ export interface PayrollDraft {
   // 입력 출처: 'calendar' = 캘린더 monthSummary 기반 / 'none' = 캘린더 데이터 없음(empty 0)
   source: 'calendar' | 'none'
   capturedAt: string
+  // ─── 월급제 실비 적용 결과(옵셔널) ─────────────────────────────────────────
+  // calc 모드 + adjustment.enabled=true 일 때만 채워진다. 세전급여요약 영역에
+  // "적용 기준 / 기본 금액 / 공제 금액 / 추가 금액 / 최종 세전급여 / 조정 사유" 표시용.
+  // adjustment가 적용된 경우 gross.grossTotal과 netPay 는 finalGross를 반영한다.
+  adjustment?: {
+    enabled: boolean
+    basis: AbsenceDeductionMode
+    monthDays?: number // calendarDays 모드의 분모(당월일수)
+    workDaysOverride?: number // workDays 모드의 분모(소정근무일수)
+    baseAmount: number // 기본 금액 (월급)
+    absenceDays: number
+    unpaidLeaveDays: number
+    deductionAmount: number // 결근/무급 공제액
+    otherDeduction: number // 기타공제
+    additionAmount: number // 추가수당
+    finalGross: number // 최종 세전급여 = base - deduction - otherDeduction + addition
+    reason: string
+  }
 }
 
 export const sumExtras = (extras: PayrollExtra[]): number =>
@@ -228,7 +290,53 @@ export const buildPayrollDraftFromCalcSnapshot = (
   const nightPay = snap.nightPay || 0
   const lessonAllowance = 0 // calc 기준에서는 레슨수당을 다시 가져오지 않는다(회귀 차단)
   const extrasTotal = sumExtras(state.extras)
-  const grossTotal = basePay + holidayPay + nightPay + lessonAllowance + extrasTotal
+
+  // ─── 월급제 실비 적용(monthlyAdjustment) ───────────────────────────────────
+  // adjustment.enabled=true 일 때만 finalGross로 grossTotal을 대체.
+  // - baseAmount: 입력된 baseMonthlySalary가 0보다 크면 그 값, 아니면 calc basePay를 fallback.
+  // - 공제 분모: calendarDays 모드는 month(YYYY-MM)로 당월 일수, workDays 모드는 workDaysOverride.
+  //   분모가 0이거나 음수면 안전하게 공제 0 처리(0 나누기 방지).
+  // - manual 모드는 분모 무관, manualDeduction을 그대로 공제.
+  // adjustment.enabled=false이면 기존 grossTotal/netPay 흐름 유지(하위호환).
+  const adj = state.monthlyAdjustment
+  let grossTotal = basePay + holidayPay + nightPay + lessonAllowance + extrasTotal
+  let adjustmentMeta: PayrollDraft['adjustment'] | undefined
+  if (adj?.enabled) {
+    const baseAmount = adj.baseMonthlySalary > 0 ? adj.baseMonthlySalary : basePay
+    const absent = (adj.absenceDays || 0) + (adj.unpaidLeaveDays || 0)
+    let monthDays: number | undefined
+    let denom = 0
+    if (adj.deductionMode === 'calendarDays') {
+      monthDays = computeMonthDays(month)
+      denom = monthDays
+    } else if (adj.deductionMode === 'workDays') {
+      denom = adj.workDaysOverride || 0
+    }
+    let deductionAmount = 0
+    if (adj.deductionMode === 'manual') {
+      deductionAmount = Math.max(0, adj.manualDeduction || 0)
+    } else if (denom > 0) {
+      deductionAmount = Math.max(0, (baseAmount * absent) / denom)
+    }
+    const otherDeduction = Math.max(0, adj.otherDeduction || 0)
+    const additionAmount = Math.max(0, adj.additionalAllowance || 0)
+    const finalGross = baseAmount - deductionAmount - otherDeduction + additionAmount
+    grossTotal = finalGross
+    adjustmentMeta = {
+      enabled: true,
+      basis: adj.deductionMode,
+      monthDays,
+      workDaysOverride: adj.deductionMode === 'workDays' ? adj.workDaysOverride : undefined,
+      baseAmount,
+      absenceDays: adj.absenceDays || 0,
+      unpaidLeaveDays: adj.unpaidLeaveDays || 0,
+      deductionAmount,
+      otherDeduction,
+      additionAmount,
+      finalGross,
+      reason: adj.reason || '',
+    }
+  }
   const deductionsTotal = sumDeductions(state.deductions)
   const netPay = grossTotal - deductionsTotal
   const nonTaxableItems = state.nonTaxableItems || []
@@ -252,7 +360,19 @@ export const buildPayrollDraftFromCalcSnapshot = (
     source: 'calendar', // PayrollDraft.source 필드는 기존 union('calendar'|'none')만 허용 →
     // calc 기준 표시는 AppliedPayrollSource를 별도 추적하므로 PayrollDraft 내부 source는 calendar로 둔다.
     capturedAt: new Date().toISOString(),
+    ...(adjustmentMeta ? { adjustment: adjustmentMeta } : {}),
   }
+}
+
+// month(YYYY-MM) → 해당 월의 일수(28~31). 잘못된 값이면 30 fallback.
+// function 선언으로 hoisting → calc 빌더보다 뒤에 있어도 forward reference 가능.
+export function computeMonthDays(month: string): number {
+  const m = (month || '').match(/^(\d{4})-(\d{2})$/)
+  if (!m) return 30
+  const y = Number(m[1])
+  const mo = Number(m[2])
+  if (!y || !mo || mo < 1 || mo > 12) return 30
+  return new Date(y, mo, 0).getDate()
 }
 
 // 캘린더 스냅샷 기반 PayrollDraft 생성. 캘린더가 없으면 빈 객체(source='none').

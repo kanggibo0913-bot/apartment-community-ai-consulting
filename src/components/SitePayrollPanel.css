@@ -79,6 +79,51 @@
   font-weight: 600;
 }
 
+/* 월급제 예외 조정 (실비 적용) 입력 카드 */
+.payroll-adjust-section {
+  background: #fff8ee;
+  border: 1px solid #fcd9a4;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.payroll-adjust-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #6f4f00;
+}
+.payroll-adjust-reason {
+  grid-column: 1 / -1;
+}
+.payroll-adjust-pending {
+  margin-top: 8px;
+  color: #b54708;
+}
+
+/* 월급제 실비 적용 결과 — 세전 급여 요약 하단 표시 */
+.payroll-adjust-summary {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed #d6def0;
+}
+.payroll-adjust-final strong {
+  color: #b54708;
+}
+.payroll-adjust-sub {
+  color: #475569;
+  font-weight: 400;
+  font-size: 11px;
+}
+.payroll-adjust-meta span {
+  color: #6b7280;
+  font-size: 12px;
+}
+.payroll-adjust-meta strong {
+  color: #0d3b66;
+  font-weight: 600;
+}
+
 .payroll-info-box {
   margin: 0 0 14px;
   padding: 10px 12px;
