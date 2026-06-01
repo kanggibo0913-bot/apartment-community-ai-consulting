@@ -157,6 +157,10 @@ export interface MonthSummary {
   totalHolidayPay: number
   totalNightPay: number
   basePay: number
+  // 월간 합계에 표시되는 레슨수당. base.lessonAllowance를 그대로 노출해
+  // "달력 월간합계의 레슨수당"이 어떤 값인지 단일 진실의 출처를 만든다.
+  // 세전 급여 요약(calendar source)도 이 값을 사용해야 캘린더 표시와 일치한다.
+  lessonAllowance: number
   expectedTotal: number
   salaryBasedTotal: number
 }
@@ -170,15 +174,17 @@ export const calculateMonthSummary = (
   const totalHolidayPay = weeklyComp.reduce((s, w) => s + w.holidayPay, 0)
   const totalNightPay = weeklyComp.reduce((s, w) => s + w.nightPay, 0)
   const basePay = totalHours * base.hourlyWage
-  const expectedTotal = basePay + totalHolidayPay + totalNightPay + base.lessonAllowance
+  const lessonAllowance = base.lessonAllowance || 0
+  const expectedTotal = basePay + totalHolidayPay + totalNightPay + lessonAllowance
   const salaryBasedTotal =
-    base.monthlySalary + base.lessonAllowance + totalHolidayPay + totalNightPay
+    base.monthlySalary + lessonAllowance + totalHolidayPay + totalNightPay
   return {
     totalHours,
     totalHolidayHours,
     totalHolidayPay,
     totalNightPay,
     basePay,
+    lessonAllowance,
     expectedTotal,
     salaryBasedTotal,
   }
@@ -201,6 +207,45 @@ export const loadCalendarStorage = (): CalendarStorage => {
   } catch {
     return { base: { ...DEFAULT_BASE, selectedMonth: todayMonth() }, monthDays: {} }
   }
+}
+
+// projectId 기반 캘린더 storage 로드 — SiteLaborCalendar는 byProject 키
+// 'siteLaborCalendarInputsByProject'에 저장하므로, 같은 단지의 캘린더 입력을
+// 읽으려면 byProject 슬롯에서 가져와야 한다. 그래야 SitePayrollPanel이 캘린더에
+// 즉시 표시되는 월간 합계(특히 lessonAllowance)와 동일한 값을 사용할 수 있다.
+//
+// 동작:
+//   - byProject 슬롯에 해당 projectId가 있으면 그 값을 사용
+//   - 없으면 projectScopedStorage의 1회 legacy fallback 정책에 따라
+//     전역 키(CALENDAR_STORAGE_KEY) 데이터를 첫 진입 단지에만 흡수
+//   - 모두 비어 있으면 DEFAULT_BASE + 오늘 월
+const CALENDAR_STORAGE_KEY_BY_PROJECT = 'siteLaborCalendarInputsByProject'
+export const loadCalendarStorageByProject = (
+  projectId: string | undefined,
+): CalendarStorage => {
+  // 순환 의존을 피하기 위해 projectScopedStorage를 동적 import 대신
+  // 모듈 최상단 import를 별도 파일로 격리할 수도 있지만, 이 파일은 이미
+  // 다른 모듈에 의존하지 않는 유틸이라 inline으로 안전하게 처리한다.
+  // ─── byProject 직접 읽기 ─────────────────────────────────────────────
+  try {
+    const id = (projectId || '').trim() || 'default'
+    const rawMap = window.localStorage.getItem(CALENDAR_STORAGE_KEY_BY_PROJECT)
+    if (rawMap) {
+      const map = JSON.parse(rawMap) as Record<string, Partial<CalendarStorage>>
+      if (map && typeof map === 'object' && !Array.isArray(map) && id in map) {
+        const parsed = map[id] || {}
+        return {
+          base: { ...DEFAULT_BASE, selectedMonth: todayMonth(), ...(parsed.base || {}) },
+          monthDays: parsed.monthDays || {},
+        }
+      }
+    }
+  } catch {
+    // map parse 실패 — 아래 전역 fallback으로 진행
+  }
+  // byProject 슬롯 없음 → 전역 key fallback(읽기만, 흡수 처리는
+  // SiteLaborCalendar 컴포넌트의 loadCalendarStorageScoped가 담당).
+  return loadCalendarStorage()
 }
 
 // ─── 저장본/PDF/CSV 출력에 함께 포함될 정규화된 캘린더 데이터 ─────────────────

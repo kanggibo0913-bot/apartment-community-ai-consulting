@@ -378,6 +378,12 @@ export function computeMonthDays(month: string): number {
 // 캘린더 스냅샷 기반 PayrollDraft 생성. 캘린더가 없으면 빈 객체(source='none').
 // ⚠️ netPay = grossTotal - deductionsTotal 그대로 — 비과세를 실지급액에서 빼지 않는다.
 // 비과세 합계와 과세대상 급여 참고액은 표시용으로만 계산해 함께 반환.
+//
+// ⚠️ lessonAllowance는 반드시 **monthSummary.lessonAllowance**(=캘린더 월간 합계가 표시하는 값)을
+//    사용한다. 직원별 계산결과(calc snapshot)의 레슨수당이나 다른 source의 값을 fallback으로
+//    쓰지 않는다. 캘린더에서 레슨수당을 0으로 두었다면 세전 급여 요약도 0이어야 한다.
+//    (구버전 저장본 호환: monthSummary.lessonAllowance가 undefined인 경우에 한해서만
+//     cal.base.lessonAllowance를 사용 — 신규 버전에서는 항상 monthSummary.lessonAllowance가 채워진다.)
 export const buildPayrollDraftFromCalendar = (
   cal: CalendarSnapshotPart | null,
   state: PayrollPersistedState,
@@ -388,7 +394,13 @@ export const buildPayrollDraftFromCalendar = (
   const basePay = cal?.monthSummary.basePay || 0
   const holidayPay = cal?.monthSummary.totalHolidayPay || 0
   const nightPay = cal?.monthSummary.totalNightPay || 0
-  const lessonAllowance = cal?.base.lessonAllowance || 0
+  // calendar source 적용 시 lessonAllowance는 monthSummary 값만 사용.
+  // monthSummary.lessonAllowance가 명시적으로 존재하면 그 값(0 포함)을 그대로 사용.
+  // 구버전 스냅샷(이 필드가 undefined)인 경우에만 cal.base.lessonAllowance fallback.
+  const lessonAllowance =
+    cal?.monthSummary.lessonAllowance !== undefined
+      ? cal.monthSummary.lessonAllowance
+      : cal?.base.lessonAllowance || 0
   const extrasTotal = sumExtras(state.extras)
   const grossTotal = basePay + holidayPay + nightPay + lessonAllowance + extrasTotal
   const deductionsTotal = sumDeductions(state.deductions)

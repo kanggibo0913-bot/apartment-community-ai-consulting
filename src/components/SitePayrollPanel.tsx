@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import Card from './Card'
 import Button from './Button'
-import { buildCalendarSnapshot, fmtHours, fmtWon } from '../utils/siteLaborCalendarUtils'
+import {
+  buildCalendarSnapshot,
+  fmtHours,
+  fmtWon,
+  loadCalendarStorageByProject,
+} from '../utils/siteLaborCalendarUtils'
 import {
   AbsenceDeductionMode,
   AppliedPayrollSource,
@@ -136,7 +141,17 @@ const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ projectId, refreshN
     // 'mixed'/undefined는 기존 pendingSource 유지(사용자 선택 보존)
   }, [calcResultSnapshot?.dominantPayType, applied.appliedAt])
 
-  const calSnapshot = useMemo(() => buildCalendarSnapshot(), [calRevision])
+  // ⚠️ projectId 기반 byProject 캘린더 storage를 명시적으로 전달.
+  // 기본 buildCalendarSnapshot()은 전역 키만 읽기 때문에, 현재 단지의 캘린더 입력값
+  // (특히 base.lessonAllowance)이 byProject 슬롯에만 저장된 경우 stale value(전역 default)를
+  // 반환해 세전 급여 요약의 레슨수당이 캘린더 월간합계 표시와 어긋난다.
+  // calRevision은 캘린더 입력 변경 시 부모가 보내는 refreshNonce에 묶여 있어 즉시 갱신된다.
+  const calSnapshot = useMemo(
+    () => buildCalendarSnapshot(loadCalendarStorageByProject(projectId)),
+    // projectId 변경 또는 캘린더 입력 변경 시 모두 다시 읽도록 의존성에 둘 다 포함.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [calRevision, projectId],
+  )
 
   // 적용된 기준에 따라 draft 분기.
   //   - 'calendar' → 캘린더 monthSummary 기반 (시급제 권장, 실시간 캘린더 입력 반영)
