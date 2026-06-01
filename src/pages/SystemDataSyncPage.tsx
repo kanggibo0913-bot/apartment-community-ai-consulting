@@ -132,16 +132,41 @@ const SystemDataSyncPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items }),
       })
-      const data = (await res.json()) as { ok: boolean; saved?: number; message?: string }
+      const data = (await res.json()) as {
+        ok: boolean
+        saved?: number
+        savedKeys?: string[]
+        skippedKeys?: string[]
+        message?: string
+      }
       if (data.ok) {
-        const now = new Date().toISOString()
-        const nextMeta = { ...meta, lastSavedAt: now }
-        setMeta(nextMeta)
-        saveMeta(nextMeta)
-        setMsg({
-          type: 'ok',
-          text: `${data.saved ?? selectedKeys.length}개 항목을 클라우드에 저장했습니다.`,
-        })
+        const saved = data.saved ?? 0
+        const skippedCount = data.skippedKeys?.length ?? 0
+        // 저장된 항목이 있을 때만 lastSavedAt 갱신(0건이면 의미 있는 저장이 아니므로 유지).
+        if (saved > 0) {
+          const now = new Date().toISOString()
+          const nextMeta = { ...meta, lastSavedAt: now }
+          setMeta(nextMeta)
+          saveMeta(nextMeta)
+        }
+        if (saved === 0) {
+          // 빈 항목만 선택된 경우 — 오류가 아니라 안내(info)로 표시.
+          setMsg({
+            type: 'info',
+            text:
+              '저장할 데이터가 없습니다. 먼저 입찰공고나 근무표 데이터를 입력한 뒤 저장하세요.',
+          })
+        } else if (skippedCount > 0) {
+          setMsg({
+            type: 'info',
+            text: `${saved}개 항목을 클라우드에 저장했습니다. 빈 항목 ${skippedCount}개는 건너뛰었습니다.`,
+          })
+        } else {
+          setMsg({
+            type: 'ok',
+            text: `${saved}개 항목을 클라우드에 저장했습니다.`,
+          })
+        }
       } else {
         setMsg({ type: 'err', text: data.message || '클라우드 저장에 실패했습니다.' })
       }

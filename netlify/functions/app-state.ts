@@ -134,17 +134,37 @@ const handlePost = async (
     })
   }
 
-  // 화이트리스트 통과한 key만 upsert 대상.
-  const rows = Object.entries(items)
-    .filter(([k]) => ALLOWED_KEYS.has(k))
-    .map(([state_key, payload]) => ({
-      workspace_id: workspaceId,
-      state_key,
-      payload: payload == null ? null : payload,
-    }))
+  // 화이트리스트 통과 + payload 유효성 검사.
+  // homebase_app_state.payload는 jsonb NOT NULL이라 null을 보내면 status 400이 발생한다.
+  // 따라서 null/undefined/직렬화 불가 항목은 upsert 대상에서 제외하고 skippedKeys에 모은다.
+  // 빈 객체({})·빈 배열([])·빈 문자열("")·0·false 같은 "의미 있는 빈 값"은 정상 저장 대상.
+  const rows: { workspace_id: string; state_key: string; payload: unknown }[] = []
+  const skippedKeys: string[] = []
+  for (const [k, v] of Object.entries(items)) {
+    if (!ALLOWED_KEYS.has(k)) continue
+    if (v === null || v === undefined) {
+      skippedKeys.push(k)
+      continue
+    }
+    // JSON 직렬화가 깨지는 값(순환참조 등)은 안전하게 건너뛴다.
+    try {
+      JSON.stringify(v)
+    } catch {
+      skippedKeys.push(k)
+      continue
+    }
+    rows.push({ workspace_id: workspaceId, state_key: k, payload: v })
+  }
 
+  // 저장할 행이 없으면 Supabase 호출 자체를 생략해 status 400을 회피한다.
   if (rows.length === 0) {
-    return json(200, { ok: true, saved: 0, savedKeys: [] })
+    return json(200, {
+      ok: true,
+      saved: 0,
+      savedKeys: [],
+      skippedKeys,
+      message: '저장할 데이터가 없어 빈 항목은 건너뛰었습니다.',
+    })
   }
 
   // PostgREST upsert: on_conflict + Prefer: resolution=merge-duplicates.
@@ -161,20 +181,53 @@ const handlePost = async (
       body: JSON.stringify(rows),
     })
     if (!res.ok) {
+      // ⚠️ 서버 로그에만 진단 정보를 남긴다(브라우저 응답에는 절대 노출 X).
+      // service role key/페이로드 원문/공고문 텍스트는 절대 로그에 남기지 않는다.
+      // Supabase의 error body 첫 200자만 잘라 짧은 진단으로 사용한다.
+      try {
+        const errBody = await res.text()
+        const safeSnippet = (errBody || '')
+          .replace(/[\r\n\t]+/g, ' ')
+          .slice(0, 200)
+        console.error('[app-state] Supabase upsert failed', {
+          status: res.status,
+          attemptedKeys: rows.map((r) => r.state_key),
+          // body snippet은 노출 위험을 줄이기 위해 200자로 제한.
+          errorSnippet: safeSnippet,
+        })
+      } catch {
+        console.error('[app-state] Supabase upsert failed', {
+          status: res.status,
+          attemptedKeys: rows.map((r) => r.state_key),
+        })
+      }
       return json(200, {
         ok: false,
         message: `Supabase upsert failed (status ${res.status})`,
+        skippedKeys,
       })
     }
+    const savedKeys = rows.map((r) => r.state_key)
+    const message =
+      skippedKeys.length > 0
+        ? `${savedKeys.length}개 항목을 저장했고, 빈 항목 ${skippedKeys.length}개는 건너뛰었습니다.`
+        : `${savedKeys.length}개 항목을 저장했습니다.`
     return json(200, {
       ok: true,
-      saved: rows.length,
-      savedKeys: rows.map((r) => r.state_key),
+      saved: savedKeys.length,
+      savedKeys,
+      skippedKeys,
+      message,
     })
   } catch (e) {
+    console.error('[app-state] Supabase upsert error', {
+      name: e instanceof Error ? e.name : 'Unknown',
+      attemptedKeys: rows.map((r) => r.state_key),
+    })
     return json(200, {
       ok: false,
       message: errorMessage(e, 'Supabase upsert error'),
+      skippedKeys,
     })
   }
 }
