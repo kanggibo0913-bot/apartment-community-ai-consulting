@@ -34,6 +34,7 @@ const ALLOWED_KEYS = new Set<string>([
   'siteLaborCalendarInputs',
   'siteLaborCostData',
   'siteLaborCostSnapshots',
+  'siteLaborPayrollDraft',
   // 시설 보수/입주민 보고서
   'maintenanceRecords',
   'residentNoticeReports',

@@ -102,6 +102,9 @@ export interface LaborCostSnapshot {
   // 저장본/PDF/CSV 출력에 같이 포함된다. 과거 저장본에는 이 필드가 없을 수 있다.
   // 타입은 src/utils/siteLaborCalendarUtils.ts의 CalendarSnapshotPart와 구조적으로 동일.
   calendar?: import('./siteLaborCalendarUtils').CalendarSnapshotPart
+  // 세전 급여 요약 + 급여명세서 초안 스냅샷(옵셔널, 하위호환).
+  // ⚠️ 공식 명세서가 아닌 내부 검토용 초안. 4대보험/소득세 자동 계산 X — 사용자가 입력한 공제액 사용.
+  payrollDraft?: import('./sitePayrollUtils').PayrollDraft
 }
 
 // ─── 시간 파싱 유틸 ──────────────────────────────────────────────────────────

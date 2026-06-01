@@ -4,6 +4,7 @@ import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import Button from '../components/Button'
 import SiteLaborCalendar from '../components/SiteLaborCalendar'
+import SitePayrollPanel from '../components/SitePayrollPanel'
 import {
   CalendarSnapshotPart,
   DOW_LABELS,
@@ -13,6 +14,11 @@ import {
   fmtWon as fmtWonCal,
   loadCalendarStorage,
 } from '../utils/siteLaborCalendarUtils'
+import {
+  PayrollDraft,
+  buildPayrollDraftFromCalendar,
+  loadPayrollState,
+} from '../utils/sitePayrollUtils'
 import {
   CalcSettings,
   DAYS,
@@ -142,6 +148,9 @@ const SiteLaborCostPage: React.FC = () => {
   const [settings, setSettings] = useState<CalcSettings>(initial.settings)
   const [employees, setEmployees] = useState<Employee[]>(initial.employees)
   const [msg, setMsg] = useState('')
+  // 캘린더 입력 변경을 SitePayrollPanel에 즉시 전파하는 nonce.
+  // SiteLaborCalendar의 onCalendarChange가 호출될 때마다 증가 → Panel이 monthSummary를 다시 읽음.
+  const [payrollRefreshNonce, setPayrollRefreshNonce] = useState(0)
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ settings, employees }))
@@ -379,6 +388,60 @@ const SiteLaborCostPage: React.FC = () => {
   // PDF 출력 시점에 현재 달력 스냅샷을 한 번 더 읽어 인쇄 영역에 함께 노출.
   // 인쇄 영역은 portal로 렌더되므로 매 렌더마다 loadCalendarStorage()를 호출해도 비용 작음.
   const printCalendar: CalendarSnapshotPart | null = printing ? buildCalendarSnapshot() : null
+  // 급여명세서 초안도 인쇄 시점에 매번 빌드 (가장 최신 상태 반영).
+  const printPayroll: PayrollDraft | null = printing
+    ? buildPayrollDraftFromCalendar(printCalendar, loadPayrollState())
+    : null
+
+  // 급여요약 CSV — 단일 행. 파일명 site-labor-payroll-summary-YYYY-MM.csv.
+  const exportPayrollCsv = () => {
+    const cal = buildCalendarSnapshot()
+    const state = loadPayrollState()
+    const draft = buildPayrollDraftFromCalendar(cal, state)
+    if (draft.source === 'none' && draft.gross.extrasTotal === 0 && draft.deductionsTotal === 0) {
+      flash('급여 요약 데이터가 없습니다. 월간 근무시간 달력 또는 기타수당/공제액을 먼저 입력해주세요.')
+      return
+    }
+    const r0 = (n: number) => String(Math.round(Number.isFinite(n) ? n : 0))
+    const header = [
+      '기준월','직원명','총근로시간','기본급','주휴수당','야간수당','레슨수당','기타수당',
+      '세전총지급액','국민연금','건강보험','장기요양','고용보험','소득세','지방소득세','기타공제',
+      '공제합계','예상실지급액','비고',
+    ]
+    const row = [
+      draft.month,
+      draft.employeeName,
+      draft.totalHours.toFixed(1),
+      r0(draft.gross.basePay),
+      r0(draft.gross.holidayPay),
+      r0(draft.gross.nightPay),
+      r0(draft.gross.lessonAllowance),
+      r0(draft.gross.extrasTotal),
+      r0(draft.gross.grossTotal),
+      r0(draft.deductions.pension),
+      r0(draft.deductions.health),
+      r0(draft.deductions.longTermCare),
+      r0(draft.deductions.employment),
+      r0(draft.deductions.incomeTax),
+      r0(draft.deductions.localIncomeTax),
+      r0(draft.deductions.etc),
+      r0(draft.deductionsTotal),
+      r0(draft.netPay),
+      draft.note,
+    ]
+    const csv = '﻿' + [header, row].map((cols) => cols.map(csvField).join(',')).join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const monthLabel = draft.month || new Date().toISOString().slice(0, 7)
+    a.download = `site-labor-payroll-summary-${monthLabel}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    flash('급여요약 CSV 파일을 내보냈습니다.')
+  }
 
   // ─── 저장본 관리 ───────────────────────────────────────────────────────────
   const [snapshots, setSnapshots] = useState<LaborCostSnapshot[]>(loadSnapshots)
@@ -403,8 +466,11 @@ const SiteLaborCostPage: React.FC = () => {
   const doSave = () => {
     const now = new Date().toISOString()
     const month = saveMonth.trim() || settings.baseMonth
-    // 저장 시점의 월간 근무시간 달력 스냅샷 동시 보존(옵셔널).
+    // 저장 시점의 월간 근무시간 달력 스냅샷 + 급여명세서 초안 동시 보존(옵셔널).
     const calendar = buildCalendarSnapshot() || undefined
+    // 급여 초안: localStorage(siteLaborPayrollDraft) 입력값 + 캘린더 monthSummary 기반.
+    // 캘린더가 없어도 사용자가 기타수당/공제만 입력했을 가능성이 있으므로 무조건 빌드.
+    const payrollDraft = buildPayrollDraftFromCalendar(calendar || null, loadPayrollState())
     const snap: LaborCostSnapshot = {
       id: 'slc-snap-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
       title: saveTitle.trim() || `${month || ''} 현장 인건비 산출`.trim() || '현장 인건비 산출',
@@ -413,13 +479,14 @@ const SiteLaborCostPage: React.FC = () => {
       savedAt: now,
       data: { settings, employees },
       calendar,
+      payrollDraft,
     }
     setSnapshots((prev) => [snap, ...prev])
     setSaveOpen(false)
     flash(
       calendar
-        ? '현장 인건비 저장본에 월간 근무표가 함께 저장되었습니다.'
-        : '현재 산출이 저장본으로 저장되었습니다.',
+        ? '현장 인건비 저장본에 월간 근무표와 급여명세서 초안이 함께 저장되었습니다.'
+        : '현재 산출이 저장본으로 저장되었습니다(급여 초안 포함).',
     )
   }
 
@@ -433,8 +500,9 @@ const SiteLaborCostPage: React.FC = () => {
   const overwriteSnapshot = (id: string) => {
     if (!window.confirm('현재 입력 중인 내용으로 이 저장본을 덮어쓰시겠습니까?')) return
     const now = new Date().toISOString()
-    // 덮어쓰기 시점에도 캘린더 스냅샷을 갱신해 함께 보존.
+    // 덮어쓰기 시점에도 캘린더/급여초안 스냅샷을 갱신해 함께 보존.
     const calendar = buildCalendarSnapshot() || undefined
+    const payrollDraft = buildPayrollDraftFromCalendar(calendar || null, loadPayrollState())
     setSnapshots((prev) =>
       prev.map((s) =>
         s.id === id
@@ -444,6 +512,7 @@ const SiteLaborCostPage: React.FC = () => {
               baseMonth: settings.baseMonth || s.baseMonth,
               updatedAt: now,
               calendar,
+              payrollDraft,
             }
           : s,
       ),
@@ -569,6 +638,8 @@ const SiteLaborCostPage: React.FC = () => {
         <Button variant="secondary" onClick={exportCsv} disabled={!hasEmployees}>CSV 내보내기</Button>
         {/* 근무표 CSV는 직원 등록 없이도 달력 입력만으로 내보낼 수 있다. */}
         <Button variant="secondary" onClick={exportCalendarCsv}>근무표 CSV 내보내기</Button>
+        {/* 급여요약 CSV — 캘린더 monthSummary + 사용자 입력 기타수당/공제액 단일 행. */}
+        <Button variant="secondary" onClick={exportPayrollCsv}>급여요약 CSV 내보내기</Button>
         {!hasEmployees && !msg && <span className="slc-actions-hint">직원 데이터를 먼저 추가해주세요.</span>}
         {msg && <span className="slc-msg">{msg}</span>}
       </div>
@@ -792,8 +863,14 @@ const SiteLaborCostPage: React.FC = () => {
         )}
       </Card>
 
-      {/* 월간 근무시간 달력 (보조 섹션) — 직원별 입력/요율과 별개의 일자별 실제 근무 입력. */}
-      <SiteLaborCalendar />
+      {/* 월간 근무시간 달력 (보조 섹션) — 직원별 입력/요율과 별개의 일자별 실제 근무 입력.
+          캘린더 입력 변경 시 onCalendarChange가 호출되어 payrollRefreshNonce가 증가하고,
+          아래 SitePayrollPanel이 monthSummary를 즉시 다시 읽어 세전 급여 요약/급여명세서
+          초안을 갱신한다. */}
+      <SiteLaborCalendar onCalendarChange={() => setPayrollRefreshNonce((v) => v + 1)} />
+
+      {/* 세전 급여 요약 + 급여명세서 초안 (보조 섹션). 캘린더 monthSummary를 입력으로 사용. */}
+      <SitePayrollPanel refreshNonce={payrollRefreshNonce} />
 
       <Card title={`저장본 관리 (${snapshots.length})`}>
         <div className="slc-snap-tools">
@@ -854,6 +931,11 @@ const SiteLaborCostPage: React.FC = () => {
                       {s.calendar && (
                         <span className="slc-snap-badge" title="월간 근무표가 함께 저장됨">
                           근무표 포함
+                        </span>
+                      )}
+                      {s.payrollDraft && (
+                        <span className="slc-snap-badge slc-snap-badge--payroll" title="급여명세서 초안이 함께 저장됨">
+                          급여초안 포함
                         </span>
                       )}
                     </td>
@@ -1115,6 +1197,86 @@ const SiteLaborCostPage: React.FC = () => {
                   </table>
                   <p className="slc-print-calendar-note">
                     본 계산은 내부 검토용 참고 계산입니다. 실제 급여 확정 전 근로계약 조건과 근로기준법 기준을 확인하세요.
+                  </p>
+                </section>
+              )}
+
+              {/* 세전 급여 요약 + 급여명세서 초안 (참고). 데이터 있을 때만 노출. */}
+              {printPayroll && (printPayroll.source === 'calendar' || printPayroll.gross.grossTotal > 0 || printPayroll.deductionsTotal > 0) && (
+                <section className="slc-print-section slc-print-payroll">
+                  <h2>세전 급여 요약 (참고)</h2>
+                  <div className="slc-print-kv">
+                    <span>직원명: {printPayroll.employeeName || '-'}</span>
+                    <span>기준 월: {printPayroll.month || '-'}</span>
+                    <span>총 근로시간: {fmtHoursCal(printPayroll.totalHours)}h</span>
+                    <span>기본급: {fmtWonCal(printPayroll.gross.basePay)}원</span>
+                    <span>주휴수당: {fmtWonCal(printPayroll.gross.holidayPay)}원</span>
+                    <span>야간수당: {fmtWonCal(printPayroll.gross.nightPay)}원</span>
+                    <span>레슨수당: {fmtWonCal(printPayroll.gross.lessonAllowance)}원</span>
+                    <span>기타수당: {fmtWonCal(printPayroll.gross.extrasTotal)}원</span>
+                    <span className="slc-print-grand">
+                      세전 총지급액: {fmtWonCal(printPayroll.gross.grossTotal)}원
+                    </span>
+                  </div>
+
+                  <h3 className="slc-print-subtitle">급여명세서 초안 (확정 명세서 아님)</h3>
+                  <div className="slc-print-kv">
+                    <span>성명: {printPayroll.employeeName || '-'}</span>
+                    <span>기준 월: {printPayroll.month || '-'}</span>
+                    <span>임금지급일: {printPayroll.payDate || '-'}</span>
+                    <span>근로일수: {printPayroll.workDays}일</span>
+                  </div>
+                  <table className="slc-print-table slc-print-payroll-table">
+                    <thead>
+                      <tr><th colSpan={2}>지급 항목</th><th colSpan={2}>공제 항목</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <th>기본급</th><td>{fmtWonCal(printPayroll.gross.basePay)}</td>
+                        <th>국민연금</th><td>{fmtWonCal(printPayroll.deductions.pension)}</td>
+                      </tr>
+                      <tr>
+                        <th>주휴수당</th><td>{fmtWonCal(printPayroll.gross.holidayPay)}</td>
+                        <th>건강보험</th><td>{fmtWonCal(printPayroll.deductions.health)}</td>
+                      </tr>
+                      <tr>
+                        <th>야간수당</th><td>{fmtWonCal(printPayroll.gross.nightPay)}</td>
+                        <th>장기요양</th><td>{fmtWonCal(printPayroll.deductions.longTermCare)}</td>
+                      </tr>
+                      <tr>
+                        <th>레슨수당</th><td>{fmtWonCal(printPayroll.gross.lessonAllowance)}</td>
+                        <th>고용보험</th><td>{fmtWonCal(printPayroll.deductions.employment)}</td>
+                      </tr>
+                      <tr>
+                        <th>기타수당</th><td>{fmtWonCal(printPayroll.gross.extrasTotal)}</td>
+                        <th>소득세</th><td>{fmtWonCal(printPayroll.deductions.incomeTax)}</td>
+                      </tr>
+                      <tr>
+                        <th></th><td></td>
+                        <th>지방소득세</th><td>{fmtWonCal(printPayroll.deductions.localIncomeTax)}</td>
+                      </tr>
+                      <tr>
+                        <th></th><td></td>
+                        <th>기타공제</th><td>{fmtWonCal(printPayroll.deductions.etc)}</td>
+                      </tr>
+                      <tr className="slc-print-payroll-total">
+                        <th>지급 합계</th>
+                        <td>{fmtWonCal(printPayroll.gross.grossTotal)}</td>
+                        <th>공제 합계</th>
+                        <td>{fmtWonCal(printPayroll.deductionsTotal)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div className="slc-print-kv slc-print-netpay">
+                    <span className="slc-print-grand">
+                      예상 실지급액: {fmtWonCal(printPayroll.netPay)}원
+                    </span>
+                  </div>
+                  {printPayroll.note && (
+                    <p className="slc-print-payroll-note">비고: {printPayroll.note}</p>
+                  )}
+                  <p className="slc-print-payroll-disclaimer">
+                    본 초안은 내부 검토용입니다. 4대보험·소득세는 자동 계산되지 않으며, 실제 지급 전 세무사/노무사 검토 후 확정하세요.
                   </p>
                 </section>
               )}

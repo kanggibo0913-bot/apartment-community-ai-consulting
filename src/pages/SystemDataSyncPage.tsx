@@ -47,6 +47,7 @@ const SYNC_GROUPS: { title: string; items: { key: string; label: string }[] }[] 
       { key: 'siteLaborCalendarInputs', label: '현장 인건비 근무표' },
       { key: 'siteLaborCostData', label: '현장 인건비 산출 입력값' },
       { key: 'siteLaborCostSnapshots', label: '현장 인건비 저장본' },
+      { key: 'siteLaborPayrollDraft', label: '급여 초안 (기타수당/공제액)' },
     ],
   },
   {

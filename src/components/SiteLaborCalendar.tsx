@@ -26,7 +26,13 @@ import './SiteLaborCalendar.css'
 // ⚠️ 계산/저장 로직은 src/utils/siteLaborCalendarUtils.ts에 모여 있다(저장본/PDF/CSV와 공용).
 const STORAGE_KEY = CALENDAR_STORAGE_KEY
 
-const SiteLaborCalendar: React.FC = () => {
+// 부모 컴포넌트가 캘린더 데이터 변경(저장)을 감지해 다른 패널(SitePayrollPanel 등)을
+// 즉시 갱신할 수 있도록 callback prop을 제공. localStorage 저장이 일어날 때마다 호출.
+interface SiteLaborCalendarProps {
+  onCalendarChange?: () => void
+}
+
+const SiteLaborCalendar: React.FC<SiteLaborCalendarProps> = ({ onCalendarChange }) => {
   const initial = loadCalendarStorage()
   const [base, setBase] = useState<CalendarBase>(initial.base)
   const [monthDays, setMonthDays] = useState<
@@ -38,10 +44,12 @@ const SiteLaborCalendar: React.FC = () => {
   const [bulkBreak, setBulkBreak] = useState(1)
   const [msg, setMsg] = useState('')
 
-  // localStorage 자동 저장.
+  // localStorage 자동 저장 + 부모에 변경 통지 (있을 때만).
+  // 초기 마운트 시점에도 한 번 호출되지만, 부모가 idempotent nonce 증가만 하므로 안전.
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ base, monthDays }))
-  }, [base, monthDays])
+    if (onCalendarChange) onCalendarChange()
+  }, [base, monthDays, onCalendarChange])
 
   const flash = (m: string) => {
     setMsg(m)
