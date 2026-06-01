@@ -16,17 +16,30 @@ import { Handler } from '@netlify/functions'
 //   - service role key는 응답·로그·에러 메시지에 절대 노출하지 않는다.
 //   - Supabase 외부 응답 본문도 그대로 노출하지 않고 status 숫자만 사용한다.
 
-// 1차 동기화 대상 — 기존 localStorage key와 동일 식별자.
+// 동기화 대상 — 기존 localStorage key와 동일 식별자.
 // 화이트리스트로 두어 외부 입력이 임의 key를 만들지 못하게 차단한다.
+// 실제 src 코드에서 쓰는 key만 포함하고, 레거시/UI 메타/세션 토글은 제외한다.
+// 추가/변경 시 src/pages/SystemDataSyncPage.tsx 의 SYNC_KEYS 라벨 배열도 함께 갱신할 것.
 const ALLOWED_KEYS = new Set<string>([
+  // 단지/커뮤니티 프로젝트 — 단지 기본정보/시설/운영/비용/수익/민원/계약/월간리포트 전부 포함.
+  'communityAiProjects',
+  // 입찰공고 관리
   'tenderNotices',
   'tenderScheduleEvents',
+  'bidNoticeChecklist',
+  // 입찰 산출표
+  'estimateSheets',
+  'bidCalculationSnapshots',
+  // 현장 인건비
   'siteLaborCalendarInputs',
   'siteLaborCostData',
   'siteLaborCostSnapshots',
+  // 시설 보수/입주민 보고서
+  'maintenanceRecords',
+  'residentNoticeReports',
+  'publishedResidentReports',
+  // AI 결과 이력
   'aiResultHistory',
-  'publishedReports',
-  'bidNoticeChecklist',
 ])
 
 // 기본 작업공간 — schema.sql에서 시드한 행과 동일.

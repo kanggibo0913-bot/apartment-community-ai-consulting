@@ -35,6 +35,27 @@
   color: #64748b;
 }
 
+/* 그룹 컨테이너 */
+.sys-sync-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sys-sync-group {
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #e3e8ef;
+  border-radius: 8px;
+}
+
+.sys-sync-group-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0d3b66;
+}
+
 .sys-sync-keys {
   list-style: none;
   margin: 0;
@@ -50,7 +71,7 @@
 
 .sys-sync-keys label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 8px 10px;
   background: #f8fafc;
@@ -67,7 +88,37 @@
 }
 
 .sys-sync-keys input[type='checkbox'] {
-  margin: 0;
+  margin: 3px 0 0; /* 2줄 텍스트와 vertical align 보정 */
+}
+
+/* 한글 표시명 + 작은 회색 key 2줄 표시 */
+.sys-sync-key-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sys-sync-key-label {
+  font-weight: 600;
+  color: #1f2a44;
+  line-height: 1.3;
+}
+
+.sys-sync-key-id {
+  font-size: 11px;
+  color: #8a93a6;
+  font-family: 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace;
+  line-height: 1.3;
+}
+
+.sys-sync-note code {
+  padding: 1px 5px;
+  background: #f1f5f9;
+  border-radius: 3px;
+  font-size: 11.5px;
+  font-family: 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace;
+  color: #475569;
 }
 
 .sys-sync-note {

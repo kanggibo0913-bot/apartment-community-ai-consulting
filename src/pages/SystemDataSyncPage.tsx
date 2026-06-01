@@ -15,18 +15,58 @@ import './SystemDataSyncPage.css'
 //                localStorage에 덮어쓰고 페이지 새로고침으로 모든 화면 재초기화.
 //   - 마지막 저장/불러오기 시각은 별도 localStorage key(syncMeta)에 보존.
 
-// 1차 동기화 대상 — netlify/functions/app-state.ts의 화이트리스트와 동일.
-// 동기화에서 안전하게 다룰 수 있는 key만 명시적으로 나열한다.
-const SYNC_KEYS: { key: string; label: string }[] = [
-  { key: 'tenderNotices', label: '입찰공고 (tenderNotices)' },
-  { key: 'tenderScheduleEvents', label: '입찰 스케줄러 일정 (tenderScheduleEvents)' },
-  { key: 'siteLaborCalendarInputs', label: '현장 인건비 달력 (siteLaborCalendarInputs)' },
-  { key: 'siteLaborCostData', label: '현장 인건비 산출 입력 (siteLaborCostData)' },
-  { key: 'siteLaborCostSnapshots', label: '현장 인건비 저장본 (siteLaborCostSnapshots)' },
-  { key: 'aiResultHistory', label: 'AI 결과 이력 (aiResultHistory)' },
-  { key: 'publishedReports', label: '입주민 공개 보고서 (publishedReports)' },
-  { key: 'bidNoticeChecklist', label: '공고문 제출서류 체크리스트 (bidNoticeChecklist)' },
+// 동기화 대상 — netlify/functions/app-state.ts의 ALLOWED_KEYS와 정확히 동기화 유지.
+// 추가/변경 시 양쪽을 동시에 수정한다.
+// 그룹화는 UI 표시에만 영향을 주고, 저장/불러오기 로직은 평면화된 key 목록을 사용한다.
+const SYNC_GROUPS: { title: string; items: { key: string; label: string }[] }[] = [
+  {
+    title: '단지/커뮤니티 기본',
+    items: [
+      // 단지 기본정보·시설·운영·비용·수익·민원·계약·월간리포트 등 핵심 운영 데이터 전부가 이 안에 직렬화되어 들어 있다.
+      { key: 'communityAiProjects', label: '단지/커뮤니티 프로젝트 전체' },
+    ],
+  },
+  {
+    title: '입찰공고 관리',
+    items: [
+      { key: 'tenderNotices', label: '입찰공고 목록' },
+      { key: 'tenderScheduleEvents', label: '입찰 스케줄러 일정' },
+      { key: 'bidNoticeChecklist', label: '공고문 제출서류 체크리스트' },
+    ],
+  },
+  {
+    title: '입찰 산출표',
+    items: [
+      { key: 'estimateSheets', label: '입찰 산출표 시트' },
+      { key: 'bidCalculationSnapshots', label: '입찰 산출표 저장본' },
+    ],
+  },
+  {
+    title: '현장 인건비',
+    items: [
+      { key: 'siteLaborCalendarInputs', label: '현장 인건비 근무표' },
+      { key: 'siteLaborCostData', label: '현장 인건비 산출 입력값' },
+      { key: 'siteLaborCostSnapshots', label: '현장 인건비 저장본' },
+    ],
+  },
+  {
+    title: '시설 보수 / 입주민 보고서',
+    items: [
+      { key: 'maintenanceRecords', label: '시설 보수 내역' },
+      { key: 'residentNoticeReports', label: '입주민 안내 보고서' },
+      { key: 'publishedResidentReports', label: '입주민 공개 발행본' },
+    ],
+  },
+  {
+    title: 'AI 결과 이력',
+    items: [
+      { key: 'aiResultHistory', label: 'AI 결과 이력' },
+    ],
+  },
 ]
+
+// 평면화된 key 목록 (저장/불러오기 로직에서 사용).
+const SYNC_KEYS: { key: string; label: string }[] = SYNC_GROUPS.flatMap((g) => g.items)
 
 const META_KEY = 'systemDataSyncMeta'
 
@@ -250,23 +290,37 @@ const SystemDataSyncPage: React.FC = () => {
           </Button>
           <span className="sys-sync-count">선택 {selectedKeys.length} / {SYNC_KEYS.length}건</span>
         </div>
-        <ul className="sys-sync-keys">
-          {SYNC_KEYS.map(({ key, label }) => (
-            <li key={key}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={!!selected[key]}
-                  onChange={() => toggle(key)}
-                  disabled={busy}
-                />
-                <span>{label}</span>
-              </label>
-            </li>
+
+        {/* 그룹별로 묶어 표시. 같은 그룹 안에서는 카드형 체크박스 그리드. */}
+        <div className="sys-sync-groups">
+          {SYNC_GROUPS.map((group) => (
+            <section key={group.title} className="sys-sync-group">
+              <h4 className="sys-sync-group-title">{group.title}</h4>
+              <ul className="sys-sync-keys">
+                {group.items.map(({ key, label }) => (
+                  <li key={key}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={!!selected[key]}
+                        onChange={() => toggle(key)}
+                        disabled={busy}
+                      />
+                      <span className="sys-sync-key-text">
+                        <span className="sys-sync-key-label">{label}</span>
+                        <span className="sys-sync-key-id">{key}</span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
+
         <p className="sys-sync-note">
-          ※ 동기화 대상은 위 화이트리스트로 제한됩니다. 다른 localStorage 항목은 클라우드로 올라가지 않습니다.
+          ※ 동기화 대상은 위 화이트리스트로 제한됩니다. 임시 UI 상태(예: <code>systemDataSyncMeta</code>)나
+          레거시 데이터(<code>apartmentCommunityData</code>)는 동기화되지 않습니다.
         </p>
       </Card>
 
