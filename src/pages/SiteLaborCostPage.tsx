@@ -181,6 +181,10 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
     setSnapshots(loadSnapshotsScoped(projectId))
     // 캘린더 패널도 새 단지의 캘린더로 갱신되도록 nonce 강제 증가.
     setPayrollRefreshNonce((v) => v + 1)
+    // 단지 전환 중 인쇄 진입(80ms setTimeout 대기 중)이 있다면 abort —
+    // 다른 단지 저장본이 새 단지 화면에서 인쇄되는 불일치를 막는다.
+    setPrinting(false)
+    setPrintingSnapshot(null)
   }, [projectId])
 
   useEffect(() => {
@@ -274,12 +278,31 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
   // PDF/인쇄: 결과 영역만 출력. body.site-labor-printing 스코프로만 #root를 숨겨
   // 입주민 안내 보고서/공개 보고서 인쇄와 충돌하지 않게 한다.
   const [printing, setPrinting] = useState(false)
+  // 저장본 인쇄 모드 — printingSnapshot이 set 되면 print portal은 화면 현재 상태가 아니라
+  // 저장본의 freeze된 data/calendar/payrollDraft/appliedSource를 사용한다.
+  // null이면 기존 "현재 화면 인쇄" 흐름 그대로.
+  const [printingSnapshot, setPrintingSnapshot] = useState<LaborCostSnapshot | null>(null)
 
   const handlePrint = () => {
     if (employees.length === 0) {
       flash('직원 데이터를 먼저 추가해주세요.')
       return
     }
+    setPrintingSnapshot(null)
+    setPrinting(true)
+  }
+
+  // 저장본 인쇄 — 저장 당시 적용 기준/계산 결과/캘린더를 그대로 출력.
+  // ⚠️ 현재 화면의 적용 기준이 바뀌었더라도 저장본 freeze 데이터를 사용해야 하므로
+  //    별도 state(printingSnapshot)로 추적한다.
+  // ⚠️ handlePrint와 대칭으로 빈 직원 가드 — 매우 오래된/JSON import 저장본이 직원 0명일 경우
+  //    인쇄해도 빈 페이지가 나오므로 사전에 안내한다.
+  const printSnapshot = (snap: LaborCostSnapshot) => {
+    if (!snap.data.employees || snap.data.employees.length === 0) {
+      flash('이 저장본에는 직원 데이터가 없어 인쇄할 수 없습니다.')
+      return
+    }
+    setPrintingSnapshot(snap)
     setPrinting(true)
   }
 
@@ -289,6 +312,7 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
     const cleanup = () => {
       document.body.classList.remove('site-labor-printing')
       setPrinting(false)
+      setPrintingSnapshot(null)
     }
     window.addEventListener('afterprint', cleanup)
     const t = window.setTimeout(() => window.print(), 80)
@@ -442,10 +466,95 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
   // ⚠️ printCalendar는 byProject 캘린더(loadCalendarStorageByProject)로 읽고,
   //    printPayroll은 화면 패널과 동일한 적용 기준 helper(buildAppliedPayrollDraft)로 생성한다.
   //    그래야 인쇄 결과가 화면 표시값과 어긋나지 않는다(레슨수당/calc 조정 회귀 차단).
-  const printBundle = printing ? buildAppliedPayrollDraft(projectId) : null
-  const printCalendar: CalendarSnapshotPart | null = printBundle?.calSnapshot ?? null
-  const printPayroll: PayrollDraft | null = printBundle?.draft ?? null
-  const printApplied: AppliedPayrollSource | null = printBundle?.applied ?? null
+  //
+  // 저장본 인쇄(printingSnapshot != null)일 때는 현재 적용 기준이 바뀌었더라도
+  // 저장 당시 freeze된 calendar/payrollDraft/appliedSource를 그대로 사용한다.
+  // appliedSource가 없는 legacy 저장본은 인쇄 헤더에 "기준 정보 없음(legacy 저장본)" 안내가 표시되고
+  // 적용 기준 박스(printApplied=null)는 노출되지 않는다.
+  //
+  // ⚠️ 현재 화면 인쇄(printingSnapshot=null) 시 buildAppliedPayrollDraft는 1회만 호출해
+  // 같은 capturedAt을 유지하고 storage I/O를 중복하지 않게 한다.
+  const currentBundle = printing && !printingSnapshot ? buildAppliedPayrollDraft(projectId) : null
+  const printCalendar: CalendarSnapshotPart | null = printing
+    ? printingSnapshot
+      ? printingSnapshot.calendar ?? null
+      : currentBundle?.calSnapshot ?? null
+    : null
+  const printPayroll: PayrollDraft | null = printing
+    ? printingSnapshot
+      ? printingSnapshot.payrollDraft ?? null
+      : currentBundle?.draft ?? null
+    : null
+  const printApplied: AppliedPayrollSource | null = printing
+    ? printingSnapshot
+      ? printingSnapshot.appliedSource ?? null
+      : currentBundle?.applied ?? null
+    : null
+  // legacy 저장본(appliedSource 없음 + payrollDraft 있음) 여부 — 인쇄 헤더 안내용.
+  const isPrintingLegacySnapshot = !!(
+    printingSnapshot && printingSnapshot.payrollDraft && !printingSnapshot.appliedSource
+  )
+
+  // 저장본 인쇄 모드에서 print portal의 settings/employees/totals/byRole/results는 저장본 data 우선.
+  // 화면 현재 상태가 저장본과 다르더라도 인쇄 결과는 저장 당시 그대로 재현되어야 한다.
+  // ⚠️ useMemo deps 안정화: printSettings/printEmployees를 직접 새 객체로 분기하면 매 렌더 참조가
+  //    바뀌어 printResults 메모가 사실상 무력화된다. 의존 안정성을 위해 두 값도 useMemo로 감싼다.
+  const printSettings = useMemo(
+    () =>
+      printingSnapshot
+        ? { ...defaultSettings, ...printingSnapshot.data.settings }
+        : settings,
+    [printingSnapshot, settings],
+  )
+  const printEmployees = useMemo(
+    () => (printingSnapshot ? printingSnapshot.data.employees ?? [] : employees),
+    [printingSnapshot, employees],
+  )
+  const printResults = useMemo(
+    () => printEmployees.map((emp) => ({ emp, r: computeEmployee(emp, printSettings) })),
+    [printEmployees, printSettings],
+  )
+  const printTotals = useMemo(() => {
+    const acc = {
+      count: printResults.length,
+      monthlyHours: 0,
+      basePay: 0,
+      holidayPay: 0,
+      overtimePay: 0,
+      nightPay: 0,
+      directPay: 0,
+      insurance: 0,
+      severance: 0,
+      annualLeave: 0,
+      otherIndirect: 0,
+      indirectTotal: 0,
+      total: 0,
+    }
+    printResults.forEach(({ r }) => {
+      acc.monthlyHours += r.monthlyHours
+      acc.basePay += r.basePay
+      acc.holidayPay += r.holidayPay
+      acc.overtimePay += r.overtimePay
+      acc.nightPay += r.nightPay
+      acc.directPay += r.directPay
+      acc.insurance += r.insurance
+      acc.severance += r.severance
+      acc.annualLeave += r.annualLeave
+      acc.otherIndirect += r.otherIndirect
+      acc.indirectTotal += r.indirectTotal
+      acc.total += r.total
+    })
+    return acc
+  }, [printResults])
+  const printByRole = useMemo(() => {
+    const map: Record<string, { count: number; total: number }> = {}
+    printResults.forEach(({ emp, r }) => {
+      if (!map[emp.role]) map[emp.role] = { count: 0, total: 0 }
+      map[emp.role].count += 1
+      map[emp.role].total += r.total
+    })
+    return ROLES.filter((role) => map[role]).map((role) => ({ role, ...map[role] }))
+  }, [printResults])
 
   // 급여요약 CSV — 단일 행. 파일명 site-labor-payroll-summary-YYYY-MM.csv.
   // ⚠️ buildAppliedPayrollDraft로 화면 패널과 동일한 적용 기준 draft를 생성한다.
@@ -551,7 +660,9 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
     // 저장 시점의 월간 근무시간 달력 스냅샷 + 급여명세서 초안 동시 보존(옵셔널).
     // ⚠️ buildAppliedPayrollDraft로 화면 패널과 동일한 적용 기준 + byProject 캘린더 사용.
     //    저장본의 payrollDraft는 사용자가 [선택 기준 적용] 한 결과와 정확히 일치한다.
-    const { draft: payrollDraft, calSnapshot } = buildAppliedPayrollDraft(projectId)
+    //    applied는 적용 기준 메타(source/appliedAt/calcSnapshot)로 snap.appliedSource에 함께 보존되어,
+    //    이후 사용자가 적용 기준을 변경해도 이 저장본은 "저장 당시 기준"을 기록으로 남긴다.
+    const { draft: payrollDraft, calSnapshot, applied } = buildAppliedPayrollDraft(projectId)
     const calendar = calSnapshot || undefined
     // 직원명 fallback — 저장본도 동일한 우선순위로 보강해 후속 CSV/PDF 일관성 유지.
     if (!payrollDraft.employeeName?.trim()) {
@@ -569,6 +680,7 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
       data: { settings, employees },
       calendar,
       payrollDraft,
+      appliedSource: applied,
     }
     setSnapshots((prev) => [snap, ...prev])
     setSaveOpen(false)
@@ -591,7 +703,9 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
     const now = new Date().toISOString()
     // 덮어쓰기 시점에도 캘린더/급여초안 스냅샷을 갱신해 함께 보존.
     // ⚠️ doSave와 동일하게 buildAppliedPayrollDraft로 화면과 일치한 적용 기준 사용.
-    const { draft: payrollDraft, calSnapshot } = buildAppliedPayrollDraft(projectId)
+    //    applied는 덮어쓰기 시점의 기준을 새로 기록 → 이후 적용 기준이 또 바뀌어도 이 저장본은
+    //    "마지막 덮어쓰기 시점 기준"을 그대로 보존한다.
+    const { draft: payrollDraft, calSnapshot, applied } = buildAppliedPayrollDraft(projectId)
     const calendar = calSnapshot || undefined
     if (!payrollDraft.employeeName?.trim()) {
       payrollDraft.employeeName = resolveEmployeeName(
@@ -609,6 +723,7 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
               updatedAt: now,
               calendar,
               payrollDraft,
+              appliedSource: applied,
             }
           : s,
       ),
@@ -1071,6 +1186,27 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
                           급여초안 포함
                         </span>
                       )}
+                      {/* 저장 당시 적용 기준(소스) 배지 — 저장 이후 화면 적용 기준이 바뀌어도 이 배지는 변하지 않는다.
+                          appliedSource가 없으면 legacy 저장본으로 안내. */}
+                      {s.appliedSource ? (
+                        <span
+                          className="slc-snap-badge slc-snap-badge--source"
+                          title={`저장 당시 적용 기준: ${PAYROLL_SOURCE_LABELS[s.appliedSource.source]}${
+                            s.appliedSource.appliedAt
+                              ? ` · 적용일시 ${new Date(s.appliedSource.appliedAt).toLocaleString('ko-KR')}`
+                              : ''
+                          }`}
+                        >
+                          기준: {PAYROLL_SOURCE_LABELS[s.appliedSource.source]}
+                        </span>
+                      ) : s.payrollDraft ? (
+                        <span
+                          className="slc-snap-badge slc-snap-badge--legacy"
+                          title="적용 기준 정보 없이 저장된 이전 버전 저장본 (출력 값은 저장 시점 freeze 그대로 유지)"
+                        >
+                          기준 정보 없음 (이전 저장본)
+                        </span>
+                      ) : null}
                     </td>
                     <td>{s.apartmentName || '-'}</td>
                     <td>{s.baseMonth || '-'}</td>
@@ -1082,6 +1218,8 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
                     <td className="num">{fmtWon(total)}원</td>
                     <td className="slc-snap-actions">
                       <button type="button" onClick={() => loadSnapshot(s)}>불러오기</button>
+                      {/* 저장 당시 적용 기준 + 캘린더/급여초안을 그대로 출력 — 현재 화면 적용 기준 무관. */}
+                      <button type="button" onClick={() => printSnapshot(s)}>인쇄</button>
                       <button type="button" onClick={() => overwriteSnapshot(s.id)}>덮어쓰기</button>
                       <button type="button" className="danger" onClick={() => deleteSnapshot(s.id)}>삭제</button>
                     </td>
@@ -1135,48 +1273,68 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
           <div className="slc-print-area" aria-hidden="true">
             <article className="slc-print-doc">
               <header className="slc-print-head">
-                <h1>현장 인건비 산출</h1>
-                <div className="slc-print-month">기준 월: {settings.baseMonth || '-'}</div>
+                <h1>현장 인건비 산출{printingSnapshot ? ' (저장본)' : ''}</h1>
+                <div className="slc-print-month">기준 월: {printSettings.baseMonth || '-'}</div>
+                {/* 저장본 인쇄 헤더 — 저장 당시 기준임을 명시. legacy 저장본은 안내문구 별도 표시. */}
+                {printingSnapshot && (
+                  <div className="slc-print-snapshot-meta">
+                    <span>저장명: {printingSnapshot.title || '-'}</span>
+                    {printingSnapshot.apartmentName && (
+                      <span>단지명: {printingSnapshot.apartmentName}</span>
+                    )}
+                    <span>
+                      저장일: {new Date(printingSnapshot.savedAt).toLocaleString('ko-KR')}
+                      {printingSnapshot.updatedAt && (
+                        <> · 수정 {new Date(printingSnapshot.updatedAt).toLocaleString('ko-KR')}</>
+                      )}
+                    </span>
+                    {isPrintingLegacySnapshot && (
+                      <span className="slc-print-legacy-note">
+                        ※ 이 저장본은 적용 기준 정보 없이 저장된 이전 버전 저장본입니다 (저장 시점 freeze 값 그대로 출력).
+                      </span>
+                    )}
+                  </div>
+                )}
               </header>
 
               <section className="slc-print-section">
                 <h2>계산 기준</h2>
                 <div className="slc-print-kv">
-                  <span>월 환산 주수: {settings.weeksPerMonth}</span>
-                  {settings.minWage > 0 && <span>최저시급: {fmtWon(settings.minWage)}원</span>}
-                  <span>연장 배율: {settings.overtimeMultiplier}</span>
-                  <span>야간 배율: {settings.nightMultiplier}</span>
-                  <span>휴일 배율: {settings.holidayMultiplier}</span>
-                  <span>4대보험 회사부담: {settings.insuranceRate}%</span>
-                  <span>퇴직충당: {settings.severanceRate}%</span>
-                  <span>연차충당: {settings.annualLeaveRate}%</span>
-                  <span>기타 간접비: {settings.otherIndirectRate}%</span>
+                  <span>월 환산 주수: {printSettings.weeksPerMonth}</span>
+                  {printSettings.minWage > 0 && <span>최저시급: {fmtWon(printSettings.minWage)}원</span>}
+                  <span>연장 배율: {printSettings.overtimeMultiplier}</span>
+                  <span>야간 배율: {printSettings.nightMultiplier}</span>
+                  <span>휴일 배율: {printSettings.holidayMultiplier}</span>
+                  <span>4대보험 회사부담: {printSettings.insuranceRate}%</span>
+                  <span>퇴직충당: {printSettings.severanceRate}%</span>
+                  <span>연차충당: {printSettings.annualLeaveRate}%</span>
+                  <span>기타 간접비: {printSettings.otherIndirectRate}%</span>
                 </div>
               </section>
 
               <section className="slc-print-section">
                 <h2>총 인건비 요약</h2>
                 <div className="slc-print-kv">
-                  <span>직원 수: {totals.count}명</span>
-                  <span>총 월 근로시간: {fmtHours(totals.monthlyHours)}h</span>
-                  <span>총 기본급: {fmtWon(totals.basePay)}원</span>
-                  <span>총 주휴수당: {fmtWon(totals.holidayPay)}원</span>
-                  <span>총 연장수당: {fmtWon(totals.overtimePay)}원</span>
-                  <span>총 야간수당: {fmtWon(totals.nightPay)}원</span>
-                  <span>총 직접 인건비: {fmtWon(totals.directPay)}원</span>
-                  <span>총 회사부담(4대보험): {fmtWon(totals.insurance)}원</span>
-                  <span>총 퇴직충당: {fmtWon(totals.severance)}원</span>
-                  <span>총 연차충당: {fmtWon(totals.annualLeave)}원</span>
-                  <span>총 기타 간접비: {fmtWon(totals.otherIndirect)}원</span>
-                  <span className="slc-print-grand">월 총 예상 인건비: {fmtWon(totals.total)}원</span>
+                  <span>직원 수: {printTotals.count}명</span>
+                  <span>총 월 근로시간: {fmtHours(printTotals.monthlyHours)}h</span>
+                  <span>총 기본급: {fmtWon(printTotals.basePay)}원</span>
+                  <span>총 주휴수당: {fmtWon(printTotals.holidayPay)}원</span>
+                  <span>총 연장수당: {fmtWon(printTotals.overtimePay)}원</span>
+                  <span>총 야간수당: {fmtWon(printTotals.nightPay)}원</span>
+                  <span>총 직접 인건비: {fmtWon(printTotals.directPay)}원</span>
+                  <span>총 회사부담(4대보험): {fmtWon(printTotals.insurance)}원</span>
+                  <span>총 퇴직충당: {fmtWon(printTotals.severance)}원</span>
+                  <span>총 연차충당: {fmtWon(printTotals.annualLeave)}원</span>
+                  <span>총 기타 간접비: {fmtWon(printTotals.otherIndirect)}원</span>
+                  <span className="slc-print-grand">월 총 예상 인건비: {fmtWon(printTotals.total)}원</span>
                 </div>
               </section>
 
-              {byRole.length > 0 && (
+              {printByRole.length > 0 && (
                 <section className="slc-print-section">
                   <h2>직무별 합계</h2>
                   <div className="slc-print-kv">
-                    {byRole.map((b) => (
+                    {printByRole.map((b) => (
                       <span key={b.role}>{b.role} {b.count}명 · {fmtWon(b.total)}원</span>
                     ))}
                   </div>
@@ -1202,7 +1360,7 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
                     </tr>
                   </thead>
                   <tbody>
-                    {results.map(({ emp, r }) => (
+                    {printResults.map(({ emp, r }) => (
                       <tr key={emp.id}>
                         <td>{emp.name || '(미입력)'}</td>
                         <td>{emp.role}</td>
@@ -1222,14 +1380,14 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
                     <tr>
                       <td colSpan={2}>합계</td>
                       <td>-</td>
-                      <td>{fmtHours(totals.monthlyHours)}</td>
-                      <td>{fmtWon(totals.basePay)}</td>
-                      <td>{fmtWon(totals.holidayPay)}</td>
-                      <td>{fmtWon(totals.overtimePay)}</td>
-                      <td>{fmtWon(totals.nightPay)}</td>
-                      <td>{fmtWon(totals.directPay)}</td>
-                      <td>{fmtWon(totals.indirectTotal)}</td>
-                      <td>{fmtWon(totals.total)}</td>
+                      <td>{fmtHours(printTotals.monthlyHours)}</td>
+                      <td>{fmtWon(printTotals.basePay)}</td>
+                      <td>{fmtWon(printTotals.holidayPay)}</td>
+                      <td>{fmtWon(printTotals.overtimePay)}</td>
+                      <td>{fmtWon(printTotals.nightPay)}</td>
+                      <td>{fmtWon(printTotals.directPay)}</td>
+                      <td>{fmtWon(printTotals.indirectTotal)}</td>
+                      <td>{fmtWon(printTotals.total)}</td>
                     </tr>
                   </tfoot>
                 </table>

@@ -105,6 +105,17 @@ export interface LaborCostSnapshot {
   // 세전 급여 요약 + 급여명세서 초안 스냅샷(옵셔널, 하위호환).
   // ⚠️ 공식 명세서가 아닌 내부 검토용 초안. 4대보험/소득세 자동 계산 X — 사용자가 입력한 공제액 사용.
   payrollDraft?: import('./sitePayrollUtils').PayrollDraft
+  // 저장 당시의 급여/실비 적용 기준 메타 (옵셔널, 하위호환).
+  // 저장 시점 buildAppliedPayrollDraft가 반환한 applied 그대로 기록한다.
+  //   - source: 'calendar' | 'calc'
+  //   - appliedAt: 적용 시점 ISO
+  //   - calcSnapshot: calc 적용 시점의 합계 스냅샷 (calc 일 때만)
+  // ⚠️ 사용자가 적용 기준을 이후에 바꿔도 저장본 출력 시 이 source가 우선되어 숫자가 유지된다.
+  //    과거 저장본(이 필드 없음 = legacy)은 화면에 "기준 정보 없음" 안내를 표시한다.
+  //    payrollDraft 안의 숫자(gross/deductions/adjustment 등)는 이미 저장 시점에 동결되어 있으므로
+  //    appliedSource 가 없어도 출력 값은 그대로 재현된다 — appliedSource 는 "어떤 기준으로 만들어졌는지"
+  //    라벨/추적용 메타다.
+  appliedSource?: import('./sitePayrollUtils').AppliedPayrollSource
 }
 
 // ─── 시간 파싱 유틸 ──────────────────────────────────────────────────────────

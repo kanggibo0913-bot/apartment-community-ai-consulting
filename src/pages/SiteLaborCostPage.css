@@ -683,3 +683,35 @@
   border-color: #b4d2ff;
   color: #1d4ed8;
 }
+
+/* 저장 당시 적용 기준(소스) 배지 — 보라색 계열로 다른 배지와 구분 */
+.slc-snap-badge--source {
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+  color: #6b21a8;
+}
+
+/* 적용 기준 정보 없이 저장된 이전 버전(legacy) 저장본 배지 — 회색 계열로 약하게 표시 */
+.slc-snap-badge--legacy {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* 저장본 인쇄 헤더 메타 (저장명/단지/저장일 등) — 인쇄에만 노출.
+   인접 .slc-print-month(11pt #444)와 단위/색상을 정렬해 인쇄 헤더 타이포그래피 일관성 유지. */
+.slc-print-snapshot-meta {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 11pt;
+  color: #444;
+}
+
+.slc-print-legacy-note {
+  flex-basis: 100%;
+  color: #92400e;
+  font-style: italic;
+}
