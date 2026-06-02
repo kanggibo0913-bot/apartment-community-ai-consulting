@@ -16,12 +16,13 @@ import {
   dayWorkHours,
   fmtHours as fmtHoursCal,
   fmtWon as fmtWonCal,
-  loadCalendarStorage,
+  loadCalendarStorageByProject,
 } from '../utils/siteLaborCalendarUtils'
 import {
+  AppliedPayrollSource,
+  PAYROLL_SOURCE_LABELS,
   PayrollDraft,
-  buildPayrollDraftFromCalendar,
-  loadPayrollState,
+  buildAppliedPayrollDraft,
 } from '../utils/sitePayrollUtils'
 import {
   CalcSettings,
@@ -360,7 +361,9 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
   // 파일명: site-labor-calendar-YYYY-MM.csv. 해당 월의 모든 날짜 포함(빈 날짜는 근로시간 0).
   // 컬럼: 기준월, 직원명, 날짜, 요일, 출근, 퇴근, 휴게시간, 야간시간, 근로시간, 휴무여부, 공휴일여부, 메모.
   const exportCalendarCsv = () => {
-    const storage = loadCalendarStorage()
+    // ⚠️ byProject 캘린더로 읽어야 사용자가 입력한 단지별 캘린더 데이터가 CSV에 그대로 보인다.
+    //    이전에는 loadCalendarStorage()(전역 키)만 읽어 단지별 입력값이 누락되는 회귀가 있었다.
+    const storage = loadCalendarStorageByProject(projectId)
     const cal = buildCalendarSnapshot(storage)
     if (!cal) {
       flash('근무표 데이터가 없습니다. 월간 근무시간 달력에서 기준 월을 선택해주세요.')
@@ -435,20 +438,23 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
     if (fromEmp) return fromEmp
     return '직원명 미입력'
   }
-  // PDF 출력 시점에 현재 달력 스냅샷을 한 번 더 읽어 인쇄 영역에 함께 노출.
-  // 인쇄 영역은 portal로 렌더되므로 매 렌더마다 loadCalendarStorage()를 호출해도 비용 작음.
-  const printCalendar: CalendarSnapshotPart | null = printing ? buildCalendarSnapshot() : null
-  // 급여명세서 초안도 인쇄 시점에 매번 빌드 (가장 최신 상태 반영).
-  const printPayroll: PayrollDraft | null = printing
-    ? buildPayrollDraftFromCalendar(printCalendar, loadPayrollState())
-    : null
+  // PDF 출력 시점에 현재 달력 스냅샷 + 적용 기준 기반 급여 draft를 한 번 더 빌드.
+  // ⚠️ printCalendar는 byProject 캘린더(loadCalendarStorageByProject)로 읽고,
+  //    printPayroll은 화면 패널과 동일한 적용 기준 helper(buildAppliedPayrollDraft)로 생성한다.
+  //    그래야 인쇄 결과가 화면 표시값과 어긋나지 않는다(레슨수당/calc 조정 회귀 차단).
+  const printBundle = printing ? buildAppliedPayrollDraft(projectId) : null
+  const printCalendar: CalendarSnapshotPart | null = printBundle?.calSnapshot ?? null
+  const printPayroll: PayrollDraft | null = printBundle?.draft ?? null
+  const printApplied: AppliedPayrollSource | null = printBundle?.applied ?? null
 
   // 급여요약 CSV — 단일 행. 파일명 site-labor-payroll-summary-YYYY-MM.csv.
+  // ⚠️ buildAppliedPayrollDraft로 화면 패널과 동일한 적용 기준 draft를 생성한다.
+  //    calendar source → byProject 캘린더 monthSummary.lessonAllowance 사용
+  //    calc source     → 적용 시점 calcSnapshot + monthlyAdjustment 적용
+  // 적용 기준/실비 조정 정보도 CSV 컬럼에 포함해 출력 결과를 추적 가능하게 한다.
   const exportPayrollCsv = () => {
-    const cal = buildCalendarSnapshot()
-    const state = loadPayrollState()
-    const draft = buildPayrollDraftFromCalendar(cal, state)
-    if (draft.source === 'none' && draft.gross.extrasTotal === 0 && draft.deductionsTotal === 0) {
+    const { draft, applied, calSnapshot: cal } = buildAppliedPayrollDraft(projectId)
+    if (draft.source === 'none' && draft.gross.extrasTotal === 0 && draft.deductionsTotal === 0 && !draft.adjustment?.enabled) {
       flash('급여 요약 데이터가 없습니다. 월간 근무시간 달력 또는 기타수당/공제액을 먼저 입력해주세요.')
       return
     }
@@ -458,14 +464,23 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
     const nontaxDetail = (draft.nonTaxableItems || [])
       .map((e) => `${e.label || '비과세'} ${(e.amount || 0).toLocaleString('ko-KR')}`)
       .join(' / ')
+    // 적용 기준 메타 (사용자 요구사항 ⑧).
+    const sourceLabel = PAYROLL_SOURCE_LABELS[applied.source]
+    const appliedAt = applied.appliedAt ? new Date(applied.appliedAt).toLocaleString('ko-KR') : '미적용'
+    const adj = draft.adjustment
     const header = [
-      '기준월','직원명','총근로시간','기본급','주휴수당','야간수당','레슨수당','기타수당',
+      '적용기준','적용일시','기준월','직원명','총근로시간','기본급','주휴수당','야간수당','레슨수당','기타수당',
       '세전총지급액','국민연금','건강보험','장기요양','고용보험','소득세','지방소득세','기타공제',
-      '공제합계','예상실지급액','비과세항목내역','비과세합계','과세대상급여참고액','비고',
+      '공제합계','예상실지급액','비과세항목내역','비과세합계','과세대상급여참고액',
+      // 실비 조정(월급제 예외 조정) — 적용된 경우만 값이 들어가고 그 외는 빈 셀.
+      '실비조정사용','기본금액','공제금액(결근/무급)','기타공제(실비)','추가수당(실비)','최종세전급여(실비)','조정사유',
+      '비고',
     ]
     // 직원명 — 캘린더/draft가 비어 있으면 현장 인건비 직원명으로 fallback.
     const empName = resolveEmployeeName(cal?.base.employeeName, draft.employeeName)
     const row = [
+      sourceLabel,
+      appliedAt,
       draft.month,
       empName,
       draft.totalHours.toFixed(1),
@@ -487,6 +502,13 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
       nontaxDetail,
       r0(draft.nonTaxableTotal || 0),
       r0(draft.taxablePayReference || 0),
+      adj?.enabled ? '예' : '',
+      adj?.enabled ? r0(adj.baseAmount) : '',
+      adj?.enabled ? r0(adj.deductionAmount) : '',
+      adj?.enabled ? r0(adj.otherDeduction) : '',
+      adj?.enabled ? r0(adj.additionAmount) : '',
+      adj?.enabled ? r0(adj.finalGross) : '',
+      adj?.enabled ? adj.reason : '',
       draft.note,
     ]
     const csv = '﻿' + [header, row].map((cols) => cols.map(csvField).join(',')).join('\r\n')
@@ -527,10 +549,10 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
     const now = new Date().toISOString()
     const month = saveMonth.trim() || settings.baseMonth
     // 저장 시점의 월간 근무시간 달력 스냅샷 + 급여명세서 초안 동시 보존(옵셔널).
-    const calendar = buildCalendarSnapshot() || undefined
-    // 급여 초안: localStorage(siteLaborPayrollDraft) 입력값 + 캘린더 monthSummary 기반.
-    // 캘린더가 없어도 사용자가 기타수당/공제만 입력했을 가능성이 있으므로 무조건 빌드.
-    const payrollDraft = buildPayrollDraftFromCalendar(calendar || null, loadPayrollState())
+    // ⚠️ buildAppliedPayrollDraft로 화면 패널과 동일한 적용 기준 + byProject 캘린더 사용.
+    //    저장본의 payrollDraft는 사용자가 [선택 기준 적용] 한 결과와 정확히 일치한다.
+    const { draft: payrollDraft, calSnapshot } = buildAppliedPayrollDraft(projectId)
+    const calendar = calSnapshot || undefined
     // 직원명 fallback — 저장본도 동일한 우선순위로 보강해 후속 CSV/PDF 일관성 유지.
     if (!payrollDraft.employeeName?.trim()) {
       payrollDraft.employeeName = resolveEmployeeName(
@@ -568,8 +590,9 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
     if (!window.confirm('현재 입력 중인 내용으로 이 저장본을 덮어쓰시겠습니까?')) return
     const now = new Date().toISOString()
     // 덮어쓰기 시점에도 캘린더/급여초안 스냅샷을 갱신해 함께 보존.
-    const calendar = buildCalendarSnapshot() || undefined
-    const payrollDraft = buildPayrollDraftFromCalendar(calendar || null, loadPayrollState())
+    // ⚠️ doSave와 동일하게 buildAppliedPayrollDraft로 화면과 일치한 적용 기준 사용.
+    const { draft: payrollDraft, calSnapshot } = buildAppliedPayrollDraft(projectId)
+    const calendar = calSnapshot || undefined
     if (!payrollDraft.employeeName?.trim()) {
       payrollDraft.employeeName = resolveEmployeeName(
         calendar?.base.employeeName,
@@ -1312,9 +1335,16 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
               )}
 
               {/* 세전 급여 요약 + 급여명세서 초안 (참고). 데이터 있을 때만 노출. */}
-              {printPayroll && (printPayroll.source === 'calendar' || printPayroll.gross.grossTotal > 0 || printPayroll.deductionsTotal > 0) && (
+              {printPayroll && (printPayroll.source === 'calendar' || printPayroll.gross.grossTotal > 0 || printPayroll.deductionsTotal > 0 || printPayroll.adjustment?.enabled) && (
                 <section className="slc-print-section slc-print-payroll">
                   <h2>세전 급여 요약 (참고)</h2>
+                  {/* 적용 기준 — 사용자가 화면에서 [선택 기준 적용] 한 결과를 그대로 표시 */}
+                  {printApplied && (
+                    <div className="slc-print-kv slc-print-applied">
+                      <span>적용 기준: {PAYROLL_SOURCE_LABELS[printApplied.source]}</span>
+                      <span>적용일시: {printApplied.appliedAt ? new Date(printApplied.appliedAt).toLocaleString('ko-KR') : '미적용'}</span>
+                    </div>
+                  )}
                   <div className="slc-print-kv">
                     <span>직원명: {printPayroll.employeeName || '-'}</span>
                     <span>기준 월: {printPayroll.month || '-'}</span>
@@ -1328,6 +1358,18 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
                       세전 총지급액: {fmtWonCal(printPayroll.gross.grossTotal)}원
                     </span>
                   </div>
+                  {/* 월급제 실비 적용 결과(adjustment.enabled=true) — 화면 패널과 동일한 6항목 표시 */}
+                  {printPayroll.adjustment?.enabled && (
+                    <div className="slc-print-kv slc-print-adjustment">
+                      <span>실비 기본 금액: {fmtWonCal(printPayroll.adjustment.baseAmount)}원</span>
+                      <span>실비 공제 금액: -{fmtWonCal(printPayroll.adjustment.deductionAmount + printPayroll.adjustment.otherDeduction)}원</span>
+                      <span>실비 추가 금액: +{fmtWonCal(printPayroll.adjustment.additionAmount)}원</span>
+                      <span className="slc-print-grand">
+                        최종 세전급여: {fmtWonCal(printPayroll.adjustment.finalGross)}원
+                      </span>
+                      {printPayroll.adjustment.reason && <span>조정 사유: {printPayroll.adjustment.reason}</span>}
+                    </div>
+                  )}
 
                   <h3 className="slc-print-subtitle">급여명세서 초안 (확정 명세서 아님)</h3>
                   <div className="slc-print-kv">

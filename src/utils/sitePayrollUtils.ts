@@ -8,7 +8,12 @@
 //   - 계산 입력값(메모리): 월간 근무시간 달력 스냅샷 (CalendarSnapshotPart) — 캘린더 기반 monthSummary
 //   - 출력: PayrollDraft (현재 화면 표시 / 저장본 / PDF / CSV에서 공용 사용)
 
-import type { CalendarSnapshotPart } from './siteLaborCalendarUtils'
+import {
+  buildCalendarSnapshot,
+  loadCalendarStorageByProject,
+  type CalendarSnapshotPart,
+} from './siteLaborCalendarUtils'
+import { loadProjectScoped } from './projectScopedStorage'
 
 export const PAYROLL_STORAGE_KEY = 'siteLaborPayrollDraft'
 
@@ -245,6 +250,12 @@ export const emptyAppliedPayrollSource = (): AppliedPayrollSource => ({
   appliedAt: '',
 })
 
+// ─── 단지별 storage 키 (Panel/Page 공용) ───────────────────────────────────────
+// SitePayrollPanel과 SiteLaborCostPage(CSV/인쇄/저장본 저장 로직)가 같은 키를 보도록
+// 한 곳에서 export. 새 키 추가 아님 — 기존 SitePayrollPanel.tsx 내부 상수를 utils로 승격.
+export const PAYROLL_BY_PROJECT_KEY = 'siteLaborPayrollDraftByProject'
+export const PAYROLL_SOURCE_BY_PROJECT_KEY = 'siteLaborPayrollSourcePrefByProject'
+
 // calc 합계 스냅샷 기반 PayrollDraft 생성.
 // - 직원별 계산결과 합계를 세전 항목(basePay/holidayPay/nightPay)에 매핑한다.
 // - 직원별 계산결과는 시급제 알바의 "달력에서 제외한 레슨수당" 같은 개별 조정값을 가지지 않으므로
@@ -449,6 +460,104 @@ export const newNonTaxableItem = (preset?: { label?: string; limitNote?: string 
   limitNote: preset?.limitNote || '',
   memo: '',
 })
+
+// ─── 단지별 storage 로더 (Panel/Page 공용) ───────────────────────────────────
+// SitePayrollPanel에 있던 로컬 헬퍼를 utils로 승격. CSV/인쇄/저장본 저장 로직에서도
+// 같은 함수를 호출해 화면과 일치한 draft를 생성할 수 있게 한다.
+//
+// loadProjectScoped 정책:
+//   - byProject 슬롯에 해당 projectId 데이터가 있으면 그 값 반환
+//   - 없으면 전역 key(legacy)에 1회 fallback (projectScopedLegacyMigration 정책)
+//   - 둘 다 없으면 인자로 받은 fallback 사용 (여기선 null 또는 emptyXxx)
+export const loadPayrollStateByProject = (projectId: string | undefined): PayrollPersistedState => {
+  const raw = loadProjectScoped<Partial<PayrollPersistedState> | null>(
+    PAYROLL_STORAGE_KEY,
+    PAYROLL_BY_PROJECT_KEY,
+    projectId,
+    null,
+  )
+  if (!raw) return loadPayrollState()
+  return {
+    extras: Array.isArray(raw.extras) ? raw.extras : [],
+    nonTaxableItems: Array.isArray(raw.nonTaxableItems) ? raw.nonTaxableItems : [],
+    deductions: { ...emptyPayrollState().deductions, ...(raw.deductions || {}) },
+    payDate: raw.payDate || '',
+    note: raw.note || '',
+    monthlyAdjustment: { ...emptyMonthlyAdjustment(), ...(raw.monthlyAdjustment || {}) },
+  }
+}
+
+export const loadAppliedPayrollSourceByProject = (
+  projectId: string | undefined,
+): AppliedPayrollSource => {
+  // 적용 기준에는 legacy 전역 key가 없으므로 byProject만 읽는다(loadProjectScoped 호출은
+  // 첫 번째 인자에 글로벌 key를 주지만, 전역 데이터가 없으면 fallback으로 미적용 상태 반환).
+  const raw = loadProjectScoped<Partial<AppliedPayrollSource> | null>(
+    'siteLaborPayrollSourcePref',
+    PAYROLL_SOURCE_BY_PROJECT_KEY,
+    projectId,
+    null,
+  )
+  if (!raw) return emptyAppliedPayrollSource()
+  const source: PayrollSource = raw.source === 'calc' ? 'calc' : 'calendar'
+  return {
+    source,
+    appliedAt: typeof raw.appliedAt === 'string' ? raw.appliedAt : '',
+    ...(raw.calcSnapshot ? { calcSnapshot: raw.calcSnapshot } : {}),
+  }
+}
+
+// ─── 적용 기준 기반 통합 draft 빌더 ───────────────────────────────────────────
+// 화면(SitePayrollPanel)과 CSV/인쇄/저장본(SiteLaborCostPage)이 모두 이 함수를 호출하면
+// 동일한 적용 기준 + 동일한 캘린더 byProject 데이터 + 동일한 payroll state를 사용하므로
+// 표시값과 출력값이 어긋날 수 없다.
+//
+// 입력:
+//   - projectId: 현재 단지 (없으면 'default')
+//   - liveState (옵션): 미저장 변경분이 있는 경우 화면이 자기 state를 그대로 전달.
+//                       전달하지 않으면 storage에서 다시 읽음(CSV/인쇄 시 사용 패턴).
+//   - liveApplied (옵션): 동일 — 화면이 자기 applied state를 전달.
+//                         미전달 시 storage 기준.
+//   - liveCalSnapshot (옵션): 화면이 useMemo로 들고 있는 snapshot. 미전달 시 byProject에서 재빌드.
+export interface AppliedDraftBundle {
+  draft: PayrollDraft
+  applied: AppliedPayrollSource
+  calSnapshot: CalendarSnapshotPart | null
+  state: PayrollPersistedState
+}
+
+export const buildAppliedPayrollDraft = (
+  projectId: string | undefined,
+  overrides?: {
+    state?: PayrollPersistedState
+    applied?: AppliedPayrollSource
+    calSnapshot?: CalendarSnapshotPart | null
+  },
+): AppliedDraftBundle => {
+  const state = overrides?.state ?? loadPayrollStateByProject(projectId)
+  const applied = overrides?.applied ?? loadAppliedPayrollSourceByProject(projectId)
+  const calSnapshot =
+    overrides?.calSnapshot !== undefined
+      ? overrides.calSnapshot
+      : buildCalendarSnapshot(loadCalendarStorageByProject(projectId))
+
+  let draft: PayrollDraft
+  if (applied.source === 'calc') {
+    draft = buildPayrollDraftFromCalcSnapshot(applied.calcSnapshot ?? null, state, {
+      employeeName: calSnapshot?.base.employeeName,
+      month: applied.calcSnapshot?.baseMonth || calSnapshot?.month,
+    })
+  } else {
+    draft = buildPayrollDraftFromCalendar(calSnapshot, state)
+  }
+  return { draft, applied, calSnapshot, state }
+}
+
+// 적용 기준 한글 라벨 (CSV/인쇄에서 공용 사용).
+export const PAYROLL_SOURCE_LABELS: Record<PayrollSource, string> = {
+  calendar: '월별 달력 월간합계',
+  calc: '직원별 계산결과',
+}
 
 // 출력 라벨(PDF/CSV 공용).
 export const DEDUCTION_LABELS: Record<keyof PayrollDeductions, string> = {

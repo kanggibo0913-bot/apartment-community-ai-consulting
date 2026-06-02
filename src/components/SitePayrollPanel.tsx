@@ -13,7 +13,8 @@ import {
   CalcResultSnapshot,
   DEDUCTION_LABELS,
   NON_TAXABLE_PRESETS,
-  PAYROLL_STORAGE_KEY,
+  PAYROLL_BY_PROJECT_KEY,
+  PAYROLL_SOURCE_BY_PROJECT_KEY,
   PayrollDeductions,
   PayrollDraft,
   PayrollExtra,
@@ -24,41 +25,14 @@ import {
   buildPayrollDraftFromCalcSnapshot,
   buildPayrollDraftFromCalendar,
   computeMonthDays,
-  emptyAppliedPayrollSource,
   emptyMonthlyAdjustment,
   emptyPayrollState,
-  loadPayrollState,
+  loadAppliedPayrollSourceByProject,
+  loadPayrollStateByProject,
   newExtra,
   newNonTaxableItem,
 } from '../utils/sitePayrollUtils'
-import { loadProjectScoped, saveProjectScoped } from '../utils/projectScopedStorage'
-
-const PAYROLL_BY_PROJECT_KEY = 'siteLaborPayrollDraftByProject'
-// 급여요약 적용 기준 — 단지별 분리 저장. 전역 fallback key는 없는 신규 데이터이므로
-// loadProjectScoped(globalKey)는 동일 name으로 두고 legacy 데이터는 없음 가정.
-const PAYROLL_SOURCE_KEY = 'siteLaborPayrollSourcePref'
-const PAYROLL_SOURCE_BY_PROJECT_KEY = 'siteLaborPayrollSourcePrefByProject'
-
-// projectId 기반 PayrollPersistedState 로드 — byProject 없으면 전역 1회 fallback.
-const loadPayrollStateScoped = (projectId: string | undefined): PayrollPersistedState => {
-  const raw = loadProjectScoped<Partial<PayrollPersistedState> | null>(
-    PAYROLL_STORAGE_KEY,
-    PAYROLL_BY_PROJECT_KEY,
-    projectId,
-    null,
-  )
-  if (!raw) return loadPayrollState()
-  // sitePayrollUtils의 emptyPayrollState 구조에 맞춰 안전 정규화.
-  // monthlyAdjustment는 옵셔널 — 과거 저장본은 이 필드가 없을 수 있어 emptyMonthlyAdjustment로 보강.
-  return {
-    extras: Array.isArray(raw.extras) ? raw.extras : [],
-    nonTaxableItems: Array.isArray(raw.nonTaxableItems) ? raw.nonTaxableItems : [],
-    deductions: { ...emptyPayrollState().deductions, ...(raw.deductions || {}) },
-    payDate: raw.payDate || '',
-    note: raw.note || '',
-    monthlyAdjustment: { ...emptyMonthlyAdjustment(), ...(raw.monthlyAdjustment || {}) },
-  }
-}
+import { saveProjectScoped } from '../utils/projectScopedStorage'
 import './SitePayrollPanel.css'
 
 // 세전 급여 요약 + 급여명세서 초안 패널.
@@ -77,25 +51,8 @@ interface SitePayrollPanelProps {
   calcResultSnapshot?: CalcResultSnapshot | null
 }
 
-// AppliedPayrollSource 단지별 로드 — 미저장 시 기본 calendar(미적용 상태).
-const loadAppliedSourceScoped = (projectId: string | undefined): AppliedPayrollSource => {
-  const raw = loadProjectScoped<Partial<AppliedPayrollSource> | null>(
-    PAYROLL_SOURCE_KEY,
-    PAYROLL_SOURCE_BY_PROJECT_KEY,
-    projectId,
-    null,
-  )
-  if (!raw) return emptyAppliedPayrollSource()
-  const source: PayrollSource = raw.source === 'calc' ? 'calc' : 'calendar'
-  return {
-    source,
-    appliedAt: typeof raw.appliedAt === 'string' ? raw.appliedAt : '',
-    ...(raw.calcSnapshot ? { calcSnapshot: raw.calcSnapshot } : {}),
-  }
-}
-
 const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ projectId, refreshNonce = 0, calcResultSnapshot }) => {
-  const [state, setState] = useState<PayrollPersistedState>(() => loadPayrollStateScoped(projectId))
+  const [state, setState] = useState<PayrollPersistedState>(() => loadPayrollStateByProject(projectId))
   // 캘린더 스냅샷은 캘린더 입력에 따라 매번 새로 읽는다. 캘린더 변경 후 refreshNonce 증감으로 강제 갱신.
   const [calRevision, setCalRevision] = useState(0)
   // 펼치기 토글
@@ -103,14 +60,14 @@ const SitePayrollPanel: React.FC<SitePayrollPanelProps> = ({ projectId, refreshN
 
   // 급여요약 적용 기준 상태 — 적용된 기준(applied) + 사용자가 라디오로 선택한 미적용 기준(pending).
   // 적용 전에는 applied가 기준이고, [적용] 버튼을 누르면 pending이 applied로 commit된다.
-  const [applied, setApplied] = useState<AppliedPayrollSource>(() => loadAppliedSourceScoped(projectId))
-  const [pendingSource, setPendingSource] = useState<PayrollSource>(() => loadAppliedSourceScoped(projectId).source)
+  const [applied, setApplied] = useState<AppliedPayrollSource>(() => loadAppliedPayrollSourceByProject(projectId))
+  const [pendingSource, setPendingSource] = useState<PayrollSource>(() => loadAppliedPayrollSourceByProject(projectId).source)
   const [applyMsg, setApplyMsg] = useState('')
 
   // 단지 전환 시 새 단지의 payroll state로 reload.
   useEffect(() => {
-    setState(loadPayrollStateScoped(projectId))
-    const next = loadAppliedSourceScoped(projectId)
+    setState(loadPayrollStateByProject(projectId))
+    const next = loadAppliedPayrollSourceByProject(projectId)
     setApplied(next)
     setPendingSource(next.source)
   }, [projectId])
