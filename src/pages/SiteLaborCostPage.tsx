@@ -172,6 +172,12 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
   // SiteLaborCalendar의 onCalendarChange가 호출될 때마다 증가 → Panel이 monthSummary를 다시 읽음.
   const [payrollRefreshNonce, setPayrollRefreshNonce] = useState(0)
 
+  // 단지 전환 race 가드 — projectId가 바뀐 직후의 commit에서는 state가 아직 이전 단지 값이라
+  // 그대로 save effect가 돌면 이전 state가 새 projectId 슬롯에 잘못 기록된다.
+  // 저장 직전 ref를 비교해 "현재 state가 이 projectId로 load 완료된 것인지" 확인하고,
+  // 새 projectId용 load가 끝난 다음 commit부터 저장이 재개되게 한다.
+  const loadedForProjectIdRef = useRef(projectId)
+
   // 단지 전환 감지 — projectId가 바뀌면 새 단지의 데이터로 setState 재초기화.
   // 첫 마운트 시점에는 이미 initial로 채워져 있어 동일 projectId로 중복 호출되지 않는다.
   useEffect(() => {
@@ -189,6 +195,7 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
 
   useEffect(() => {
     // ByProject 슬롯에 저장. 전역 STORAGE_KEY는 손대지 않음(legacy 보존).
+    if (loadedForProjectIdRef.current !== projectId) return
     saveProjectScoped(STORAGE_KEY_BY_PROJECT, projectId, { settings, employees })
   }, [settings, employees, projectId])
 
@@ -644,8 +651,17 @@ const SiteLaborCostPage: React.FC<SiteLaborCostPageProps> = ({ projectId, projec
   const [snapSort, setSnapSort] = useState<'latest' | 'oldest' | 'month' | 'apartment' | 'totalDesc' | 'totalAsc'>('latest')
 
   useEffect(() => {
+    if (loadedForProjectIdRef.current !== projectId) return
     saveProjectScoped(SNAPSHOT_KEY_BY_PROJECT, projectId, snapshots)
-  }, [snapshots])
+  }, [snapshots, projectId])
+
+  // ref 갱신 effect — 모든 save effect보다 늦게 선언해 같은 commit 안에서
+  // (1) projectId가 바뀐 직후 save effect들은 ref 불일치로 skip → 잘못된 슬롯 저장 방지
+  // (2) 이 effect가 마지막에 돌며 ref를 새 projectId로 마킹
+  // → 새 단지 state로 reload된 다음 commit부터 save가 정상 재개된다.
+  useEffect(() => {
+    loadedForProjectIdRef.current = projectId
+  }, [projectId])
 
   const openSaveModal = () => {
     setSaveTitle(`${settings.baseMonth || ''} 현장 인건비 산출`.trim())
