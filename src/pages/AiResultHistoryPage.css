@@ -330,7 +330,7 @@
   color: #0a7f3f;
 }
 
-/* 결과 귀속(카테고리) 배지 — 현재 단지/전역/legacy/타 단지 시각 구분 */
+/* 결과 귀속(카테고리) 배지 — 현재 단지/내부 업무/legacy/타 단지 시각 구분 */
 .category-badge {
   font-size: 11px;
   font-weight: 600;
@@ -349,7 +349,7 @@
   border-color: #fde68a;
 }
 
-.category-badge.category-global {
+.category-badge.category-internal {
   background: #e0e7ff;
   color: #3730a3;
   border-color: #c7d2fe;
@@ -367,7 +367,7 @@
   border-color: #fecaca;
 }
 
-/* 카테고리 필터 버튼(현재 단지/전역/legacy) — workfilter와 구분되는 행 */
+/* 카테고리 필터 버튼(현재 단지/내부 업무/legacy) — workfilter와 구분되는 행 */
 .ai-history-categories {
   display: flex;
   flex-wrap: wrap;
@@ -392,7 +392,7 @@
   border-color: #f59e0b;
 }
 
-.ai-history-category-btn.active.ai-history-category-global {
+.ai-history-category-btn.active.ai-history-category-internal {
   background: #4f46e5;
   color: #fff;
   border-color: #4f46e5;
@@ -415,7 +415,7 @@
   color: #92400e;
 }
 
-.ai-summary-item.ai-summary-global strong {
+.ai-summary-item.ai-summary-internal strong {
   color: #3730a3;
 }
 

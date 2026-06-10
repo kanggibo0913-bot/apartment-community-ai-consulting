@@ -53,18 +53,20 @@ const BID_TASK_TYPES = ['bidNoticeAnalysis', 'document', 'contractGenerate', 'co
 const workGroupOf = (taskType: string): 'bid' | 'ops' => (BID_TASK_TYPES.includes(taskType) ? 'bid' : 'ops')
 const workGroupLabel = (taskType: string) => (workGroupOf(taskType) === 'bid' ? '입찰용' : '현장 운영')
 
-// 전역 taskType — projectId 없이 저장되어도 정상으로 간주(입찰/공고문 분석 계열).
-// 그 외 taskType이 projectId 없이 저장되어 있으면 과거(legacy) 데이터로 분류한다.
-const GLOBAL_TASK_TYPES = BID_TASK_TYPES
+// 내부 업무 taskType — 사이드바의 "입찰용 = 회사 내부 업무" 그룹에 속하는 AI 결과.
+// 입찰공고·공문/질의서·계약서 생성/검토는 단지 귀속이 없는 회사 내부 업무로 보고
+// projectId 없이 저장되어도 정상으로 간주한다. 그 외 taskType이 projectId 없이
+// 저장되어 있으면 과거(legacy) 데이터로 분류한다(현장 운영 기능은 단지 귀속이 원칙).
+const INTERNAL_TASK_TYPES = BID_TASK_TYPES
 
-type AiCategory = 'current' | 'global' | 'legacy' | 'other'
+type AiCategory = 'current' | 'internal' | 'legacy' | 'other'
 
 // 결과의 단지 귀속을 분류한다.
 // - projectId 있고 현재 단지와 일치 → 'current'
 // - projectId 있고 다른 단지 → 'other'(목록에서 제외)
 // - 현재 단지가 비어 있고 projectId 있는 항목 → 'current'로 보호(단지 미선택 시 안전 노출)
-// - projectId 없고 전역 taskType → 'global'
-// - projectId 없고 전역 taskType 아님 → 'legacy'(과거 데이터)
+// - projectId 없고 입찰용/내부 업무 taskType → 'internal'
+// - projectId 없고 현장 운영 taskType → 'legacy'(과거 데이터)
 const categoryOf = (entry: AiResultEntry, currentProjectId?: string): AiCategory => {
   const owner = (entry.projectId || '').trim()
   const cur = (currentProjectId || '').trim()
@@ -72,12 +74,12 @@ const categoryOf = (entry: AiResultEntry, currentProjectId?: string): AiCategory
     if (!cur) return 'current'
     return owner === cur ? 'current' : 'other'
   }
-  return GLOBAL_TASK_TYPES.includes(entry.taskType) ? 'global' : 'legacy'
+  return INTERNAL_TASK_TYPES.includes(entry.taskType) ? 'internal' : 'legacy'
 }
 
 const CATEGORY_LABELS: Record<AiCategory, string> = {
   current: '현재 단지',
-  global: '전역',
+  internal: '내부 업무',
   legacy: 'legacy',
   other: '타 단지',
 }
@@ -148,14 +150,14 @@ interface AiResultHistoryPageProps {
 // 현재 단지의 AI 결과만 필터.
 // 정책(categoryOf와 동일):
 // - 'other' 카테고리(다른 단지 귀속)는 제외.
-// - 'current' / 'global' / 'legacy'는 모두 포함하고, 표시 단계에서 카테고리별로 구분/필터한다.
+// - 'current' / 'internal' / 'legacy'는 모두 포함하고, 표시 단계에서 카테고리별로 구분/필터한다.
 const filterByProject = (list: AiResultEntry[], projectId?: string): AiResultEntry[] =>
   list.filter((e) => categoryOf(e, projectId) !== 'other')
 
 const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, projectName }) => {
   const [items, setItems] = useState<AiResultEntry[]>(() => filterByProject(loadAiResults(), projectId))
   const [workFilter, setWorkFilter] = useState<'all' | 'bid' | 'ops'>('all')
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'current' | 'global' | 'legacy'>('all')
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'current' | 'internal' | 'legacy'>('all')
   const [filter, setFilter] = useState('all')
   const [periodFilter, setPeriodFilter] = useState<PeriodKey>('all')
   const [query, setQuery] = useState('')
@@ -281,7 +283,7 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   }, [items])
 
-  // 통합 화면 요약. 메타데이터 확장 후 성공/오류 + 현재 단지/전역/legacy 카운트도 산출.
+  // 통합 화면 요약. 메타데이터 확장 후 성공/오류 + 현재 단지/내부 업무/legacy 카운트도 산출.
   const aiSummary = useMemo(() => {
     const total = items.length
     const distinctTaskTypes = new Set(items.map((it) => it.taskType)).size
@@ -289,15 +291,15 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
     const successCount = items.filter((it) => statusOf(it) === 'success').length
     const errorCount = items.filter((it) => statusOf(it) === 'error').length
     let currentCount = 0
-    let globalCount = 0
+    let internalCount = 0
     let legacyCount = 0
     for (const it of items) {
       const c = categoryOf(it, projectId)
       if (c === 'current') currentCount += 1
-      else if (c === 'global') globalCount += 1
+      else if (c === 'internal') internalCount += 1
       else if (c === 'legacy') legacyCount += 1
     }
-    return { total, distinctTaskTypes, latest, successCount, errorCount, currentCount, globalCount, legacyCount }
+    return { total, distinctTaskTypes, latest, successCount, errorCount, currentCount, internalCount, legacyCount }
   }, [items, projectId])
 
   // AI 이력 JSON 백업 (저장본 백업 패턴과 동일, backupType만 aiResultHistory)
@@ -537,12 +539,12 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
       />
 
       {/* 단지 컨텍스트 배너 — 현재 어떤 단지의 이력을 보고 있는지 명시.
-          단지 메타 없는 항목(legacy/입찰 전역)은 모든 단지에서 동일하게 노출됨을 안내. */}
+          내부 업무 결과(입찰/공문/계약서)와 legacy(과거)는 모든 단지에서 동일하게 노출됨을 안내. */}
       <div className="ai-history-project-banner">
         <span className="ai-history-project-banner-label">현재 단지</span>
         <strong className="ai-history-project-banner-name">{projectName?.trim() || '(단지 미선택)'}</strong>
         <span className="ai-history-project-banner-note">
-          단지에 귀속된 AI 결과만 표시됩니다. 단지 메타가 없는 과거 이력 및 입찰 전역 결과(공고문 분석 등)는 모든 단지에서 동일하게 노출됩니다.
+          입찰공고·계약서·공문/질의서 결과는 회사 내부 업무 결과로 관리됩니다. 월간 리포트·안건 예측·입주민 안내 보고서 등 현장 운영 결과는 현재 단지 기준으로 표시됩니다. legacy(과거) 결과는 모든 단지에서 동일하게 보이며 보존을 위해 삭제할 수 없습니다.
         </span>
       </div>
 
@@ -583,9 +585,9 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
             <span>현재 단지</span>
             <strong>{aiSummary.currentCount}건</strong>
           </div>
-          <div className="ai-summary-item ai-summary-global">
-            <span>전역(입찰 등)</span>
-            <strong>{aiSummary.globalCount}건</strong>
+          <div className="ai-summary-item ai-summary-internal">
+            <span>내부 업무(입찰/공문/계약)</span>
+            <strong>{aiSummary.internalCount}건</strong>
           </div>
           <div className="ai-summary-item ai-summary-legacy">
             <span>legacy(과거)</span>
@@ -644,12 +646,14 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
         ))}
       </div>
 
-      {/* 카테고리(귀속) 필터: 현재 단지 / 전역 / legacy 결과를 분리 보기 */}
+      {/* 카테고리(귀속) 필터: 현재 단지 / 내부 업무 / legacy 결과를 분리 보기.
+          - 내부 업무 = 사이드바의 입찰용(회사 내부 업무) 그룹.
+          - 현재 단지 = 사이드바의 현장 운영(단지/입대의/사용자툴) 그룹의 단지 귀속 결과. */}
       <div className="ai-history-categories" role="tablist" aria-label="결과 귀속">
         {([
           { key: 'all', label: `전체 (${aiSummary.total})` },
           { key: 'current', label: `현재 단지 (${aiSummary.currentCount})` },
-          { key: 'global', label: `전역 (${aiSummary.globalCount})` },
+          { key: 'internal', label: `내부 업무 (${aiSummary.internalCount})` },
           { key: 'legacy', label: `legacy (${aiSummary.legacyCount})` },
         ] as const).map((c) => (
           <button
@@ -737,8 +741,8 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
             ? '검색 조건에 맞는 AI 결과가 없습니다.'
             : categoryFilter === 'current'
               ? '현재 단지에 귀속된 AI 결과가 없습니다.'
-              : categoryFilter === 'global'
-                ? '전역(입찰/공고문 분석 등) AI 결과가 없습니다.'
+              : categoryFilter === 'internal'
+                ? '회사 내부 업무 결과(입찰/공문/계약서 등)가 없습니다.'
                 : categoryFilter === 'legacy'
                   ? 'legacy(과거) AI 결과가 없습니다.'
                   : workFilter === 'bid'
