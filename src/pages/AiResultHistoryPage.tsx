@@ -53,6 +53,62 @@ const BID_TASK_TYPES = ['bidNoticeAnalysis', 'document', 'contractGenerate', 'co
 const workGroupOf = (taskType: string): 'bid' | 'ops' => (BID_TASK_TYPES.includes(taskType) ? 'bid' : 'ops')
 const workGroupLabel = (taskType: string) => (workGroupOf(taskType) === 'bid' ? '입찰용' : '현장 운영')
 
+// 전역 taskType — projectId 없이 저장되어도 정상으로 간주(입찰/공고문 분석 계열).
+// 그 외 taskType이 projectId 없이 저장되어 있으면 과거(legacy) 데이터로 분류한다.
+const GLOBAL_TASK_TYPES = BID_TASK_TYPES
+
+type AiCategory = 'current' | 'global' | 'legacy' | 'other'
+
+// 결과의 단지 귀속을 분류한다.
+// - projectId 있고 현재 단지와 일치 → 'current'
+// - projectId 있고 다른 단지 → 'other'(목록에서 제외)
+// - 현재 단지가 비어 있고 projectId 있는 항목 → 'current'로 보호(단지 미선택 시 안전 노출)
+// - projectId 없고 전역 taskType → 'global'
+// - projectId 없고 전역 taskType 아님 → 'legacy'(과거 데이터)
+const categoryOf = (entry: AiResultEntry, currentProjectId?: string): AiCategory => {
+  const owner = (entry.projectId || '').trim()
+  const cur = (currentProjectId || '').trim()
+  if (owner) {
+    if (!cur) return 'current'
+    return owner === cur ? 'current' : 'other'
+  }
+  return GLOBAL_TASK_TYPES.includes(entry.taskType) ? 'global' : 'legacy'
+}
+
+const CATEGORY_LABELS: Record<AiCategory, string> = {
+  current: '현재 단지',
+  global: '전역',
+  legacy: 'legacy',
+  other: '타 단지',
+}
+
+// 기간 필터 — 최근 N일 이내 생성된 결과만 표시
+type PeriodKey = 'all' | '7d' | '30d' | '90d' | '1y'
+const PERIOD_OPTIONS: Array<{ key: PeriodKey; label: string }> = [
+  { key: 'all', label: '기간: 전체' },
+  { key: '7d', label: '최근 7일' },
+  { key: '30d', label: '최근 30일' },
+  { key: '90d', label: '최근 90일' },
+  { key: '1y', label: '최근 1년' },
+]
+const periodCutoff = (key: PeriodKey): number => {
+  if (key === 'all') return 0
+  const day = 24 * 60 * 60 * 1000
+  const now = Date.now()
+  switch (key) {
+    case '7d':
+      return now - 7 * day
+    case '30d':
+      return now - 30 * day
+    case '90d':
+      return now - 90 * day
+    case '1y':
+      return now - 365 * day
+    default:
+      return 0
+  }
+}
+
 const FILTERS: Array<{ key: string; label: string; match: (taskType: string) => boolean }> = [
   { key: 'all', label: '전체', match: () => true },
   { key: 'bidNoticeAnalysis', label: '공고문 분석', match: (t) => t === 'bidNoticeAnalysis' },
@@ -90,24 +146,18 @@ interface AiResultHistoryPageProps {
 }
 
 // 현재 단지의 AI 결과만 필터.
-// 정책:
-// - 항목에 projectId가 없는(=legacy or 입찰용 전역) 데이터는 모든 단지에서 노출.
-// - 항목에 projectId가 있으면 현재 단지와 일치할 때만 노출.
-// - 현재 projectId가 비어 있으면 안전하게 전부 노출(단지 미선택 상태 보호).
-const filterByProject = (list: AiResultEntry[], projectId?: string): AiResultEntry[] => {
-  const cur = (projectId || '').trim()
-  return list.filter((e) => {
-    const owner = (e.projectId || '').trim()
-    if (!owner) return true
-    if (!cur) return true
-    return owner === cur
-  })
-}
+// 정책(categoryOf와 동일):
+// - 'other' 카테고리(다른 단지 귀속)는 제외.
+// - 'current' / 'global' / 'legacy'는 모두 포함하고, 표시 단계에서 카테고리별로 구분/필터한다.
+const filterByProject = (list: AiResultEntry[], projectId?: string): AiResultEntry[] =>
+  list.filter((e) => categoryOf(e, projectId) !== 'other')
 
 const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, projectName }) => {
   const [items, setItems] = useState<AiResultEntry[]>(() => filterByProject(loadAiResults(), projectId))
   const [workFilter, setWorkFilter] = useState<'all' | 'bid' | 'ops'>('all')
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'current' | 'global' | 'legacy'>('all')
   const [filter, setFilter] = useState('all')
+  const [periodFilter, setPeriodFilter] = useState<PeriodKey>('all')
   const [query, setQuery] = useState('')
   const [aiSort, setAiSort] = useState<'latest' | 'oldest' | 'taskType'>('latest')
   const [aiStatusFilter, setAiStatusFilter] = useState<'all' | 'success' | 'error'>('all')
@@ -180,13 +230,21 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
   const filtered = useMemo(() => {
     const active = FILTERS.find((f) => f.key === filter) || FILTERS[0]
     const q = query.trim().toLowerCase()
+    const cutoff = periodCutoff(periodFilter)
     return items
+      .filter((it) => categoryFilter === 'all' || categoryOf(it, projectId) === categoryFilter)
       .filter((it) => workFilter === 'all' || workGroupOf(it.taskType) === workFilter)
       .filter((it) => active.match(it.taskType))
       .filter((it) => aiStatusFilter === 'all' || statusOf(it) === aiStatusFilter)
       .filter((it) => aiProviderFilter === 'all' || providerOf(it) === aiProviderFilter)
       .filter((it) => {
+        if (!cutoff) return true
+        const ts = new Date(it.createdAt).getTime()
+        return Number.isFinite(ts) && ts >= cutoff
+      })
+      .filter((it) => {
         if (!q) return true
+        const cat = categoryOf(it, projectId)
         const haystack = [
           it.title,
           it.content,
@@ -196,6 +254,8 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
           it.prompt || '',
           it.error || '',
           it.sourcePage || '',
+          it.projectName || '',
+          CATEGORY_LABELS[cat],
         ]
           .join(' ')
           .toLowerCase()
@@ -213,7 +273,7 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
             return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0
         }
       })
-  }, [items, filter, query, workFilter, aiSort, aiStatusFilter, aiProviderFilter])
+  }, [items, projectId, filter, query, workFilter, categoryFilter, periodFilter, aiSort, aiStatusFilter, aiProviderFilter])
 
   // provider 옵션은 데이터에서 동적 추출 (없으면 'unknown' fallback 포함)
   const providerOptions = useMemo(() => {
@@ -221,15 +281,24 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   }, [items])
 
-  // 통합 화면 요약. 메타데이터 확장 후 성공/오류 카운트도 산출(구버전 데이터는 fallback으로 분류).
+  // 통합 화면 요약. 메타데이터 확장 후 성공/오류 + 현재 단지/전역/legacy 카운트도 산출.
   const aiSummary = useMemo(() => {
     const total = items.length
     const distinctTaskTypes = new Set(items.map((it) => it.taskType)).size
     const latest = items.reduce<string>((acc, it) => (it.createdAt > acc ? it.createdAt : acc), '')
     const successCount = items.filter((it) => statusOf(it) === 'success').length
     const errorCount = items.filter((it) => statusOf(it) === 'error').length
-    return { total, distinctTaskTypes, latest, successCount, errorCount }
-  }, [items])
+    let currentCount = 0
+    let globalCount = 0
+    let legacyCount = 0
+    for (const it of items) {
+      const c = categoryOf(it, projectId)
+      if (c === 'current') currentCount += 1
+      else if (c === 'global') globalCount += 1
+      else if (c === 'legacy') legacyCount += 1
+    }
+    return { total, distinctTaskTypes, latest, successCount, errorCount, currentCount, globalCount, legacyCount }
+  }, [items, projectId])
 
   // AI 이력 JSON 백업 (저장본 백업 패턴과 동일, backupType만 aiResultHistory)
   const backupAiResultsJson = () => {
@@ -405,6 +474,13 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
   }, [published, pubQuery, pubStatusFilter, pubSourceFilter, pubSort])
 
   const handleDelete = (id: string) => {
+    // legacy 결과는 보존(과거 데이터 무결성 정책). UI에서 버튼을 막지만 가드도 함께 둔다.
+    const entry = items.find((it) => it.id === id)
+    if (entry && categoryOf(entry, projectId) === 'legacy') {
+      setCopyMsg('legacy 결과는 보존을 위해 삭제할 수 없습니다.')
+      setTimeout(() => setCopyMsg(''), 2500)
+      return
+    }
     if (!window.confirm('이 AI 결과 이력을 삭제하시겠습니까?')) return
     deleteAiResult(id)
     if (selected?.id === id) setSelected(null)
@@ -503,6 +579,18 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
             <span>현재 저장 이력</span>
             <strong>{aiSummary.total} / 100건</strong>
           </div>
+          <div className="ai-summary-item ai-summary-current">
+            <span>현재 단지</span>
+            <strong>{aiSummary.currentCount}건</strong>
+          </div>
+          <div className="ai-summary-item ai-summary-global">
+            <span>전역(입찰 등)</span>
+            <strong>{aiSummary.globalCount}건</strong>
+          </div>
+          <div className="ai-summary-item ai-summary-legacy">
+            <span>legacy(과거)</span>
+            <strong>{aiSummary.legacyCount}건</strong>
+          </div>
           <div className="ai-summary-item">
             <span>주요 taskType</span>
             <strong>{aiSummary.distinctTaskTypes}종</strong>
@@ -556,6 +644,26 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
         ))}
       </div>
 
+      {/* 카테고리(귀속) 필터: 현재 단지 / 전역 / legacy 결과를 분리 보기 */}
+      <div className="ai-history-categories" role="tablist" aria-label="결과 귀속">
+        {([
+          { key: 'all', label: `전체 (${aiSummary.total})` },
+          { key: 'current', label: `현재 단지 (${aiSummary.currentCount})` },
+          { key: 'global', label: `전역 (${aiSummary.globalCount})` },
+          { key: 'legacy', label: `legacy (${aiSummary.legacyCount})` },
+        ] as const).map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            className={`ai-history-category-btn ai-history-category-${c.key} ${categoryFilter === c.key ? 'active' : ''}`}
+            onClick={() => setCategoryFilter(c.key)}
+            aria-pressed={categoryFilter === c.key}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+
       <div className="ai-history-controls">
         <div className="ai-history-filters">
           {FILTERS.map((f) => (
@@ -592,6 +700,16 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
         </select>
         <select
           className="ai-history-sort"
+          value={periodFilter}
+          onChange={(e) => setPeriodFilter(e.target.value as PeriodKey)}
+          aria-label="기간 필터"
+        >
+          {PERIOD_OPTIONS.map((p) => (
+            <option key={p.key} value={p.key}>{p.label}</option>
+          ))}
+        </select>
+        <select
+          className="ai-history-sort"
           value={aiSort}
           onChange={(e) => setAiSort(e.target.value as typeof aiSort)}
           aria-label="정렬"
@@ -603,7 +721,7 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
         <input
           type="search"
           className="ai-history-search"
-          placeholder="제목·내용 검색"
+          placeholder="제목·내용·단지명·taskType 검색"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -617,21 +735,35 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
         <div className="ai-history-empty">
           {query.trim()
             ? '검색 조건에 맞는 AI 결과가 없습니다.'
-            : workFilter === 'bid'
-              ? '입찰용 AI 결과가 없습니다.'
-              : workFilter === 'ops'
-                ? '현장 운영 AI 결과가 없습니다.'
-                : '조건에 맞는 AI 결과가 없습니다.'}
+            : categoryFilter === 'current'
+              ? '현재 단지에 귀속된 AI 결과가 없습니다.'
+              : categoryFilter === 'global'
+                ? '전역(입찰/공고문 분석 등) AI 결과가 없습니다.'
+                : categoryFilter === 'legacy'
+                  ? 'legacy(과거) AI 결과가 없습니다.'
+                  : workFilter === 'bid'
+                    ? '입찰용 AI 결과가 없습니다.'
+                    : workFilter === 'ops'
+                      ? '현장 운영 AI 결과가 없습니다.'
+                      : periodFilter !== 'all'
+                        ? '선택한 기간 안에 생성된 AI 결과가 없습니다.'
+                        : '조건에 맞는 AI 결과가 없습니다.'}
         </div>
       ) : (
         <div className="ai-history-list">
           {filtered.map((it) => {
             const st = statusOf(it)
+            const cat = categoryOf(it, projectId)
+            const catText =
+              cat === 'current'
+                ? `현재 단지${it.projectName ? `: ${it.projectName}` : ''}`
+                : CATEGORY_LABELS[cat]
             return (
             <div key={it.id} className="ai-history-card">
               <div className="ai-history-card-head">
                 <span className="ai-history-tasktype">{taskLabel(it.taskType)}</span>
                 <span className={`work-badge work-${workGroupOf(it.taskType)}`}>{workGroupLabel(it.taskType)}</span>
+                <span className={`category-badge category-${cat}`}>{catText}</span>
                 <span className={`ai-history-status ai-history-status-${st}`}>{statusLabel(st)}</span>
                 <span className="ai-history-provider">{providerOf(it)}</span>
               </div>
@@ -642,12 +774,19 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
                 <button type="button" onClick={() => setSelected(it)}>
                   열기
                 </button>
+                <button type="button" onClick={() => handleCopy(it.content || it.error || '')}>
+                  복사
+                </button>
                 <button type="button" onClick={() => openPublish(it)}>
                   입주민 공개용 발행
                 </button>
-                <button type="button" className="danger" onClick={() => handleDelete(it.id)}>
-                  삭제
-                </button>
+                {cat === 'legacy' ? (
+                  <span className="ai-history-preserve" title="과거 데이터 보존 정책에 따라 삭제할 수 없습니다.">legacy 보존</span>
+                ) : (
+                  <button type="button" className="danger" onClick={() => handleDelete(it.id)}>
+                    삭제
+                  </button>
+                )}
               </div>
             </div>
             )
@@ -772,6 +911,14 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
             <div className="ai-history-modal-head">
               <div>
                 <span className="ai-history-tasktype">{taskLabel(selected.taskType)}</span>
+                {(() => {
+                  const cat = categoryOf(selected, projectId)
+                  const catText =
+                    cat === 'current'
+                      ? `현재 단지${selected.projectName ? `: ${selected.projectName}` : ''}`
+                      : CATEGORY_LABELS[cat]
+                  return <span className={`category-badge category-${cat}`}>{catText}</span>
+                })()}
                 <span className={`ai-history-status ai-history-status-${statusOf(selected)}`}>{statusLabel(statusOf(selected))}</span>
                 <span className="ai-history-provider">{providerOf(selected)}</span>
                 <h3>{selected.title}</h3>
@@ -809,9 +956,13 @@ const AiResultHistoryPage: React.FC<AiResultHistoryPageProps> = ({ projectId, pr
               <button type="button" onClick={() => handleCopy(selected.content || selected.error || '')}>
                 복사
               </button>
-              <button type="button" className="danger" onClick={() => handleDelete(selected.id)}>
-                삭제
-              </button>
+              {categoryOf(selected, projectId) === 'legacy' ? (
+                <span className="ai-history-preserve" title="과거 데이터 보존 정책에 따라 삭제할 수 없습니다.">legacy 보존</span>
+              ) : (
+                <button type="button" className="danger" onClick={() => handleDelete(selected.id)}>
+                  삭제
+                </button>
+              )}
               {copyMsg && <span className="ai-history-copy-msg">{copyMsg}</span>}
             </div>
           </div>
