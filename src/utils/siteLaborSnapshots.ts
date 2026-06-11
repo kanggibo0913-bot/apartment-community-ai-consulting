@@ -149,7 +149,12 @@ export const nightOverlapMinutes = (s: number, e: number): number => {
   return total
 }
 
-// 직원 1명 월간 산출(기존 동작/결과 동일 — 파일만 이동).
+// 직원 1명 월간 산출.
+// ⚠️ 시간 계산 원칙:
+//   - 일 근로 = (출근~퇴근 체류 분) - (휴게 분, 정수 반올림) → 정수 분
+//   - 주 근로 = 일 근로 분 × 근무일수 → 분 단위로 누적 후 마지막에 /60
+//   - 소수 hour를 중간에 누적하지 않는다(부동소수 오차가 주휴수당으로 전파 방지).
+//   - 반올림은 화면 표시 단계(fmtHours 등)에서만 적용한다.
 export const computeEmployee = (emp: Employee, st: CalcSettings): EmpResult => {
   const weeks = st.weeksPerMonth > 0 ? st.weeksPerMonth : 0
   const s = parseTime(emp.startTime)
@@ -162,11 +167,14 @@ export const computeEmployee = (emp: Employee, st: CalcSettings): EmpResult => {
     stayMin = e - s
     nightMin = nightOverlapMinutes(s, e)
   }
-  const breakMin = Math.max(0, (emp.breakHours || 0) * 60)
-  const dailyWorkHours = Math.max(0, (stayMin - breakMin) / 60)
+  // 휴게 입력(h)을 분으로 환산 후 반올림 — 0.17h 같은 입력이 10.2분이 되는 것을 방지.
+  const breakMin = Math.max(0, Math.round((emp.breakHours || 0) * 60))
+  const dailyWorkMinutes = Math.max(0, stayMin - breakMin) // 정수 분
+  const dailyWorkHours = dailyWorkMinutes / 60
   const dailyNightHours = nightMin / 60
   const workDayCount = DAYS.filter((d) => emp.workDays[d.key]).length
-  const weeklyHours = dailyWorkHours * workDayCount
+  const weeklyMinutes = dailyWorkMinutes * workDayCount // 정수 분
+  const weeklyHours = weeklyMinutes / 60
   const monthlyHours = weeklyHours * weeks
 
   // 가산수당용 시급: 시급제는 입력 시급, 월급제는 통상시급(월급/월근로시간)으로 환산
@@ -176,10 +184,12 @@ export const computeEmployee = (emp: Employee, st: CalcSettings): EmpResult => {
   const basePay = emp.payType === '시급' ? emp.hourlyWage * monthlyHours : emp.monthlySalary
 
   // 주휴수당(참고 계산값): 시급제 + 주휴 적용 + 주 15시간 이상
+  // 주휴시간(주당) = min(주 소정근로시간, 40h) / 40 × 8 — 최대 8h.
+  // (기존 min(일 근로, 8) 방식은 주 근로 비례가 아니어서 주 5일 외 패턴에서 과대 산정됨)
   let holidayPay = 0
   if (emp.weeklyHolidayApplied && emp.payType === '시급' && weeklyHours >= 15) {
-    const weeklyHolidayHours = Math.min(dailyWorkHours, 8) * weeks
-    holidayPay = emp.hourlyWage * weeklyHolidayHours
+    const weeklyHolidayHoursPerWeek = (Math.min(weeklyHours, 40) / 40) * 8
+    holidayPay = emp.hourlyWage * weeklyHolidayHoursPerWeek * weeks
   }
 
   // 연장수당: 주 40시간 초과분

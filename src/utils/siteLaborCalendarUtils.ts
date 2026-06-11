@@ -70,19 +70,24 @@ export const toMin = (s: string): number | null => {
   return h * 60 + min
 }
 
-// 일자별 근로시간(시간, 소수 허용).
+// 일자별 근로시간(분 단위 정수).
 // 퇴근 < 출근 → 익일 퇴근으로 간주(+24h). isOff=true이면 항상 0. 음수/빈값/잘못된 시간은 0.
-export const dayWorkHours = (d: CalendarDayEntry): number => {
+// 휴게는 시간(h) 입력값을 분으로 환산 후 반올림해 정수 분으로 차감한다 —
+// 0.17h 같은 입력이 10.2분이 되어 주/월 합계에 소수 오차를 누적시키는 문제 방지.
+export const dayWorkMinutes = (d: CalendarDayEntry): number => {
   if (d.isOff) return 0
   const s = toMin(d.start)
   const e = toMin(d.end)
   if (s == null || e == null) return 0
   let diff = e - s
   if (diff < 0) diff += 24 * 60
-  diff -= (d.breakHours || 0) * 60
+  diff -= Math.max(0, Math.round((d.breakHours || 0) * 60))
   if (diff <= 0) return 0
-  return diff / 60
+  return diff
 }
+
+// 일자별 근로시간(시간) — 표시/기존 호출부 호환용. 내부 누적에는 dayWorkMinutes를 사용할 것.
+export const dayWorkHours = (d: CalendarDayEntry): number => dayWorkMinutes(d) / 60
 
 // 월별 주차 구성 — 일요일 시작, 토요일 종료. 다른 월에 걸친 cell은 inMonth=false.
 export const buildWeeksForMonth = (
@@ -125,24 +130,27 @@ export interface WeekSummary {
 
 // 주차별 계산 (MVP 기준):
 //  - 주 ≥ 15h + weeklyHolidayApplied 일 때 주휴 발생
-//  - 주휴시간 = min(8, 주h / 40 × 8)
+//  - 주휴시간 = min(8, 주h / 40 × 8)  (= min(주h, 40) / 40 × 8)
 //  - 주휴수당 = 주휴시간 × 시급
 //  - 야간수당 = 야간 적용시 야간시간 × 시급 × 0.5
 //  - 주급 = 주 근로 × 시급 + 주휴수당 + 야간수당
+// ⚠️ 주 근로시간은 일자별 정수 분(dayWorkMinutes)을 합산한 뒤 마지막에 한 번만 /60 한다.
+//    소수 hour를 일자별로 누적하면 부동소수 오차가 주휴수당·주급에 전파된다.
 export const calculateWeekSummary = (
   week: { date: Date; inMonth: boolean; dateKey: string }[],
   days: Record<string, CalendarDayEntry>,
   base: CalendarBase,
 ): WeekSummary => {
-  let totalHours = 0
+  let totalMinutes = 0
   let nightHours = 0
   week.forEach((cell) => {
     if (!cell.inMonth) return
     const day = days[cell.dateKey]
     if (!day) return
-    totalHours += dayWorkHours(day)
+    totalMinutes += dayWorkMinutes(day)
     if (base.nightApplied) nightHours += day.nightHours || 0
   })
+  const totalHours = totalMinutes / 60
   const eligibleHoliday = base.weeklyHolidayApplied && totalHours >= 15
   const holidayHours = eligibleHoliday ? Math.min(8, (totalHours / 40) * 8) : 0
   const holidayPay = holidayHours * base.hourlyWage
