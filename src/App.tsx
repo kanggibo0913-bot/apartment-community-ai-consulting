@@ -25,6 +25,7 @@ import PublicReportView from './pages/PublicReportView'
 import MaintenanceRecordsPage from './pages/MaintenanceRecordsPage'
 import ResidentNoticeReportPage from './pages/ResidentNoticeReportPage'
 import SiteLaborCostPage from './pages/SiteLaborCostPage'
+import EmploymentContractPage from './pages/EmploymentContractPage'
 import SystemDataSyncPage from './pages/SystemDataSyncPage'
 import { loadProjects, saveProjects } from './utils/storage'
 import {
@@ -48,7 +49,7 @@ import {
   MonthlyReportData,
 } from './types/CommunityData'
 
-type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate' | 'contract-manage' | 'monthly-report' | 'ai-history' | 'maintenance' | 'resident-notice' | 'labor-cost' | 'system-data-sync'
+type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate' | 'contract-manage' | 'monthly-report' | 'ai-history' | 'maintenance' | 'resident-notice' | 'labor-cost' | 'employment-contract' | 'system-data-sync'
 
 const defaultFacilityItems: FacilityDetail[] = [
   { id: 1, name: '헬스장', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
@@ -382,6 +383,7 @@ const pageLabels: Record<PageType, string> = {
   maintenance: '시설 보수 내역',
   'resident-notice': '입주민 안내 보고서',
   'labor-cost': '현장 인건비 산출',
+  'employment-contract': '근로계약서 작성',
   'system-data-sync': '데이터 동기화',
 }
 
@@ -803,6 +805,8 @@ function App() {
         return <ResidentNoticeReportPage projectId={activeProject?.id} projectName={activeProject?.name} />
       case 'labor-cost':
         return <SiteLaborCostPage projectId={activeProject?.id} projectName={activeProject?.name} />
+      case 'employment-contract':
+        return <EmploymentContractPage projectName={activeProject?.name} />
       case 'system-data-sync':
         return <SystemDataSyncPage />
       case 'estimate':

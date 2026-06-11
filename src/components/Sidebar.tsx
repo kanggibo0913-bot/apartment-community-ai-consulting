@@ -46,6 +46,7 @@ const menuGroups: MenuGroup[] = [
       { id: 'operation', label: '운영 정보', icon: '⚙️' },
       { id: 'cost', label: '현장 인건비/비용', icon: '💰' },
       { id: 'labor-cost', label: '현장 인건비 산출', icon: '🧾' },
+      { id: 'employment-contract', label: '근로계약서 작성', icon: '📜' },
       { id: 'revenue', label: '수익 정보', icon: '📈' },
       { id: 'complaint', label: '민원 관리', icon: '📞' },
       { id: 'agenda', label: '안건 예상', icon: '📌' },

@@ -1,0 +1,347 @@
+/* 근로계약서 작성 — 입력 폼 + A4 미리보기 + 인쇄 */
+
+/* 법적 안내 배너 — 항상 노출 */
+.ec-legal-banner {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: #fdf2e6;
+  border: 1px solid #f3d5ad;
+  border-radius: 10px;
+  color: #b54708;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+/* 비저장(인쇄 전용) 안내 배너 */
+.ec-nosave-banner {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: #eef9f1;
+  border: 1px solid #bfe8cc;
+  border-radius: 10px;
+  color: #14532d;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.ec-project-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: #eef4ff;
+  border: 1px solid #c7d7fe;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #1e3a8a;
+}
+.ec-project-banner span { font-weight: 600; color: #1d4ed8; }
+.ec-project-banner strong { font-size: 15px; }
+.ec-project-banner em {
+  flex: 1 1 100%;
+  font-style: normal;
+  color: #475569;
+  font-size: 12px;
+}
+
+/* 2단 레이아웃: 좌 입력 / 우 미리보기 */
+.ec-layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 460px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+/* grid 아이템이 A4 문서(794px) 고유 폭만큼 늘어나 가로 스크롤을 만들지 않도록 차단 */
+.ec-layout > * { min-width: 0; }
+
+@media (max-width: 1100px) {
+  .ec-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ─── 입력 폼 ─────────────────────────────────────────────────────────────── */
+.ec-form { display: flex; flex-direction: column; gap: 14px; }
+
+.ec-section {
+  background: #fff;
+  border: 1px solid #e3e8ef;
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ec-section h3 {
+  margin: 0 0 2px;
+  font-size: 14px;
+  color: #1f2a44;
+  border-bottom: 1px solid #eef2f7;
+  padding-bottom: 8px;
+}
+
+.ec-section label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.ec-section input[type='text'],
+.ec-section input[type='number'],
+.ec-section input[type='date'],
+.ec-section input[type='time'],
+.ec-section select,
+.ec-section textarea {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: #1f2a44;
+}
+
+.ec-section textarea { resize: vertical; }
+
+.ec-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .ec-row { grid-template-columns: 1fr; }
+}
+
+.ec-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.5;
+}
+.ec-check input[type='checkbox'] { width: 16px; height: 16px; }
+
+.ec-radio-group { gap: 6px; }
+.ec-radios { display: flex; gap: 14px; }
+.ec-radios label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #1f2a44;
+}
+
+.ec-days {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #475569;
+}
+.ec-days > span { font-weight: 600; margin-right: 4px; }
+.ec-day {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 4px !important;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  background: #f8fafc;
+}
+.ec-day.on {
+  background: #1f2a44;
+  color: #fff;
+  border-color: #1f2a44;
+}
+.ec-day input { display: none; }
+
+.ec-legal-toggle { padding: 8px 10px; background: #fffbeb; border: 1px dashed #fde68a; border-radius: 8px; }
+.ec-legal-tag {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.ec-legal-tag.danger { color: #b91c1c; background: #fee2e2; }
+
+.ec-legal-small { margin: 0; font-size: 12px; color: #b45309; }
+.ec-privacy-note { margin: 0; font-size: 12px; color: #64748b; line-height: 1.6; }
+
+.ec-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ec-btn {
+  font-size: 14px;
+  padding: 9px 18px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #1f2a44;
+  cursor: pointer;
+  font-weight: 600;
+}
+.ec-btn.primary { background: #1f2a44; color: #fff; border-color: #1f2a44; }
+.ec-msg { font-size: 13px; font-weight: 600; color: #1d4ed8; }
+
+/* ─── A4 미리보기 ─────────────────────────────────────────────────────────── */
+.ec-preview-wrap { position: sticky; top: 12px; }
+.ec-preview-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.ec-doc {
+  /* A4 비율 문서형: 210mm 기준, 화면에서는 max-width로 축소 */
+  width: 210mm;
+  max-width: 100%;
+  min-height: 280mm;
+  margin: 0 auto;
+  padding: 18mm 16mm;
+  background: #fff;
+  border: 1px solid #d8dee9;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.12);
+  box-sizing: border-box;
+  color: #111827;
+  font-size: 11.5px;
+  line-height: 1.75;
+  font-family: 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
+}
+
+.ec-doc-title {
+  text-align: center;
+  font-size: 21px;
+  letter-spacing: 6px;
+  margin: 0 0 18px;
+  color: #111827;
+}
+
+.ec-doc-intro { margin: 0 0 14px; }
+
+.ec-doc h2 {
+  font-size: 12.5px;
+  margin: 14px 0 4px;
+  color: #111827;
+}
+
+.ec-doc p { margin: 0 0 6px; }
+
+.ec-doc ol {
+  margin: 0 0 6px;
+  padding-left: 20px;
+}
+.ec-doc ol li { margin-bottom: 4px; }
+
+.ec-doc-sublist {
+  list-style: none;
+  counter-reset: subitem;
+  padding-left: 6px !important;
+  margin-top: 4px !important;
+}
+.ec-doc-sublist li {
+  counter-increment: subitem;
+  margin-bottom: 2px;
+}
+.ec-doc-sublist li::before {
+  content: counter(subitem) ') ';
+}
+
+.ec-doc-note {
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 4px;
+}
+.ec-doc-note p { margin: 0 0 3px; }
+
+.ec-doc-legal-mark {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: #b45309;
+}
+
+.ec-doc-special { min-height: 36px; white-space: pre-wrap; }
+
+.ec-doc-closing { margin-top: 16px; }
+
+.ec-doc-date {
+  text-align: center;
+  font-size: 13px;
+  margin: 18px 0;
+  letter-spacing: 2px;
+}
+
+.ec-doc-sign {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 8px;
+}
+.ec-doc-sign-block { display: flex; flex-direction: column; gap: 3px; }
+.ec-doc-sign-head { font-weight: 700; margin-bottom: 2px; }
+.ec-doc-stamp { margin-left: 16px; color: #6b7280; }
+
+/* 수기 작성용 빈칸 (근로자 인적사항 — 개인정보는 인쇄 후 직접 기재) */
+.ec-doc-blank {
+  display: inline-block;
+  width: 150px;
+  border-bottom: 1px solid #9ca3af;
+  height: 1em;
+  vertical-align: bottom;
+}
+.ec-doc-blank.wide { width: 260px; }
+
+.ec-doc-footer {
+  text-align: center;
+  letter-spacing: 8px;
+  font-weight: 700;
+  margin-top: 22px;
+  font-size: 13px;
+}
+
+.ec-doc-disclaimer {
+  margin-top: 14px;
+  font-size: 10px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+/* ─── 인쇄 ────────────────────────────────────────────────────────────────── */
+/* 화면: 인쇄 전용 사본은 숨김 */
+.ec-print-only { display: none; }
+
+@media print {
+  /* 인쇄: 입력 UI 포함 화면 전체를 숨기고 계약서 본문만 출력 */
+  body * { visibility: hidden; }
+  .ec-print-only { display: block; }
+  .ec-print-only, .ec-print-only * { visibility: visible; }
+  .ec-print-only {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  .ec-print-only .ec-doc {
+    width: auto;
+    min-height: 0;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    font-size: 11px;
+  }
+  @page { size: A4; margin: 14mm 13mm; }
+}
