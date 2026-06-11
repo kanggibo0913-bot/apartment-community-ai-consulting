@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Card from './Card'
 import Button from './Button'
 import {
@@ -72,12 +72,19 @@ const SiteLaborCalendar: React.FC<SiteLaborCalendarProps> = ({ projectId, onCale
     setMonthDays(next.monthDays)
   }, [projectId])
 
+  // onCalendarChange는 ref로 보관 — 저장 effect의 deps에 직접 넣으면 부모가 인라인
+  // 함수를 넘길 때 부모 setState → 리렌더 → effect 재실행 → setState 무한 루프가 된다.
+  const onCalendarChangeRef = useRef(onCalendarChange)
+  useEffect(() => {
+    onCalendarChangeRef.current = onCalendarChange
+  })
+
   // ByProject 슬롯에 저장 + 부모에 변경 통지 (있을 때만).
   // 전역 STORAGE_KEY는 손대지 않음(legacy 보존).
   useEffect(() => {
     saveProjectScoped(STORAGE_KEY_BY_PROJECT, projectId, { base, monthDays })
-    if (onCalendarChange) onCalendarChange()
-  }, [base, monthDays, projectId, onCalendarChange])
+    if (onCalendarChangeRef.current) onCalendarChangeRef.current()
+  }, [base, monthDays, projectId])
 
   const flash = (m: string) => {
     setMsg(m)
