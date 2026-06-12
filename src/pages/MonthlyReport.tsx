@@ -6,6 +6,7 @@ import AIResultPanel from '../components/AIResultPanel'
 import { callAI } from '../utils/aiClient'
 import { saveAiErrorResult } from '../utils/storage'
 import { LaborCostSnapshot, snapshotEmpCount, snapshotMonthlyTotal } from '../utils/siteLaborSnapshots'
+import { buildMetricsPromptBlock, computeMonthlyReportMetrics } from '../utils/monthlyReportMetrics'
 import './Pages.css'
 
 // ─── 저장본 데이터 연동 (참고자료) ─────────────────────────────────────────────
@@ -271,6 +272,9 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
     setAiLoading(true)
     setAiError('')
 
+    // AI 호출 전 운영 지표 사전 계산 — 세대당 매출/인당 인건비 등 진단 근거를 프롬프트에 함께 전달
+    const metrics = computeMonthlyReportMetrics(data)
+
     const payload = {
       apartmentName: data.apartmentInfo.name,
       totalUnits: data.apartmentInfo.totalUnits,
@@ -282,6 +286,7 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
         membershipRevenue: data.revenueTarget.currentMembers * data.revenueTarget.avgMembershipPrice,
         ptForecast: data.revenueTarget.ptForecast,
         gxForecast: data.revenueTarget.gxForecast,
+        otherServiceRevenue: data.revenueTarget.otherServiceRevenue,
         monthlyTarget: data.revenueTarget.currentMonthTarget,
       },
       costData: {
@@ -289,8 +294,15 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
         electricity: data.costInfo.electricity,
         water: data.costInfo.water,
         hvac: data.costInfo.hvac,
+        supplies: data.costInfo.supplies,
+        maintenance: data.costInfo.maintenance,
+        cleaning: data.costInfo.cleaning,
+        other: data.costInfo.other,
       },
+      staffCount: metrics.staffCount,
       laborCost: data.laborCost.employees.length,
+      // 사전 계산 지표 + 판정 블록 — ai.ts의 monthlyReport 프롬프트가 이 블록을 진단 근거로 사용
+      operationMetricsContext: buildMetricsPromptBlock(metrics),
       complaintCount: data.complaints.length,
       unresolvedComplaints: data.complaints.filter(c => c.status !== '완료').length,
       contractCount: data.contractManagement.contracts.length,

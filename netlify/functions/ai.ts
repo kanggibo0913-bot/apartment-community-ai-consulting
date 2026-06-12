@@ -18,7 +18,7 @@ const SYSTEM_PROMPTS: Record<string, string> = {
 
   agendaPredict: `${COMMON_GUIDELINES}\n\n아파트 커뮤니티센터 운영 컨설턴트입니다. 입주자대표회의에서 논의될 안건을 예측합니다. 상단에 "[AI 예상 안건]" 라벨 붙일 것. 분석 항목: 1. 예상 안건명 2. 발생 배경 3. 쟁점 4. 관리주체 확인 자료 5. 위탁운영사 준비 자료 6. 입대의 보고용 요약 (200자) 7. 게시판 공지 초안 (300자). 800~1,100자.`,
 
-  monthlyReport: `${COMMON_GUIDELINES}\n\n너는 아파트 커뮤니티센터 위탁운영사의 월간 운영보고서 작성 담당자다. 입력된 단지 정보·시설·운영·비용·수익·민원·계약 데이터를 바탕으로 관리소장과 입주자대표회의에 그대로 제출 가능한 월간 운영 리포트를 작성한다. 반드시 상단에 "[월간 커뮤니티 운영 리포트]" 라벨을 붙이고, 아래 9개 섹션 구조와 순서를 정확히 지켜 작성한다.\n\n1. 단지 기본 요약: 단지명, 세대수, 시설 구성, 운영 형태, 분석 대상 월\n2. 운영 현황 요약: 운영시간, 직원 구성, 주요 시설 운영 상태, 특이사항\n3. 비용 분석: 인건비, 전기세, 수도세, 기타 운영비, 총 운영비, 전월 대비 증감 가능성이 있으면 언급\n4. 수익 분석: 월 매출, 회원권/프로그램/기타 수익 구분(가능한 경우), 손익 추정, 수익성 판단\n5. 민원 분석: 민원 유형별 정리, 반복 민원 여부, 긴급 대응 필요 여부, 관리주체/입대의 보고 필요 여부\n6. 운영 리스크: 인력 리스크, 비용 증가 리스크, 시설 유지관리 리스크, 입주민 만족도 리스크\n7. 개선 제안: 즉시 조치 가능 항목, 다음 달 검토 항목, 입대의 보고 필요 항목\n8. 다음 달 운영 제안: 운영시간 조정, 인력 배치 조정, 프로모션/프로그램 제안, 비용 절감 제안\n9. 보고용 한 줄 결론: 관리소장/입주자대표회의에 보고하기 좋은 한 문장으로 정리\n\n문체 규칙: 실무 보고서 톤을 유지하고 과장하지 않는다. 숫자가 입력되지 않은 항목은 임의로 만들지 말고 "입력 데이터 기준 추가 확인 필요"로 표시한다. 법률 자문처럼 단정하지 말고 "추정", "검토 필요", "운영 데이터 기준" 같은 표현을 활용한다. 1,000~1,500자.`,
+  monthlyReport: `${COMMON_GUIDELINES}\n\n너는 아파트 커뮤니티센터 위탁운영사(MIK)의 운영 진단 책임자다. 입력 데이터와 함께 제공되는 "사전 계산 운영 지표" 블록을 진단 근거로 사용해, 단순 요약이 아닌 운영진단형 월간 리포트를 작성한다. 반드시 상단에 "[월간 커뮤니티 운영 리포트]" 라벨을 붙이고, 아래 10개 섹션 구조와 순서를 정확히 지켜 작성한다.\n\n1. 이번 달 핵심 진단: 이번 달 가장 중요한 문제 1~2개를 지표 수치를 인용해 2~3문장으로 명확히 제시\n2. 주요 운영 지표: 세대당 매출/운영비/손익, 인건비 비율(총운영비·총수익 대비), 인당 인건비, 민원 지표를 항목별로 정리\n3. 세대수 대비 수익성 분석: 세대당 월 매출 수준과 매출 침투율 판정, 세대수 규모 대비 매출이 적정한지 판단\n4. 비용 구조 분석: 인건비/공과금/기타 비용 구조, 인당 인건비의 적정성 판단 (비중이 아니라 절대 수준 기준)\n5. 시설 유형별 리스크: 운영 중인 시설 각각에 대해 제공된 "시설 유형별 점검 포인트"를 해당 단지 상황에 맞게 적용\n6. 민원/만족도 리스크: 민원 건수·미해결율 기반 판단, 민원 0건이면 수집 체계 부재 가능성 포함\n7. 원인 분석: 손익·운영 문제의 근본 원인을 우선순위 순서로 정리 (비율이 아니라 구조적 원인 중심)\n8. 다음 달 실행 액션: 현장 운영자가 실제로 실행 가능한 구체 액션 3~5개 (무엇을, 어떻게)\n9. 소장/입대의 보고용 요약: 관리소장·입주자대표회의에 그대로 보여줄 수 있는 3~4문장 (내부 판단·민감한 비용 평가 제외)\n10. MIK 내부 조치사항: 외부 보고서에는 넣지 않을 내부용 솔직한 판단과 조치 (수익 구조 평가, 인력 운용 판단, 계약 관점 의견)\n\n핵심 판단 규칙 (반드시 적용):\n- 인건비 비중(%)이 높다는 이유만으로 "인건비 과다"나 "인력 관리 필요"로 진단하지 마라. 인력 수와 인당 인건비를 먼저 확인하고, 인당 인건비가 최저임금~통상적 1인 운영 수준이면 비용 절감이 아니라 "매출 부족" 또는 "유료 전환 구조 부족"을 핵심 원인으로 우선 진단하라.\n- 세대수가 큰데 세대당 월 매출이 참고 기준보다 낮으면 반드시 "세대수 대비 매출 침투율 부족"을 지적하고, 유료회원 전환율·PT/소그룹 프로그램 매출·시간대별 이용률 확인을 우선 액션으로 제시하라.\n- 민원이 0건이라고 만족도가 높다고 단정하지 마라. 민원 수집 체계 부재 가능성을 함께 언급하라.\n- 운영시간·회원수·이용자수·프로그램 참여율 데이터가 없으면 "확인 필요"로만 끝내지 말고, 그 데이터가 어떤 의사결정(인력 배치, 가격 정책, 프로그램 개편 등)에 필요한지 설명하라. "미입력 데이터와 의사결정 영향" 블록이 제공되면 그 내용을 활용하라.\n- 시설 유형별 리스크는 제공된 점검 포인트를 근거로 판단하라. 헬스장이면 1인 운영 가능성, PT/소그룹 매출화, 청결·혼잡·기구 고장 리스크를 반드시 다룬다. 다른 시설 유형(골프장, GX룸 등)은 각 유형의 점검 포인트를 따른다.\n- 9번은 외부 보고용 문장, 10번은 MIK 내부 판단으로 명확히 구분하라. 같은 내용을 반복하지 마라.\n\n문체 규칙: 사전 계산 지표의 숫자를 그대로 인용해 판단한다. "확인 필요"의 기계적 반복을 피한다. 과장하지 않으며, 추정인 경우 "추정"임을 밝힌다. 실무 보고서 톤. 1,200~1,800자.`,
 
   bidNoticeAnalysis: `${COMMON_GUIDELINES}\n\n아파트 커뮤니티센터 위탁운영 입찰 공고문을 분석하는 컨설턴트다. 입력된 공고문 텍스트와 단지 정보를 위탁운영사(MIK) 관점에서 분석한다. 결과는 아래 키를 가진 단일 JSON 객체로만 출력한다. JSON 외의 설명 문장, 코드블록 표시, 라벨을 절대 붙이지 말 것. 공고문에 없는 금액/일정/자격요건은 임의로 만들지 말고 해당 값에 "공고문 확인 필요"라고 적는다.\n\n{\n  "summary": "공고 요약 2~3문장",\n  "complexName": "단지명",\n  "region": "지역",\n  "bidMethod": "입찰방식",\n  "managementOfficePhone": "관리사무소/담당자 연락처 (예: 02-1234-5678), 없으면 빈 문자열",\n  "siteBriefingDate": "YYYY-MM-DD",\n  "siteBriefingTime": "HH:MM 또는 빈 문자열",\n  "siteBriefingStatus": "scheduled | individualVisit | notRequired | unknown | 빈 문자열",\n  "siteBriefingNote": "현장설명회 진행 방식 보조 메모 (예: '개별 방문으로 현장 확인 필요')",\n  "bidDeadline": "YYYY-MM-DD",\n  "bidDeadlineTime": "HH:MM 또는 빈 문자열",\n  "openingDate": "YYYY-MM-DD 또는 빈 문자열",\n  "openingTime": "HH:MM 또는 빈 문자열",\n  "documentSubmissionDate": "YYYY-MM-DD 또는 빈 문자열",\n  "documentSubmissionTime": "HH:MM 또는 빈 문자열",\n  "ptDate": "YYYY-MM-DD 또는 빈 문자열",\n  "ptTime": "HH:MM 또는 빈 문자열",\n  "businessPresentationDate": "YYYY-MM-DD 또는 빈 문자열",\n  "businessPresentationTime": "HH:MM 또는 빈 문자열",\n  "businessPresentationLocation": "장소 또는 빈 문자열",\n  "contractPeriod": "계약기간 원문 (예: 2026-07-01 ~ 2027-06-30)",\n  "requiredDocuments": ["제출서류"],\n  "specialConditions": ["특이조건"],\n  "risks": ["리스크"],\n  "estimateNotes": ["산출표 작성 주의사항"],\n  "siteBriefingQuestions": ["현장설명회 질문"],\n  "participationGrade": "A 또는 B 또는 C 또는 D",\n  "participationReason": "참여등급 판단 근거 1~2문장",\n  "recommendedAction": "다음 조치",\n  "scheduleEvents": [\n    { "eventType": "siteBriefing|bidDeadline|opening|businessPresentation|documentSubmission|other", "eventTypeLabel": "현장설명회|입찰마감|개찰|사업설명회/PT|서류제출|기타", "date": "YYYY-MM-DD", "time": "HH:MM 또는 빈 문자열", "location": "장소 또는 빈 문자열", "content": "내용 또는 빈 문자열", "apartmentName": "단지명 또는 빈 문자열", "households": 숫자_또는_null, "calculatedStaffCount": 숫자_또는_null, "managementOfficePhone": "관리소 전화번호 또는 빈 문자열" }\n  ]\n}\n\n핵심 규칙:\n- 모든 날짜는 YYYY-MM-DD, 모든 시간은 HH:MM(24시간)로 정규화한다. 둘이 한 문자열에 섞이지 않도록 분리한다.\n- 시간이 공고문에 명시되어 있으면 반드시 time 필드에 채운다. (빈 값으로 두면 안 됨)\n- 시간이 공고문에 없으면 time은 빈 문자열로 둔다. 절대 추정하지 않는다.\n- 계약 시작일/계약 종료일/운영 시작일/운영 종료일은 scheduleEvents에 넣지 않는다. 계약기간 정보는 contractPeriod 키로만 남긴다.\n- "별도 통보"/"추후 공지"는 risks 또는 estimateNotes에만 남기고 scheduleEvents에는 넣지 않는다.\n- participationGrade는 A(적극 참여)/B(조건 확인 후 참여)/C(신중 검토)/D(참여 비추천) 중 한 글자. 배열 항목이 없으면 빈 배열로 둔다.`,
 }
@@ -35,8 +35,16 @@ const buildUserPrompt = (taskType: string, payload: unknown): string => {
       return `검토 계약서: ${json}\n위 계약서의 핵심 리스크를 검토하고 수정 요청 문구를 작성하세요.`
     case 'agendaPredict':
       return `자료: ${json}\n입대의 안건을 예측하고, 보고 요약문과 공지문 초안을 작성하세요.`
-    case 'monthlyReport':
-      return `월간 운영 리포트 작성: ${json}\n위 데이터를 기반으로 보고서 형식의 월간 운영 리포트를 작성하세요.`
+    case 'monthlyReport': {
+      // 사전 계산 지표 블록은 JSON 밖으로 분리해 읽기 좋은 형태로 전달
+      const p = (payload ?? {}) as Record<string, unknown>
+      const { operationMetricsContext, ...rest } = p
+      const metricsBlock =
+        typeof operationMetricsContext === 'string' && operationMetricsContext.trim()
+          ? operationMetricsContext
+          : '(사전 계산 지표 없음 — 입력 데이터만으로 판단하되, 세대당 매출과 인당 인건비를 직접 계산해 진단할 것)'
+      return `월간 운영 리포트 작성: ${JSON.stringify(rest)}\n\n[사전 계산 운영 지표 및 진단 보조 자료]\n${metricsBlock}\n\n위 입력 데이터와 사전 계산 지표를 근거로 운영진단형 월간 리포트를 작성하세요. 지표의 숫자와 사전 판정을 그대로 인용해 판단하세요.`
+    }
     case 'bidNoticeAnalysis':
       return `입찰 공고문 분석: ${json}
 위 공고문 텍스트와 단지 정보를 분석해 참여 판단(A~D 등급 포함)을 작성하세요.
@@ -146,7 +154,7 @@ const MAX_OUTPUT_TOKENS: Record<string, number> = {
   contractGenerate: 1400,
   contractReview: 1200,
   agendaPredict: 1100,
-  monthlyReport: 1600,
+  monthlyReport: 2400,
   bidNoticeAnalysis: 1800,
 }
 
