@@ -5,7 +5,6 @@ import {
   CHECKLIST_STATUSES,
   ChecklistCategory,
   ChecklistStatus,
-  FACILITY_SUBCATEGORIES,
   OpeningChecklistData,
   OpeningChecklistItem,
   SUBCATEGORY_CATEGORIES,
@@ -22,13 +21,11 @@ interface OpeningChecklistPageProps {
 }
 
 const SUPPLY_CATEGORY: ChecklistCategory = '비품'
-const FACILITY_CATEGORY: ChecklistCategory = '시설 체크'
 // subCategory가 비어 있는 항목을 필터/표시할 때 쓰는 라벨
 const NO_SUBCATEGORY = '미분류'
 
-// 카테고리별 subCategory 권장값 (폼/필터 옵션). 그 외 카테고리는 subCategory 미사용.
+// 카테고리별 subCategory 권장값 (폼/필터 옵션). v3부터 subCategory는 비품에서만 사용한다.
 const subCategoryOptions = (category: ChecklistCategory): readonly string[] => {
-  if (category === FACILITY_CATEGORY) return FACILITY_SUBCATEGORIES
   if (category === SUPPLY_CATEGORY) return SUPPLY_SUBCATEGORIES
   return []
 }
@@ -56,7 +53,7 @@ const withStatusTimestamp = (item: OpeningChecklistItem, nextStatus: ChecklistSt
 }
 
 // 카테고리에 맞게 항목을 정돈한다.
-//  - subCategory는 '시설 체크'/'비품'에서만 유지하고 그 외 카테고리에서는 비운다.
+//  - subCategory는 '비품'에서만 유지하고 그 외 카테고리에서는 비운다.
 //  - 비품 전용 수량/구매 필드는 비품이 아닌 카테고리에서 제거해 데이터를 깔끔하게 유지한다.
 const normalizeItemForCategory = (item: OpeningChecklistItem): OpeningChecklistItem => {
   const subCategory = SUBCATEGORY_CATEGORIES.includes(item.category) ? (item.subCategory ?? '') : ''
@@ -136,7 +133,7 @@ const OpeningChecklistPage: React.FC<OpeningChecklistPageProps> = ({ data, onCha
     [items],
   )
 
-  // subCategory 필터는 카테고리가 '시설 체크'/'비품'일 때만 노출한다.
+  // subCategory 필터는 카테고리가 '비품'일 때만 노출한다.
   const showSubCategoryFilter =
     categoryFilter !== 'all' && SUBCATEGORY_CATEGORIES.includes(categoryFilter as ChecklistCategory)
 

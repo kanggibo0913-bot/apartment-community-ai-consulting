@@ -504,28 +504,53 @@ export interface WeeklyReportData {
 // ─── 오픈 체크리스트 ──────────────────────────────────────────────────────────
 // 커뮤니티센터 오픈 준비 점검 항목. 단지별 CommunityData에 영속되어 기존 데이터
 // 동기화(SystemDataSync) 경로를 그대로 타므로, 추후 클라우드 자동 동기화로 이전하기 쉽다.
-export type ChecklistCategory = '계약/행정' | '시설 체크' | '하자보수' | '운영 시뮬레이션' | '비품'
+// v3에서 단일 '시설 체크'를 시설별 category로 분리(공통 시설/헬스/골프/수영/체육관/샤워 / 탈의).
+// '시설 체크'는 v2 이하 레거시 데이터 호환 + migration 비교용으로만 타입에 남겨두고,
+// CHECKLIST_CATEGORIES(UI/신규 seed 목록)에서는 제외한다. migration이 시설별 category로 재분류한다.
+export type ChecklistCategory =
+  | '계약/행정'
+  | '공통 시설'
+  | '헬스'
+  | '골프'
+  | '수영'
+  | '체육관'
+  | '샤워 / 탈의'
+  | '하자보수'
+  | '운영 시뮬레이션'
+  | '비품'
+  | '시설 체크'
 export type ChecklistStatus = '미확인' | '진행중' | '완료' | '보류' | '문제발생'
 export type ChecklistPriority = '낮음' | '보통' | '높음' | '필수'
 export type SupplyPurchaseStatus = '미구매' | '구매예정' | '구매완료' | '입고완료' | '불필요'
 
-export const CHECKLIST_CATEGORIES: ChecklistCategory[] = ['계약/행정', '시설 체크', '하자보수', '운영 시뮬레이션', '비품']
+// UI 카테고리 필터/진행률 + 신규 seed 목록. '시설 체크'는 제외(시설별로 분리됨).
+export const CHECKLIST_CATEGORIES: ChecklistCategory[] = [
+  '계약/행정',
+  '공통 시설',
+  '헬스',
+  '골프',
+  '수영',
+  '체육관',
+  '샤워 / 탈의',
+  '하자보수',
+  '운영 시뮬레이션',
+  '비품',
+]
 export const CHECKLIST_STATUSES: ChecklistStatus[] = ['미확인', '진행중', '완료', '보류', '문제발생']
 export const CHECKLIST_PRIORITIES: ChecklistPriority[] = ['낮음', '보통', '높음', '필수']
 export const SUPPLY_PURCHASE_STATUSES: SupplyPurchaseStatus[] = ['미구매', '구매예정', '구매완료', '입고완료', '불필요']
 
-// subCategory(세부 분류)는 '시설 체크'와 '비품' 카테고리에서만 의미가 있다.
-// 자유 문자열(subCategory?: string)이지만 신규 항목 입력/필터 UI에서 아래 권장값을 제시한다.
-// 기존 데이터에 subCategory가 없어도(undefined/'') 정상 동작한다.
-export const FACILITY_SUBCATEGORIES = ['공통', '헬스장', '골프장', '수영장', '체육관', '샤워 / 탈의', '안전 / 방재', '설비 / 전기'] as const
+// subCategory(세부 분류)는 v3부터 '비품' 카테고리에서만 사용한다.
+// (시설은 헬스/골프/수영/체육관 등 대분류 category로 분리됐으므로 더 이상 subCategory가 필요 없다.)
+// 자유 문자열(subCategory?: string)이지만 비품 입력/필터 UI에서 아래 권장값을 제시한다.
 export const SUPPLY_SUBCATEGORIES = ['인포 / 사무', '운영 / 안내', '청소 / 위생', '샤워 / 탈의', '헬스', '골프', '수영', '체육관', '안전 / 응급', '기타 소모품'] as const
 // subCategory가 의미 있는 카테고리 (그 외 카테고리에서는 비워 둔다)
-export const SUBCATEGORY_CATEGORIES: ChecklistCategory[] = ['시설 체크', '비품']
+export const SUBCATEGORY_CATEGORIES: ChecklistCategory[] = ['비품']
 
 export interface OpeningChecklistItem {
   id: string
   category: ChecklistCategory
-  // 세부 분류 (옵셔널, '시설 체크'/'비품'에서만 사용). 기존 데이터 하위호환: 없으면 미분류로 취급.
+  // 세부 분류 (옵셔널, v3부터 '비품'에서만 사용). 기존 데이터 하위호환: 없으면 미분류로 취급.
   subCategory?: string
   title: string
   description: string // 설명 (메모와 별도로 항목 자체 설명)

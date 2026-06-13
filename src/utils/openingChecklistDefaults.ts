@@ -1,26 +1,28 @@
-import { ChecklistPriority, OpeningChecklistData, OpeningChecklistItem } from '../types/CommunityData'
+import { ChecklistCategory, ChecklistPriority, OpeningChecklistData, OpeningChecklistItem } from '../types/CommunityData'
 
 // 커뮤니티센터 오픈 준비 "공식" 기본 체크 항목 seed.
 // 단지별 CommunityData.openingChecklist.items의 초기 시드 + 기존 데이터 migration 기준으로 사용된다.
 // ⚠️ 매 호출마다 새 배열·새 객체를 반환해 단지(프로젝트) 간 참조 공유로 인한 상호 오염을 방지한다.
 // ⚠️ 신규 프로젝트는 이 seed로 초기화되고, 기존 저장 데이터는 normalizeOpeningChecklistData가
-//    누락 항목만 append + subCategory backfill 하므로 사용자 입력값(상태/메모/수량/담당자/완료시각)을 덮어쓰지 않는다.
-// 세부 분류는 subCategory 필드로 보존한다(시설 체크/비품). 구버전 데이터의 제목 접두어([헬스] 등)는
-//    migration 시 접두어를 무시한 키로 매칭해 중복 append를 방지하고, subCategory를 backfill한다.
+//    (1) 레거시 '시설 체크' 항목을 시설별 category로 재분류하고 (2) 누락 항목만 append 하므로
+//    사용자 입력값(상태/메모/수량/담당자/완료시각/제목)을 덮어쓰지 않는다.
+// v3: 단일 '시설 체크'를 시설별 category(공통 시설/헬스/골프/수영/체육관/샤워 / 탈의)로 분리. subCategory는 '비품'에서만 사용.
 
 // ── seed 버전 ────────────────────────────────────────────────────────────────
-// seed 항목을 추가/세분화할 때 이 값을 올린다. openingChecklist.seedVersion이 이 값보다 낮은
+// seed 항목/구조를 바꿀 때 이 값을 올린다. openingChecklist.seedVersion이 이 값보다 낮은
 // 기존 데이터는 1회 migration을 거친 뒤 이 값으로 stamp된다(이후 재실행 안 함).
-//   v1: 137개 초기 seed (계약/행정·시설·하자·운영·비품), 제목 접두어로 세부 분류 표시
-//   v2: subCategory 필드 도입 + 시설(골프장/수영장/체육관) & 비품 세부 분류·항목 대폭 보강
-// ⚠️ 앞으로 seed 항목을 추가/수정/세분화할 때는 반드시 이 값을 3 이상으로 올려야 한다.
-//    올리지 않으면 기존 사용자 데이터(seedVersion이 이미 최신)에는 migration이 적용되지 않아 새 항목이 들어가지 않는다.
-export const OPENING_CHECKLIST_SEED_VERSION = 2
+//   v1: 137개 초기 seed, 제목 접두어로 세부 분류 표시
+//   v2: subCategory 필드 도입 + 시설(골프장/수영장/체육관) & 비품 세부 분류·항목 보강
+//   v3: '시설 체크'를 시설별 category로 분리(재분류 migration 포함) + 수영/헬스 항목 보강
+// ⚠️ v3 migration은 레거시 '시설 체크' category 재분류 로직을 포함한다. 앞으로 seed 항목을 추가/수정/세분화하거나
+//    category 구조를 바꿀 때는 반드시 이 값을 4 이상으로 올려야 기존 사용자 데이터에 migration이 적용된다.
+//    올리지 않으면 seedVersion이 이미 최신인 데이터에는 변경이 반영되지 않는다.
+export const OPENING_CHECKLIST_SEED_VERSION = 3
 
-// 공통 항목 빌더 (비품 외 카테고리). subCategory는 시설 체크에서만 의미가 있고 그 외엔 ''.
+// 공통 항목 빌더. subCategory는 '비품'에서만 의미가 있고 그 외 카테고리는 ''.
 const item = (
   id: string,
-  category: OpeningChecklistItem['category'],
+  category: ChecklistCategory,
   subCategory: string,
   title: string,
   priority: ChecklistPriority,
@@ -48,8 +50,11 @@ const supply = (id: string, subCategory: string, title: string, unit: string, pr
   purchaseStatus: '미구매',
 })
 
-// ── 계약/행정 ── [제목, 우선순위]
-const ADMIN: Array<[string, ChecklistPriority]> = [
+// 시설 category들은 subCategory 없이 [제목, 우선순위]만 갖는다.
+type TP = [string, ChecklistPriority]
+
+// ── 계약/행정 ──
+const ADMIN: TP[] = [
   ['전기 계약 상태 확인', '높음'],
   ['수도 계약 상태 확인', '높음'],
   ['도시가스 / 온수 계약 상태 확인', '높음'],
@@ -68,107 +73,147 @@ const ADMIN: Array<[string, ChecklistPriority]> = [
   ['민원 접수 방식 확인', '보통'],
 ]
 
-// ── 시설 체크 ── [subCategory, 제목, 우선순위]
-const FACILITY: Array<[string, string, ChecklistPriority]> = [
-  // 공통
-  ['공통', '안내데스크 상태 확인', '보통'],
-  ['공통', '인포 공간 동선 확인', '보통'],
-  ['공통', '사무공간 상태 확인', '보통'],
-  ['공통', '창고 상태 확인', '낮음'],
-  ['공통', '출입문 / 자동문 상태 확인', '높음'],
-  // 설비 / 전기
-  ['설비 / 전기', '조명 상태 확인', '보통'],
-  ['설비 / 전기', '콘센트 상태 확인', '보통'],
-  ['설비 / 전기', '냉난방 상태 확인', '높음'],
-  ['설비 / 전기', '환기 상태 확인', '보통'],
-  // 안전 / 방재
-  ['안전 / 방재', '소방시설 위치 확인', '필수'],
-  ['안전 / 방재', '비상구 / 피난 동선 확인', '필수'],
-  ['안전 / 방재', 'CCTV 사각지대 확인', '높음'],
-  // 헬스장
-  ['헬스장', '헬스장 장비 배치 확인', '보통'],
-  ['헬스장', '유산소 장비 작동 확인', '높음'],
-  ['헬스장', '웨이트 장비 작동 확인', '높음'],
-  ['헬스장', '프리웨이트 존 안전거리 확인', '높음'],
-  ['헬스장', '바닥 충격흡수재 상태 확인', '높음'],
-  ['헬스장', '고무매트 / 에버롤 들뜸 확인', '보통'],
-  ['헬스장', '벽면 필름지 부착 상태 확인', '보통'],
-  ['헬스장', '거울 파손 / 들뜸 확인', '높음'],
-  ['헬스장', '운동기구 고정 상태 확인', '높음'],
-  // 골프장
-  ['골프장', '골프 타석 상태 확인', '보통'],
-  ['골프장', '타석별 이격 거리 확인', '높음'],
-  ['골프장', '안전선 설치 여부 확인', '필수'],
-  ['골프장', '그물망 상태 확인', '높음'],
-  ['골프장', '표적지 상태 확인', '보통'],
-  ['골프장', '스크린 / 센서 작동 확인', '높음'],
-  ['골프장', '골프채 거치대 상태 확인', '낮음'],
-  ['골프장', '타석 바닥 상태 확인', '보통'],
-  ['골프장', '타석 조명 상태 확인', '보통'],
-  ['골프장', '타석 주변 벽면 보호 상태 확인', '보통'],
-  ['골프장', '타구 방향 안전성 확인', '높음'],
-  ['골프장', '타석별 소음 전달 여부 확인', '낮음'],
-  ['골프장', '스윙 공간 간섭 여부 확인', '높음'],
-  ['골프장', '골프공 보관 위치 확인', '낮음'],
-  ['골프장', '골프채 이동 동선 확인', '낮음'],
-  ['골프장', '스크린 타석 환기 상태 확인', '보통'],
-  ['골프장', '장비 전원 / 멀티탭 안전성 확인', '높음'],
-  ['골프장', '이용자 대기 공간 동선 확인', '보통'],
-  // 수영장
-  ['수영장', '수영장 수질 관리 상태 확인', '필수'],
-  ['수영장', '수영장 염도 확인', '높음'],
-  ['수영장', '수영장 pH 확인', '높음'],
-  ['수영장', '수온 확인', '보통'],
-  ['수영장', '수심 표시 확인', '높음'],
-  ['수영장', '배관 누수 확인', '높음'],
-  ['수영장', '순환 펌프 작동 확인', '높음'],
-  ['수영장', '여과기 상태 확인', '높음'],
-  ['수영장', '배수 상태 확인', '보통'],
-  ['수영장', '물넘침 / 오버플로우 상태 확인', '보통'],
-  ['수영장', '바닥 미끄럼 위험 확인', '높음'],
-  ['수영장', '수영장 타일 깨짐 확인', '보통'],
-  ['수영장', '수영장 벽면 마감 상태 확인', '보통'],
-  ['수영장', '사다리 / 손잡이 고정 상태 확인', '높음'],
-  ['수영장', '안전용품 위치 확인', '필수'],
-  ['수영장', '수영장 안전용품 확인', '보통'],
-  ['수영장', '구명환 / 구조봉 비치 확인', '필수'],
-  ['수영장', '수영장 주변 조명 상태 확인', '보통'],
-  ['수영장', '수영장 환기 상태 확인', '보통'],
-  ['수영장', '습기 / 결로 발생 여부 확인', '보통'],
-  ['수영장', '샤워실 연결 동선 확인', '보통'],
-  ['수영장', '수영장 이용 안내문 확인', '보통'],
-  // 샤워 / 탈의
-  ['샤워 / 탈의', '샤워실 수압 확인', '보통'],
-  ['샤워 / 탈의', '샤워실 온수 확인', '높음'],
-  ['샤워 / 탈의', '탈의실 상태 확인', '보통'],
-  ['샤워 / 탈의', '락커 설치 여부 확인', '보통'],
-  ['샤워 / 탈의', '락커 필름지 / 문짝 / 번호키 상태 확인', '보통'],
-  ['샤워 / 탈의', '드라이기 위치 및 작동 확인', '보통'],
-  // 체육관
-  ['체육관', '체육관 바닥 상태 확인', '보통'],
-  ['체육관', '바닥 라인 상태 확인', '낮음'],
-  ['체육관', '바닥 니스칠 상태 확인', '낮음'],
-  ['체육관', '바닥 미끄럼 정도 확인', '높음'],
-  ['체육관', '바닥 들뜸 / 파임 확인', '보통'],
-  ['체육관', '농구대 / 배구대 / 네트 설치 상태 확인', '보통'],
-  ['체육관', '벽면 보호매트 상태 확인', '보통'],
-  ['체육관', '천장 높이 / 장애물 확인', '보통'],
-  ['체육관', '체육관 울림 / 소음 전달 확인', '낮음'],
-  ['체육관', '조명 밝기 확인', '보통'],
-  ['체육관', '조명 안전망 설치 여부 확인', '높음'],
-  ['체육관', '조명 깜빡임 확인', '보통'],
-  ['체육관', '창문 / 환기창 상태 확인', '보통'],
-  ['체육관', '음향장비 사용 가능 여부 확인', '낮음'],
-  ['체육관', '대기 공간 / 관람 공간 확인', '낮음'],
-  ['체육관', '출입문 개폐 상태 확인', '보통'],
-  ['체육관', '비상구 / 대피 동선 확인', '필수'],
-  ['체육관', '체육관 창고 상태 확인', '낮음'],
-  ['체육관', '체육용품 보관 위치 확인', '낮음'],
-  ['체육관', '행사 / 대관 운영 동선 확인', '낮음'],
+// ── 공통 시설 (구 공통 + 안전/방재 + 설비/전기) ──
+const COMMON: TP[] = [
+  ['안내데스크 상태 확인', '보통'],
+  ['인포 공간 동선 확인', '보통'],
+  ['사무공간 상태 확인', '보통'],
+  ['창고 상태 확인', '낮음'],
+  ['출입문 / 자동문 상태 확인', '높음'],
+  ['조명 상태 확인', '보통'],
+  ['콘센트 상태 확인', '보통'],
+  ['냉난방 상태 확인', '높음'],
+  ['환기 상태 확인', '보통'],
+  ['소방시설 위치 확인', '필수'],
+  ['비상구 / 피난 동선 확인', '필수'],
+  ['CCTV 사각지대 확인', '높음'],
 ]
 
-// ── 하자보수 ── [제목, 우선순위]
-const DEFECT: Array<[string, ChecklistPriority]> = [
+// ── 헬스 ──
+const HEALTH: TP[] = [
+  ['헬스장 장비 배치 확인', '보통'],
+  ['유산소 장비 작동 확인', '높음'],
+  ['웨이트 장비 작동 확인', '높음'],
+  ['프리웨이트 존 안전거리 확인', '높음'],
+  ['바닥 충격흡수재 상태 확인', '높음'],
+  ['고무매트 / 에버롤 들뜸 확인', '보통'],
+  ['벽면 필름지 부착 상태 확인', '보통'],
+  ['거울 파손 / 들뜸 확인', '높음'],
+  ['운동기구 고정 상태 확인', '높음'],
+  ['운동기구 전원 연결 상태 확인', '보통'],
+  ['기구 간 동선 확인', '보통'],
+  ['스트레칭 공간 확인', '낮음'],
+  ['소독 티슈 / 타월 비치 위치 확인', '보통'],
+]
+
+// ── 골프 ──
+const GOLF: TP[] = [
+  ['골프 타석 상태 확인', '보통'],
+  ['타석별 이격 거리 확인', '높음'],
+  ['안전선 설치 여부 확인', '필수'],
+  ['그물망 상태 확인', '높음'],
+  ['표적지 상태 확인', '보통'],
+  ['스크린 / 센서 작동 확인', '높음'],
+  ['골프채 거치대 상태 확인', '낮음'],
+  ['타석 바닥 상태 확인', '보통'],
+  ['타석 조명 상태 확인', '보통'],
+  ['타석 주변 벽면 보호 상태 확인', '보통'],
+  ['타구 방향 안전성 확인', '높음'],
+  ['타석별 소음 전달 여부 확인', '낮음'],
+  ['스윙 공간 간섭 여부 확인', '높음'],
+  ['골프공 보관 위치 확인', '낮음'],
+  ['골프채 이동 동선 확인', '낮음'],
+  ['스크린 타석 환기 상태 확인', '보통'],
+  ['장비 전원 / 멀티탭 안전성 확인', '높음'],
+  ['이용자 대기 공간 동선 확인', '보통'],
+]
+
+// ── 수영 (수질/측정 · 순환/펌프/여과 · 시설/마감 · 안전/운영) ──
+const SWIM: TP[] = [
+  // 수질 / 측정
+  ['수영장 수질 관리 상태 확인', '필수'],
+  ['염도 확인', '높음'],
+  ['pH 확인', '높음'],
+  ['잔류염소 확인', '높음'],
+  ['탁도 확인', '보통'],
+  ['수온 확인', '보통'],
+  ['수질 측정 키트 비치 확인', '보통'],
+  ['염도계 비치 및 작동 확인', '보통'],
+  ['pH 측정기 비치 및 작동 확인', '보통'],
+  ['수온계 비치 및 작동 확인', '보통'],
+  ['수질 점검 기록표 준비 확인', '보통'],
+  // 순환 / 펌프 / 여과
+  ['순환펌프 작동 확인', '높음'],
+  ['수압펌프 작동 확인', '높음'],
+  ['여과기 상태 확인', '높음'],
+  ['여과기 압력 게이지 확인', '보통'],
+  ['배관 누수 확인', '높음'],
+  ['배관 밸브 개폐 상태 확인', '보통'],
+  ['급수 / 배수 라인 확인', '보통'],
+  ['물넘침 / 오버플로우 상태 확인', '보통'],
+  ['배수구 막힘 확인', '보통'],
+  ['배수구 냄새 확인', '낮음'],
+  ['수위 유지 상태 확인', '보통'],
+  // 시설 / 마감
+  ['수심 표시 확인', '높음'],
+  ['수영장 바닥 미끄럼 위험 확인', '높음'],
+  ['수영장 타일 깨짐 확인', '보통'],
+  ['수영장 벽면 마감 상태 확인', '보통'],
+  ['수영장 모서리 파손 확인', '보통'],
+  ['사다리 / 손잡이 고정 상태 확인', '높음'],
+  ['수영장 주변 조명 상태 확인', '보통'],
+  ['수영장 환기 상태 확인', '보통'],
+  ['습기 / 결로 발생 여부 확인', '보통'],
+  ['곰팡이 발생 여부 확인', '보통'],
+  ['샤워실 연결 동선 확인', '보통'],
+  // 안전 / 운영
+  ['안전용품 위치 확인', '필수'],
+  ['구명환 비치 확인', '필수'],
+  ['구조봉 비치 확인', '필수'],
+  ['미끄럼주의 안내판 확인', '높음'],
+  ['수영장 이용 안내문 확인', '보통'],
+  ['수영장 안전수칙 안내문 확인', '높음'],
+  ['수영장 청소도구 보관 위치 확인', '낮음'],
+  ['응급상황 동선 확인', '높음'],
+  ['관리자 시야 확보 여부 확인', '높음'],
+]
+
+// ── 체육관 ──
+const GYM: TP[] = [
+  ['체육관 바닥 상태 확인', '보통'],
+  ['바닥 라인 상태 확인', '낮음'],
+  ['바닥 니스칠 상태 확인', '낮음'],
+  ['바닥 미끄럼 정도 확인', '높음'],
+  ['바닥 들뜸 / 파임 확인', '보통'],
+  ['농구대 / 배구대 / 네트 설치 상태 확인', '보통'],
+  ['벽면 보호매트 상태 확인', '보통'],
+  ['천장 높이 / 장애물 확인', '보통'],
+  ['체육관 울림 / 소음 전달 확인', '낮음'],
+  ['조명 밝기 확인', '보통'],
+  ['조명 안전망 설치 여부 확인', '높음'],
+  ['조명 깜빡임 확인', '보통'],
+  ['창문 / 환기창 상태 확인', '보통'],
+  ['음향장비 사용 가능 여부 확인', '낮음'],
+  ['대기 공간 / 관람 공간 확인', '낮음'],
+  ['출입문 개폐 상태 확인', '보통'],
+  ['비상구 / 대피 동선 확인', '필수'],
+  ['체육관 창고 상태 확인', '낮음'],
+  ['체육용품 보관 위치 확인', '낮음'],
+  ['행사 / 대관 운영 동선 확인', '낮음'],
+]
+
+// ── 샤워 / 탈의 ──
+const SHOWER: TP[] = [
+  ['샤워실 수압 확인', '보통'],
+  ['샤워실 온수 확인', '높음'],
+  ['탈의실 상태 확인', '보통'],
+  ['락커 설치 여부 확인', '보통'],
+  ['락커 필름지 / 문짝 / 번호키 상태 확인', '보통'],
+  ['드라이기 위치 및 작동 확인', '보통'],
+]
+
+// ── 하자보수 ──
+const DEFECT: TP[] = [
   ['바닥 하자 확인', '보통'],
   ['벽면 하자 확인', '보통'],
   ['천장 하자 확인', '보통'],
@@ -190,8 +235,8 @@ const DEFECT: Array<[string, ChecklistPriority]> = [
   ['안전사고 위험 구간 확인', '필수'],
 ]
 
-// ── 운영 시뮬레이션 ── [제목, 우선순위]
-const OPS: Array<[string, ChecklistPriority]> = [
+// ── 운영 시뮬레이션 ──
+const OPS: TP[] = [
   ['회원 입장 동선 확인', '보통'],
   ['신규 회원 등록 동선 확인', '높음'],
   ['결제 동선 확인', '높음'],
@@ -212,7 +257,7 @@ const OPS: Array<[string, ChecklistPriority]> = [
   ['관리사무소 보고 흐름 확인', '보통'],
 ]
 
-// ── 비품 ── [subCategory, 제목, 단위, 우선순위]
+// ── 비품 ── [subCategory, 제목, 단위, 우선순위] (subCategory는 비품에서만 사용)
 const SUPPLIES: Array<[string, string, string, ChecklistPriority]> = [
   // 인포 / 사무
   ['인포 / 사무', '인포 PC', '대', '높음'],
@@ -242,7 +287,7 @@ const SUPPLIES: Array<[string, string, string, ChecklistPriority]> = [
   ['운영 / 안내', 'QR 안내판', '개', '보통'],
   ['운영 / 안내', '분실물 보관함', '개', '낮음'],
   ['운영 / 안내', '우산꽂이', '개', '낮음'],
-  // 청소 / 위생 (구버전 '청소용품' 단일 항목을 세부 항목으로 분해)
+  // 청소 / 위생
   ['청소 / 위생', '빗자루', '개', '보통'],
   ['청소 / 위생', '쓰레받기', '개', '낮음'],
   ['청소 / 위생', '밀대', '개', '보통'],
@@ -328,49 +373,93 @@ const SUPPLIES: Array<[string, string, string, ChecklistPriority]> = [
 
 export const createDefaultChecklistItems = (): OpeningChecklistItem[] => [
   ...ADMIN.map(([t, p], i) => item(`oc-admin-${i + 1}`, '계약/행정', '', t, p)),
-  ...FACILITY.map(([sub, t, p], i) => item(`oc-fac-${i + 1}`, '시설 체크', sub, t, p)),
+  ...COMMON.map(([t, p], i) => item(`oc-common-${i + 1}`, '공통 시설', '', t, p)),
+  ...HEALTH.map(([t, p], i) => item(`oc-health-${i + 1}`, '헬스', '', t, p)),
+  ...GOLF.map(([t, p], i) => item(`oc-golf-${i + 1}`, '골프', '', t, p)),
+  ...SWIM.map(([t, p], i) => item(`oc-swim-${i + 1}`, '수영', '', t, p)),
+  ...GYM.map(([t, p], i) => item(`oc-gym-${i + 1}`, '체육관', '', t, p)),
+  ...SHOWER.map(([t, p], i) => item(`oc-shower-${i + 1}`, '샤워 / 탈의', '', t, p)),
   ...DEFECT.map(([t, p], i) => item(`oc-defect-${i + 1}`, '하자보수', '', t, p)),
   ...OPS.map(([t, p], i) => item(`oc-ops-${i + 1}`, '운영 시뮬레이션', '', t, p)),
   ...SUPPLIES.map(([sub, t, u, p], i) => supply(`oc-sup-${i + 1}`, sub, t, u, p)),
 ]
 
 // ── migration ────────────────────────────────────────────────────────────────
-// 저장 title에서 선행 [분류] 접두어를 제거해 구버전(접두어 표기) ↔ 신버전(subCategory) 항목을 같은 키로 매칭한다.
-// 예) "[헬스] 거울 파손 / 들뜸 확인" → "거울 파손 / 들뜸 확인", "[인포/사무] 인포 PC" → "인포 PC"
+const LEGACY_FACILITY_CATEGORY: ChecklistCategory = '시설 체크'
+
+// 레거시 '시설 체크' 항목을 시설별 category로 재분류하는 기준.
+// (1순위) subCategory 기준 매핑
+const FACILITY_SUBCATEGORY_TO_CATEGORY: Record<string, ChecklistCategory> = {
+  헬스장: '헬스',
+  골프장: '골프',
+  수영장: '수영',
+  체육관: '체육관',
+  '샤워 / 탈의': '샤워 / 탈의',
+  공통: '공통 시설',
+  '안전 / 방재': '공통 시설',
+  '설비 / 전기': '공통 시설',
+}
+// (2순위) subCategory가 없는 아주 구버전(v1) 데이터: 제목 접두어 [헬스]/[골프]/[수영]/[공통] 기준
+const FACILITY_TITLE_PREFIX_TO_CATEGORY: Record<string, ChecklistCategory> = {
+  헬스: '헬스',
+  골프: '골프',
+  수영: '수영',
+  공통: '공통 시설',
+}
+
+// 레거시 시설 항목을 어떤 시설별 category로 옮길지 결정. 매칭 실패 시 안전하게 '공통 시설'.
+const resolveFacilityCategory = (it: OpeningChecklistItem): ChecklistCategory => {
+  const sub = (it.subCategory ?? '').trim()
+  if (FACILITY_SUBCATEGORY_TO_CATEGORY[sub]) return FACILITY_SUBCATEGORY_TO_CATEGORY[sub]
+  const m = it.title.match(/^\s*\[([^\]]*)\]/)
+  const prefix = m ? m[1].trim() : ''
+  if (FACILITY_TITLE_PREFIX_TO_CATEGORY[prefix]) return FACILITY_TITLE_PREFIX_TO_CATEGORY[prefix]
+  return '공통 시설'
+}
+
+// 저장 title에서 선행 [분류] 접두어를 제거해 구버전(접두어 표기) ↔ 신버전(접두어 없음) 항목을 같은 키로 매칭한다.
 const stripCategoryPrefix = (title: string): string => title.replace(/^\s*\[[^\]]*\]\s*/, '').trim()
 
-// 중복/매칭 키: 카테고리 + 접두어 제거 제목. subCategory는 포함하지 않는다.
-// (구버전 저장 데이터엔 subCategory가 없어, 키에 포함하면 동일 항목이 매칭되지 않아 중복 append되기 때문)
-const itemKey = (it: OpeningChecklistItem): string => `${it.category} ${stripCategoryPrefix(it.title)}`
+// 중복/매칭 키: 카테고리 + 접두어 제거 제목. (subCategory는 키에 넣지 않음 — 구버전엔 없어서 매칭이 깨짐)
+const itemKey = (it: OpeningChecklistItem): string => `${it.category} ${stripCategoryPrefix(it.title)}`
 
 export interface OpeningChecklistMigrationResult {
   items: OpeningChecklistItem[]
+  reclassifiedCount: number // 레거시 '시설 체크' → 시설별 category로 옮긴 항목 수
   appendedCount: number // 새로 추가된 seed 항목 수
   backfilledCount: number // subCategory를 채워 넣은 기존 항목 수
 }
 
-// 기존 저장 항목을 보존하면서 공식 seed의 누락 항목만 append하고, subCategory가 비어 있는 기존 항목엔
-// seed 기준 subCategory를 backfill한다.
-//  - 사용자 입력값(status/memo/quantity*/assignee/completedAt/supplier/purchaseStatus/title)은 절대 덮어쓰지 않는다.
+// 기존 저장 항목을 보존하면서 (0) 레거시 '시설 체크'를 시설별 category로 재분류하고,
+// (1) subCategory가 비어 있는 비품에 seed 기준 subCategory를 backfill하고, (2) 누락된 seed 항목만 append 한다.
+//  - 사용자 입력값(status/memo/quantity*/assignee/dueDate/completedAt/supplier/purchaseStatus/title)은 절대 덮어쓰지 않는다.
+//  - 재분류는 category만 바꾸고, 시설로 흡수된 subCategory는 ''로 비워 카드에서 category와 중복 표시되지 않게 한다.
 //  - 동일 (category, 접두어 제거 title) 조합은 중복 추가하지 않는다.
-//  - append 항목 id는 기존 id와 충돌하지 않도록 보정한다.
-//  - 기존 항목의 순서는 그대로 두고 새 항목은 뒤에 붙인다(append).
+//  - append 항목 id는 기존 id와 충돌하지 않도록 보정한다. 기존 항목 순서는 유지하고 새 항목은 뒤에 붙인다.
 export const migrateOpeningChecklistItems = (
   savedItems: OpeningChecklistItem[],
   seedItems: OpeningChecklistItem[] = createDefaultChecklistItems(),
 ): OpeningChecklistMigrationResult => {
+  // 0) 레거시 '시설 체크' 재분류
+  let reclassifiedCount = 0
+  const remapped = savedItems.map((it) => {
+    if (it.category !== LEGACY_FACILITY_CATEGORY) return it
+    reclassifiedCount += 1
+    return { ...it, category: resolveFacilityCategory(it), subCategory: '' }
+  })
+
   // seed를 키로 인덱싱 (subCategory backfill용)
   const seedByKey = new Map<string, OpeningChecklistItem>()
   for (const s of seedItems) {
     if (!seedByKey.has(itemKey(s))) seedByKey.set(itemKey(s), s)
   }
 
-  const existingKeys = new Set(savedItems.map(itemKey))
-  const existingIds = new Set(savedItems.map((i) => i.id))
+  const existingKeys = new Set(remapped.map(itemKey))
+  const existingIds = new Set(remapped.map((i) => i.id))
 
-  // 1) 기존 항목 보존 + subCategory backfill (비어 있을 때만)
+  // 1) 기존 항목 보존 + subCategory backfill (비어 있을 때만, 실질적으로 비품에만 적용)
   let backfilledCount = 0
-  const preserved = savedItems.map((it) => {
+  const preserved = remapped.map((it) => {
     if (it.subCategory && it.subCategory.trim()) return it
     const seed = seedByKey.get(itemKey(it))
     if (seed && seed.subCategory && seed.subCategory.trim()) {
@@ -392,14 +481,14 @@ export const migrateOpeningChecklistItems = (
     appendedCount += 1
   }
 
-  return { items: [...preserved, ...appended], appendedCount, backfilledCount }
+  return { items: [...preserved, ...appended], reclassifiedCount, appendedCount, backfilledCount }
 }
 
 // OpeningChecklistData 정규화 (App.tsx normalizeCommunityData에서 호출).
 //  - openingChecklist 자체가 없으면(아주 구버전/신규 단지) 최신 seed로 초기화한다.
 //  - 사용자가 항목을 모두 지운 경우(items:[])는 기존 계약대로 그대로 보존한다(재시드하지 않음).
 //  - seedVersion이 최신이면 그대로 보존해, 사용자가 삭제한 항목이 다시 살아나지 않게 한다.
-//  - seedVersion이 낮으면(또는 없으면) 1회 migration을 실행하고 최신 버전으로 stamp한다.
+//  - seedVersion이 낮으면(또는 없으면) 1회 migration(재분류+append)을 실행하고 최신 버전으로 stamp한다.
 export const normalizeOpeningChecklistData = (saved?: Partial<OpeningChecklistData>): OpeningChecklistData => {
   if (!saved || !Array.isArray(saved.items)) {
     return { items: createDefaultChecklistItems(), seedVersion: OPENING_CHECKLIST_SEED_VERSION }
@@ -409,7 +498,6 @@ export const normalizeOpeningChecklistData = (saved?: Partial<OpeningChecklistDa
     return { items: saved.items, seedVersion: savedVersion }
   }
   if (saved.items.length === 0) {
-    // 사용자가 의도적으로 모두 비운 상태는 보존하되 버전만 최신으로 stamp.
     return { items: [], seedVersion: OPENING_CHECKLIST_SEED_VERSION }
   }
   const result = migrateOpeningChecklistItems(saved.items, createDefaultChecklistItems())
