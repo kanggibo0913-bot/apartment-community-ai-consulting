@@ -147,12 +147,23 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData: reportD
   const [statusMessage, setStatusMessage] = useState('')
   const [aiError, setAiError] = useState('')
 
-  // 비용 사고 방지: AI 리포트가 생성된 보고월을 추적한다(새 저장 구조 없이 메모리 ref만 사용).
+  // 비용 사고 방지: 현재 화면의 generatedReport가 "어느 보고월의 결과인지"를 추적한다(새 저장 구조 없이 메모리 ref만).
   // 같은 보고월로 다시 'AI 고도화'를 누르면 호출 전 confirm을 띄워 중복 과금을 막는다.
-  // 초기값: 이미 저장된 생성본이 있으면 현재 보고월을 그 생성본의 월로 간주한다(영속된 month+report 쌍).
+  // 초기값: 마운트 시 이미 생성본이 있으면(새로고침 후 영속 데이터) 현재 보고월을 그 생성본의 월로 간주.
   const generatedMonthRef = useRef<string>(
     (reportData.generatedReport || '').trim() ? (reportData.reportMonth || currentMonth) : '',
   )
+
+  // generatedReport가 채워지는 모든 경로(AI 생성 성공 / 저장본 불러오기 / 새로고침 후 마운트)에서
+  // 그 결과가 속한 보고월을 ref에 동기화한다. 이렇게 한 곳에 모아 두면 onLoadSaved·마운트 케이스도 누락되지 않는다.
+  // ⚠️ reportMonth는 의도적으로 deps에서 제외: 보고월 "변경"만으로 ref를 끌어올리면, 새 달은 아직 생성 전인데
+  //    confirm이 잘못 뜨게 되어 flow(보고월 변경 후 생성)가 깨진다. 리포트 내용이 바뀔 때만 동기화한다.
+  useEffect(() => {
+    if ((reportData.generatedReport || '').trim()) {
+      generatedMonthRef.current = reportData.reportMonth || currentMonth
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportData.generatedReport])
 
   // 저장본 연동: 선택값은 MonthlyReportData에 영속(communityAiProjects key는 그대로, 필드만 optional 추가)
   const [siteSnapshots] = useState<LaborCostSnapshot[]>(loadSiteSnapshots)
@@ -346,8 +357,8 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
           setAiError(errMsg)
           saveAiErrorResult({ title: `${reportData.reportMonth || ''} 월간 리포트 오류`.trim(), taskType: 'monthlyReport', error: errMsg, prompt: promptSummary, sourcePage: 'monthly-report', ...(projectId ? { projectId } : {}), ...(projectName ? { projectName } : {}) })
         } else {
+          // generatedReport가 바뀌면 위의 동기화 effect가 generatedMonthRef를 targetMonth로 갱신한다.
           onChange({ generatedReport: text })
-          generatedMonthRef.current = targetMonth // 이 보고월은 생성 완료 → 다음 동월 재생성 시 confirm
           showMessage('AI 리포트 생성이 완료되었습니다.')
         }
       } else {
