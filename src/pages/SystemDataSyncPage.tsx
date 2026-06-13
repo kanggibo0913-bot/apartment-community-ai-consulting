@@ -11,6 +11,14 @@ import {
   type AutoSyncMetaFields,
   type AutoSyncState,
 } from '../utils/autoSyncDecision'
+import {
+  runAutoSyncOnce,
+  type AutoSyncRunDeps,
+  type AutoSyncOutcome,
+  type PushOutcome,
+  type PullPayload,
+  type ApplyMergeOutcome,
+} from '../utils/autoSyncRunner'
 import './SystemDataSyncPage.css'
 
 // HOMEBASE AI 클라우드 수동 동기화 페이지.
@@ -56,6 +64,19 @@ const autoStateTone = (state: AutoSyncState): 'ok' | 'warn' | 'info' | 'err' => 
       return 'err'
     default:
       return 'info' // disabled / canPush / canPullMerge
+  }
+}
+
+// 자동 동기화 1회 실행 결과(outcome) → 메시지 톤.
+const autoOutcomeTone = (outcome: AutoSyncOutcome): 'ok' | 'err' | 'info' => {
+  switch (outcome) {
+    case 'pushed':
+    case 'pulledMerged':
+      return 'ok'
+    case 'error':
+      return 'err'
+    default:
+      return 'info' // idle / disabled / needsManualMerge / needsInitialSync
   }
 }
 
@@ -183,6 +204,9 @@ const SystemDataSyncPage: React.FC = () => {
   const [msg, setMsg] = useState<{ type: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const [cloudStatus, setCloudStatus] = useState<CloudStatus | null>(null)
   const [statusBusy, setStatusBusy] = useState(false)
+  // 자동 동기화 "1회 실행" 전용 진행/결과 상태(수동 저장/불러오기의 busy/msg와 분리).
+  const [autoBusy, setAutoBusy] = useState(false)
+  const [autoMsg, setAutoMsg] = useState<{ tone: 'ok' | 'err' | 'info'; text: string } | null>(null)
   // 사용자가 동기화 대상에서 일부 항목을 빼고 싶을 때 사용 (기본 전체 선택).
   const [selected, setSelected] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {}
@@ -327,11 +351,127 @@ const SystemDataSyncPage: React.FC = () => {
     [meta, cloudStatus, localFingerprint],
   )
 
-  // 자동 동기화 토글 — 메타에만 저장한다. ON이어도 실제 자동 동기화는 하지 않는다(다음 단계 예정).
+  // 자동 동기화 토글 — 메타에만 저장한다. ON이어도 자동(주기적) 동기화는 하지 않는다.
+  // 실제 동기화는 아래 "자동 동기화 1회 실행" 버튼을 눌렀을 때만 1회 일어난다(자동 트리거 없음).
   const toggleAutoSync = () => {
     const next = { ...meta, autoSyncEnabled: !meta.autoSyncEnabled }
     setMeta(next)
     saveMeta(next)
+  }
+
+  // 자동 동기화 1회 실행(수동 버튼) — Phase D-1.
+  // 버튼 클릭 시에만 실행되며, 자동 트리거(타이머/포커스/언로드/진입)는 일절 없다.
+  // 실제 동작(저장/병합)은 실행 코어(autoSyncRunner)가 "실행 직전 신선 판정" 결과에 따라 결정한다.
+  // 이 함수는 부수효과(fetch/localStorage/백업/새로고침)를 deps로 주입할 뿐, 판정/순서는 runner가 책임진다.
+  const handleRunAutoSyncOnce = async () => {
+    if (!meta.autoSyncEnabled) {
+      setAutoMsg({ tone: 'info', text: '먼저 위의 "자동 동기화 사용" 토글을 켜야 실행할 수 있습니다.' })
+      return
+    }
+    if (noneSelected) {
+      setAutoMsg({ tone: 'info', text: '동기화할 항목을 1개 이상 선택해주세요.' })
+      return
+    }
+    setAutoBusy(true)
+    setAutoMsg(null)
+
+    // 주입 의존성 — 기존 수동 동기화에서 검증된 fetch/localStorage/병합 로직을 그대로 재사용한다.
+    const deps: AutoSyncRunDeps = {
+      now: () => new Date().toISOString(),
+      // 실행 직전 신선한 클라우드 상태(읽기 전용). fetchCloudStatus는 상태 카드도 함께 갱신한다.
+      getCloudSignal: async () => {
+        const s = await fetchCloudStatus()
+        return { available: s.available, latestUpdatedAt: s.cloudLatest }
+      },
+      getLocalFingerprint: () => computeLocalFingerprint(),
+      // canPush 저장(POST) 직전 사용자 확인. 취소하면 runner가 push를 호출하지 않는다.
+      confirmPush: () =>
+        window.confirm(
+          '로컬 변경사항을 클라우드에 저장합니다. 다른 기기에서 저장한 최신 데이터가 있다면 충돌이 발생할 수 있습니다. 계속할까요?',
+        ),
+      // canPush: 선택된 key를 localStorage에서 읽어 클라우드에 업서트(POST).
+      push: async (): Promise<PushOutcome> => {
+        const items: Record<string, unknown> = {}
+        selectedKeys.forEach((k) => {
+          items[k] = readLocalAsJson(k)
+        })
+        const res = await fetch('/.netlify/functions/app-state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items }),
+        })
+        const data = (await res.json()) as { ok: boolean; saved?: number; message?: string }
+        return { ok: !!data.ok, saved: data.saved ?? 0, message: data.message }
+      },
+      // canPullMerge 전: 병합 직전 로컬 백업(되돌리기 안전망). 실패 시 throw → runner가 중단 처리.
+      backup: () => downloadLocalBackup(),
+      // canPullMerge: 클라우드 payload + updated_at GET.
+      pull: async (): Promise<PullPayload> => {
+        const res = await fetch('/.netlify/functions/app-state', { method: 'GET' })
+        const data = (await res.json()) as {
+          ok: boolean
+          items?: Record<string, unknown>
+          updatedAt?: Record<string, string>
+          message?: string
+        }
+        return {
+          ok: !!data.ok,
+          items: data.items || {},
+          updatedAt: data.updatedAt || {},
+          message: data.message,
+        }
+      },
+      // canPullMerge: 통째 덮어쓰기 대신 key별 안전 병합(mergeSyncValue) 적용 후, 병합 후 지문/클라우드 최신값 회수.
+      applyMerge: (pull): ApplyMergeOutcome => {
+        let applied = 0
+        selectedKeys.forEach((k) => {
+          if (!(k in pull.items)) return
+          const merged = mergeSyncValue(k, readLocalAsJson(k), pull.items[k])
+          writeLocalFromPayload(k, merged)
+          applied += 1
+        })
+        let cloudLatest = ''
+        SYNC_KEYS.forEach(({ key }) => {
+          const ts = pull.updatedAt[key]
+          if (typeof ts === 'string' && ts > cloudLatest) cloudLatest = ts
+        })
+        return {
+          applied,
+          mergedFingerprint: computeLocalFingerprint(), // 병합 적용 후 로컬 상태 기준
+          cloudLatest: cloudLatest || null,
+        }
+      },
+    }
+
+    try {
+      const res = await runAutoSyncOnce(
+        {
+          autoSyncEnabled: !!meta.autoSyncEnabled,
+          baseline: {
+            lastSyncedAt: meta.lastSyncedAt,
+            lastCloudUpdatedAt: meta.lastCloudUpdatedAt,
+            lastLocalFingerprint: meta.lastLocalFingerprint,
+          },
+        },
+        deps,
+      )
+      // runner가 돌려준 메타 변경분을 병합·영구화한다. 새로고침이 필요하면 반드시 저장 후에 한다.
+      const nextMeta: SyncMeta = { ...meta, ...res.metaPatch }
+      setMeta(nextMeta)
+      saveMeta(nextMeta)
+      setAutoMsg({ tone: autoOutcomeTone(res.outcome), text: res.message })
+      if (res.shouldReload) {
+        window.setTimeout(() => window.location.reload(), 1200)
+      }
+    } catch (e) {
+      // runner는 throw하지 않도록 설계됐지만, deps 외부 예외까지 방어.
+      setAutoMsg({
+        tone: 'err',
+        text: '자동 동기화 실행 중 오류: ' + (e instanceof Error ? e.message : String(e)),
+      })
+    } finally {
+      setAutoBusy(false)
+    }
   }
 
   const handleSave = async () => {
@@ -639,8 +779,29 @@ const SystemDataSyncPage: React.FC = () => {
             <strong>{fmtKstIso(meta.lastSyncedAt)}</strong>
           </div>
         </div>
+
+        {/* Phase D-1: "1회 실행" 버튼 — 누를 때만 판정 결과에 따라 저장/병합. 자동 트리거 없음. */}
+        <div className="sys-sync-actions">
+          <Button
+            variant="primary"
+            onClick={handleRunAutoSyncOnce}
+            disabled={busy || autoBusy || !meta.autoSyncEnabled || noneSelected}
+          >
+            {autoBusy ? '실행 중...' : '자동 동기화 1회 실행'}
+          </Button>
+          {!meta.autoSyncEnabled && (
+            <span className="sys-sync-count">토글을 켜야 실행 가능</span>
+          )}
+        </div>
+        <p className="sys-sync-note">
+          ℹ️ 이 버튼은 <strong>현재 상태에 따라</strong> 동작이 달라집니다 — 로컬만 바뀌었으면 <strong>클라우드 저장(push)</strong>, 클라우드만 바뀌었으면 <strong>백업 후 병합 불러오기(pull)</strong>가 실행될 수 있습니다. <strong>클라우드 저장(push) 직전에는 확인 창이 한 번 더 뜹니다.</strong> 양쪽이 모두 바뀐 경우에는 자동 처리하지 않고 수동 병합을 안내합니다.
+        </p>
+        {autoMsg && (
+          <p className={`sys-sync-msg sys-sync-msg--${autoMsg.tone}`}>{autoMsg.text}</p>
+        )}
+
         <p className="sys-sync-note sys-sync-auto-note">
-          ⚠️ 이 카드는 <strong>현재 상태만 판정해 보여줍니다.</strong> 토글을 켜도 실제 자동 저장/불러오기는 하지 않습니다(다음 단계에서 활성화 예정). 그 전까지는 아래 "클라우드에 저장" / "클라우드에서 불러오기" 버튼으로 수동 동기화하세요.
+          ⚠️ 이 버튼은 <strong>누를 때만 1회</strong> 동작합니다. 켜 두기만 해도 저절로 저장/불러오기가 되는 자동(주기적) 동기화는 아직 없습니다. 실행하면 현재 상태에 따라 <strong>로컬만 바뀐 경우 클라우드 저장</strong>, <strong>클라우드만 바뀐 경우 백업 후 병합</strong>을 수행하고, <strong>양쪽 다 바뀐 경우</strong>에는 자동 처리하지 않고 수동 병합을 안내합니다. 기준 기록이 없으면 먼저 아래 수동 버튼으로 한 번 저장/불러오기 하세요.
         </p>
       </Card>
 
