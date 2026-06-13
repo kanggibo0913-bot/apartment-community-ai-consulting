@@ -175,6 +175,32 @@
   pointer-events: none;
 }
 
+/* 자동 동기화 준비 상태 토글 */
+.sys-sync-auto-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2a44;
+  cursor: pointer;
+}
+
+.sys-sync-auto-toggle input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.sys-sync-auto-note {
+  background: #fff8e1;
+  border: 1px solid #ffd95a;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #6f4f00;
+}
+
 /* 클라우드/로컬 신선도 판정 배지 */
 .sys-sync-verdict {
   margin: 10px 0 0;

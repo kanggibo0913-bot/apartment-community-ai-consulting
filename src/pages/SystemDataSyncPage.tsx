@@ -4,6 +4,13 @@ import Card from '../components/Card'
 import Button from '../components/Button'
 import { SYNC_GROUPS, SYNC_KEY_DEFS } from '../utils/syncKeys'
 import { mergeSyncValue } from '../utils/cloudMerge'
+import {
+  decideAutoSync,
+  computeSyncFingerprint,
+  AUTO_SYNC_STATE_LABEL,
+  type AutoSyncMetaFields,
+  type AutoSyncState,
+} from '../utils/autoSyncDecision'
 import './SystemDataSyncPage.css'
 
 // HOMEBASE AI 클라우드 수동 동기화 페이지.
@@ -30,9 +37,26 @@ const SYNC_KEYS = SYNC_KEY_DEFS
 
 const META_KEY = 'systemDataSyncMeta'
 
-interface SyncMeta {
+// Phase A 메타({lastSavedAt,lastLoadedAt}) + Phase D-0 자동 동기화 판정용 필드(AutoSyncMetaFields).
+// 모든 필드 옵셔널이라 기존 저장된 메타와 하위호환된다.
+interface SyncMeta extends AutoSyncMetaFields {
   lastSavedAt?: string // ISO
   lastLoadedAt?: string // ISO
+}
+
+// 자동 동기화 상태 → 배지 톤(기존 verdict 톤 클래스 재사용).
+const autoStateTone = (state: AutoSyncState): 'ok' | 'warn' | 'info' | 'err' => {
+  switch (state) {
+    case 'idle':
+      return 'ok'
+    case 'needsManualMerge':
+    case 'needsInitialSync':
+      return 'warn'
+    case 'error':
+      return 'err'
+    default:
+      return 'info' // disabled / canPush / canPullMerge
+  }
 }
 
 const loadMeta = (): SyncMeta => {
@@ -100,6 +124,17 @@ const computeLocalDataUpdatedAt = (): string | null => {
   } catch {
     return null
   }
+}
+
+// 현재 동기화 대상 key들의 localStorage payload로 로컬 지문(fingerprint)을 만든다(자동 동기화 판정용).
+// localStorage를 "감시"하지 않고, 호출 시점에 1회 읽어 순수 지문 함수(computeSyncFingerprint)에 넘긴다.
+// "로컬 데이터가 마지막 동기화 이후 바뀌었는지" 비교에만 쓰인다.
+const computeLocalFingerprint = (): string => {
+  const payload: Record<string, unknown> = {}
+  SYNC_KEYS.forEach(({ key }) => {
+    payload[key] = readLocalAsJson(key)
+  })
+  return computeSyncFingerprint(payload)
 }
 
 // 현재 동기화 대상 key들의 localStorage 스냅샷을 JSON 파일로 내려받는다.
@@ -177,7 +212,8 @@ const SystemDataSyncPage: React.FC = () => {
   }
 
   // 클라우드 상태 조회 — GET만 수행하며 로컬 데이터를 절대 덮어쓰지 않는다(읽기 전용).
-  const fetchCloudStatus = useCallback(async () => {
+  // 계산된 CloudStatus를 반환도 한다 → 저장/불러오기 직후 기준선(lastCloudUpdatedAt) 기록에 재사용.
+  const fetchCloudStatus = useCallback(async (): Promise<CloudStatus> => {
     setStatusBusy(true)
     try {
       const res = await fetch('/.netlify/functions/app-state', { method: 'GET' })
@@ -188,13 +224,14 @@ const SystemDataSyncPage: React.FC = () => {
         message?: string
       }
       if (!data.ok) {
-        setCloudStatus({
+        const s: CloudStatus = {
           available: false,
           message: data.message || '클라우드 상태를 확인할 수 없습니다.',
           cloudLatest: null,
           keyCount: 0,
-        })
-        return
+        }
+        setCloudStatus(s)
+        return s
       }
       const updatedAtMap = data.updatedAt || {}
       let latest = ''
@@ -207,14 +244,18 @@ const SystemDataSyncPage: React.FC = () => {
           if (ts > latest) latest = ts
         }
       })
-      setCloudStatus({ available: true, cloudLatest: latest || null, keyCount: count })
+      const s: CloudStatus = { available: true, cloudLatest: latest || null, keyCount: count }
+      setCloudStatus(s)
+      return s
     } catch (e) {
-      setCloudStatus({
+      const s: CloudStatus = {
         available: false,
         message: '클라우드 상태 확인 중 네트워크 오류: ' + (e instanceof Error ? e.message : String(e)),
         cloudLatest: null,
         keyCount: 0,
-      })
+      }
+      setCloudStatus(s)
+      return s
     } finally {
       setStatusBusy(false)
     }
@@ -265,6 +306,34 @@ const SystemDataSyncPage: React.FC = () => {
 
   const localDataUpdatedAt = useMemo(() => computeLocalDataUpdatedAt(), [cloudStatus, meta])
 
+  // 현재 로컬 지문(자동 동기화 판정용). 렌더 시점 1회 계산(감시 아님).
+  const localFingerprint = useMemo(() => computeLocalFingerprint(), [cloudStatus, meta])
+
+  // 자동 동기화 "준비 상태" 판정(Phase D-0). 순수 엔진에 신호만 넘긴다 — 실제 push/pull은 하지 않는다.
+  const autoSyncDecision = useMemo(
+    () =>
+      decideAutoSync({
+        autoSyncEnabled: !!meta.autoSyncEnabled,
+        baseline: {
+          lastSyncedAt: meta.lastSyncedAt,
+          lastCloudUpdatedAt: meta.lastCloudUpdatedAt,
+          lastLocalFingerprint: meta.lastLocalFingerprint,
+        },
+        cloud: cloudStatus
+          ? { available: cloudStatus.available, latestUpdatedAt: cloudStatus.cloudLatest }
+          : null,
+        currentLocalFingerprint: localFingerprint,
+      }),
+    [meta, cloudStatus, localFingerprint],
+  )
+
+  // 자동 동기화 토글 — 메타에만 저장한다. ON이어도 실제 자동 동기화는 하지 않는다(다음 단계 예정).
+  const toggleAutoSync = () => {
+    const next = { ...meta, autoSyncEnabled: !meta.autoSyncEnabled }
+    setMeta(next)
+    saveMeta(next)
+  }
+
   const handleSave = async () => {
     if (noneSelected) {
       setMsg({ type: 'info', text: '동기화할 항목을 1개 이상 선택해주세요.' })
@@ -292,14 +361,22 @@ const SystemDataSyncPage: React.FC = () => {
       if (data.ok) {
         const saved = data.saved ?? 0
         const skippedCount = data.skippedKeys?.length ?? 0
-        // 저장된 항목이 있을 때만 lastSavedAt 갱신(0건이면 의미 있는 저장이 아니므로 유지).
+        // 저장된 항목이 있을 때만 기준선 갱신(0건이면 의미 있는 저장이 아니므로 유지).
         if (saved > 0) {
           const now = new Date().toISOString()
-          const nextMeta = { ...meta, lastSavedAt: now }
+          const fp = computeLocalFingerprint()
+          // 저장 직후 클라우드 최신값을 다시 조회(읽기 전용)해 기준선(lastCloudUpdatedAt)을 정확히 기록.
+          const status = await fetchCloudStatus()
+          const nextMeta: SyncMeta = {
+            ...meta,
+            lastSavedAt: now,
+            // 자동 동기화 판정 기준선: 방금 로컬=클라우드가 성립했다고 본다.
+            lastSyncedAt: now,
+            lastLocalFingerprint: fp,
+            lastCloudUpdatedAt: status.available ? status.cloudLatest || undefined : meta.lastCloudUpdatedAt,
+          }
           setMeta(nextMeta)
           saveMeta(nextMeta)
-          // 저장 후 클라우드 상태를 다시 조회해 비교 표시를 최신화.
-          void fetchCloudStatus()
         }
         if (saved === 0) {
           // 빈 항목만 선택된 경우 — 오류가 아니라 안내(info)로 표시.
@@ -367,6 +444,7 @@ const SystemDataSyncPage: React.FC = () => {
       const data = (await res.json()) as {
         ok: boolean
         items?: Record<string, unknown>
+        updatedAt?: Record<string, string>
         message?: string
       }
       if (!data.ok) {
@@ -394,7 +472,22 @@ const SystemDataSyncPage: React.FC = () => {
         }
       })
       const now = new Date().toISOString()
-      const nextMeta = { ...meta, lastLoadedAt: now }
+      // 자동 동기화 판정 기준선 기록: 방금 병합으로 로컬이 클라우드를 흡수했으므로
+      // 현재 클라우드 updated_at 최대값과 "병합 후" 로컬 지문을 기준선으로 잡는다.
+      const uMap = data.updatedAt || {}
+      let cloudLatest = ''
+      SYNC_KEYS.forEach(({ key }) => {
+        const ts = uMap[key]
+        if (typeof ts === 'string' && ts > cloudLatest) cloudLatest = ts
+      })
+      const mergedFingerprint = computeLocalFingerprint() // 병합 적용 후 로컬 상태 기준
+      const nextMeta: SyncMeta = {
+        ...meta,
+        lastLoadedAt: now,
+        lastSyncedAt: now,
+        lastLocalFingerprint: mergedFingerprint,
+        lastCloudUpdatedAt: cloudLatest || meta.lastCloudUpdatedAt,
+      }
       saveMeta(nextMeta) // reload 전에 영구화
       const errNote = mergeErrors > 0 ? ` (병합 실패 ${mergeErrors}건은 로컬 유지)` : ''
       setMsg({
@@ -513,6 +606,41 @@ const SystemDataSyncPage: React.FC = () => {
         )}
         <p className="sys-sync-note">
           ※ "로컬 단지 데이터 최종 수정"은 단지 정보의 <code>updatedAt</code> 기준 근사값입니다. 입찰공고·근무표 등 다른 항목의 변경은 포함되지 않을 수 있습니다.
+        </p>
+      </Card>
+
+      {/* 자동 동기화 준비 상태 — Phase D-0: 상태 판정만 표시하고 실제 자동 동기화는 하지 않는다. */}
+      <Card title="자동 동기화 준비 상태 (실험)" className="sys-sync-card">
+        <label className="sys-sync-auto-toggle">
+          <input
+            type="checkbox"
+            checked={!!meta.autoSyncEnabled}
+            onChange={toggleAutoSync}
+            disabled={busy}
+          />
+          <span>자동 동기화 사용 (기본 꺼짐)</span>
+        </label>
+        <p className={`sys-sync-verdict sys-sync-verdict--${autoStateTone(autoSyncDecision.state)}`}>
+          <strong>{AUTO_SYNC_STATE_LABEL[autoSyncDecision.state]}</strong>
+          <br />
+          {autoSyncDecision.reason}
+        </p>
+        <div className="sys-sync-meta">
+          <div>
+            <span>로컬 변경</span>
+            <strong>{autoSyncDecision.localChanged ? '있음' : '없음'}</strong>
+          </div>
+          <div>
+            <span>클라우드 변경</span>
+            <strong>{autoSyncDecision.cloudChanged ? '있음' : '없음'}</strong>
+          </div>
+          <div>
+            <span>기준 동기화 시각</span>
+            <strong>{fmtKstIso(meta.lastSyncedAt)}</strong>
+          </div>
+        </div>
+        <p className="sys-sync-note sys-sync-auto-note">
+          ⚠️ 이 카드는 <strong>현재 상태만 판정해 보여줍니다.</strong> 토글을 켜도 실제 자동 저장/불러오기는 하지 않습니다(다음 단계에서 활성화 예정). 그 전까지는 아래 "클라우드에 저장" / "클라우드에서 불러오기" 버튼으로 수동 동기화하세요.
         </p>
       </Card>
 
