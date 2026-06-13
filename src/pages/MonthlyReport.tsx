@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CommunityData, MonthlyReportData } from '../types/CommunityData'
 import Button from '../components/Button'
 import Card from '../components/Card'
@@ -147,6 +147,13 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({ data, reportData: reportD
   const [statusMessage, setStatusMessage] = useState('')
   const [aiError, setAiError] = useState('')
 
+  // 비용 사고 방지: AI 리포트가 생성된 보고월을 추적한다(새 저장 구조 없이 메모리 ref만 사용).
+  // 같은 보고월로 다시 'AI 고도화'를 누르면 호출 전 confirm을 띄워 중복 과금을 막는다.
+  // 초기값: 이미 저장된 생성본이 있으면 현재 보고월을 그 생성본의 월로 간주한다(영속된 month+report 쌍).
+  const generatedMonthRef = useRef<string>(
+    (reportData.generatedReport || '').trim() ? (reportData.reportMonth || currentMonth) : '',
+  )
+
   // 저장본 연동: 선택값은 MonthlyReportData에 영속(communityAiProjects key는 그대로, 필드만 optional 추가)
   const [siteSnapshots] = useState<LaborCostSnapshot[]>(loadSiteSnapshots)
   const [bidSnapshots] = useState<BidSnapshotLite[]>(loadBidSnapshots)
@@ -269,6 +276,16 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
   }
 
   const generateAiReport = async () => {
+    const targetMonth = reportData.reportMonth || currentMonth
+
+    // 비용 사고 방지: 같은 보고월의 리포트가 이미 생성돼 있으면 호출 전 한 번 확인한다.
+    // GPT-5.5 라우팅으로 호출당 비용이 있으므로 연타·중복 재생성을 막는다.
+    const hasExistingReport = (reportData.generatedReport || '').trim().length > 0
+    if (hasExistingReport && generatedMonthRef.current === targetMonth) {
+      const proceed = window.confirm('이미 생성된 리포트가 있습니다. 다시 생성하면 AI 비용이 발생합니다. 계속할까요?')
+      if (!proceed) return
+    }
+
     setAiLoading(true)
     setAiError('')
 
@@ -330,6 +347,7 @@ ${snapshotContext ? `\n${snapshotContext}\n` : ''}
           saveAiErrorResult({ title: `${reportData.reportMonth || ''} 월간 리포트 오류`.trim(), taskType: 'monthlyReport', error: errMsg, prompt: promptSummary, sourcePage: 'monthly-report', ...(projectId ? { projectId } : {}), ...(projectName ? { projectName } : {}) })
         } else {
           onChange({ generatedReport: text })
+          generatedMonthRef.current = targetMonth // 이 보고월은 생성 완료 → 다음 동월 재생성 시 confirm
           showMessage('AI 리포트 생성이 완료되었습니다.')
         }
       } else {

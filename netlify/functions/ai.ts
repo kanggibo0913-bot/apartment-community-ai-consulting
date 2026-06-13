@@ -149,13 +149,42 @@ const buildUserPrompt = (taskType: string, payload: unknown): string => {
 }
 
 // taskType별 최대 출력 토큰 (taskType 추가 시 여기에 항목만 더하면 됨)
+// 주의: gpt-5 계열 추론 모델은 reasoning 토큰도 이 한도에 포함되므로 여유를 둬야 함
 const MAX_OUTPUT_TOKENS: Record<string, number> = {
   document: 900,
   contractGenerate: 1400,
   contractReview: 1200,
   agendaPredict: 1100,
-  monthlyReport: 2400,
+  monthlyReport: 4000,
   bidNoticeAnalysis: 1800,
+}
+
+// ── taskType별 모델 라우팅 ────────────────────────────────────────────────
+// 품질이 중요한 보고서형 task만 상위 모델을 쓰고, 나머지는 기본 모델을 유지한다.
+// 모델 우선순위: task 전용 환경변수 > 코드 지정 모델 > 기본 모델
+// 기본 모델 우선순위: OPENAI_MODEL_DEFAULT > OPENAI_MODEL(하위호환) > 'gpt-4.1-mini'
+interface TaskModelConfig {
+  // task 전용 모델 환경변수명 (예: OPENAI_MODEL_MONTHLY_REPORT)
+  envVar: string
+  // 환경변수 미설정 시 사용할 모델 id
+  fallbackModel: string
+  // gpt-5 계열 추론 강도. 서버리스 함수 타임아웃(25초) 안에 응답하도록 낮게 유지.
+  reasoningEffort?: 'none' | 'low' | 'medium'
+}
+
+const TASK_MODEL_CONFIG: Record<string, TaskModelConfig> = {
+  // 월간 운영 리포트: 운영진단 품질이 중요 → GPT-5.5 (2026-04 출시, Responses API 지원 확인됨)
+  monthlyReport: { envVar: 'OPENAI_MODEL_MONTHLY_REPORT', fallbackModel: 'gpt-5.5', reasoningEffort: 'low' },
+  // 추후 확장 예시 — 입주민 공개 보고서/운영진단형 보고서를 상위 모델로 올릴 때 여기에 항목만 추가:
+  // residentNoticeReport: { envVar: 'OPENAI_MODEL_RESIDENT_REPORT', fallbackModel: 'gpt-5.5', reasoningEffort: 'low' },
+}
+
+const resolveModelForTask = (taskType: string): { model: string; reasoningEffort?: 'none' | 'low' | 'medium' } => {
+  const defaultModel = process.env.OPENAI_MODEL_DEFAULT || process.env.OPENAI_MODEL || 'gpt-4.1-mini'
+  const cfg = TASK_MODEL_CONFIG[taskType]
+  if (!cfg) return { model: defaultModel }
+  const model = process.env[cfg.envVar] || cfg.fallbackModel
+  return { model, reasoningEffort: cfg.reasoningEffort }
 }
 
 const handler: Handler = async (event) => {
@@ -227,7 +256,7 @@ const handler: Handler = async (event) => {
   const maxOutputTokens = MAX_OUTPUT_TOKENS[taskType] || 900
 
   const apiKey = process.env.OPENAI_API_KEY
-  const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini'
+  const { model, reasoningEffort } = resolveModelForTask(taskType)
 
   if (!apiKey) {
     console.error('AI function error: OPENAI_API_KEY 미설정')
@@ -242,7 +271,8 @@ const handler: Handler = async (event) => {
     }
   }
 
-  console.log('AI request start:', { taskType, model, maxOutputTokens })
+  // 보안: 로그에 API 키·모델명을 남기지 않는다 (taskType과 토큰 한도만 기록)
+  console.log('AI request start:', { taskType, maxOutputTokens })
 
   try {
     const client = new OpenAI({ apiKey, timeout: 25000 })
@@ -253,6 +283,8 @@ const handler: Handler = async (event) => {
         { role: 'user', content: userPrompt },
       ],
       max_output_tokens: maxOutputTokens,
+      // gpt-5 계열 추론 모델만 reasoning 강도 지정 (다른 모델에 보내면 파라미터 오류)
+      ...(reasoningEffort && model.startsWith('gpt-5') ? { reasoning: { effort: reasoningEffort } } : {}),
     })
 
     const outputText = Array.isArray(response.output)
@@ -294,7 +326,10 @@ const handler: Handler = async (event) => {
       }
     }
 
-    console.error('AI function error:', { taskType, model, message, error })
+    // 보안: 모델명·원본 error 객체(요청 정보 포함 가능)는 로그에 남기지 않는다
+    const errorName = error instanceof Error ? error.name : 'UnknownError'
+    const errorStatus = (error as { status?: number })?.status
+    console.error('AI function error:', { taskType, message, errorName, errorStatus })
     return {
       statusCode: 500,
       headers: jsonHeaders,
