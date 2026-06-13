@@ -1,0 +1,214 @@
+/* 오픈 체크리스트 */
+.oc-page { display: flex; flex-direction: column; gap: 16px; }
+
+/* ── 진행률 ─────────────────────────────────────────────── */
+.oc-summary-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.oc-summary-count { font-size: 14px; font-weight: 600; color: #1d4ed8; }
+
+.oc-progress {
+  height: 10px;
+  background: #eef2f7;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.oc-progress-lg { height: 14px; }
+.oc-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #22c55e);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.oc-cat-progress-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.oc-cat-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #475569;
+  margin-bottom: 4px;
+}
+
+/* ── 필수 미완료 ─────────────────────────────────────────── */
+.oc-must-title { margin: 0 0 10px; font-size: 15px; color: #b91c1c; }
+.oc-must-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.oc-must-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.oc-must-cat { color: #64748b; font-size: 12px; }
+.oc-must-name { font-weight: 600; color: #1f2a44; }
+
+/* ── 툴바 / 필터 ─────────────────────────────────────────── */
+.oc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+.oc-toolbar-spacer { flex: 1 1 auto; }
+.oc-filter-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.oc-filter-label { font-size: 12px; font-weight: 600; color: #64748b; }
+.oc-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.oc-chip {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.oc-chip.on { background: #1f2a44; color: #fff; border-color: #1f2a44; }
+.oc-filter-group select {
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+}
+
+/* ── 추가/수정 폼 ────────────────────────────────────────── */
+.oc-form {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #dbe3ee;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.oc-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.oc-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #475569;
+}
+.oc-form-wide { grid-column: 1 / -1; }
+.oc-form-grid input,
+.oc-form-grid select,
+.oc-form-grid textarea {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: #1f2a44;
+}
+.oc-form-grid textarea { resize: vertical; }
+.oc-form-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* ── 항목 목록 ───────────────────────────────────────────── */
+.oc-list-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.oc-empty { color: #8a93a6; font-size: 14px; }
+.oc-item-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.oc-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid #e3e8ef;
+  border-radius: 10px;
+  background: #fff;
+}
+.oc-item-main { flex: 1 1 auto; min-width: 0; }
+.oc-item-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.oc-item-cat { font-size: 12px; color: #64748b; }
+.oc-item-title { font-weight: 600; color: #1f2a44; font-size: 15px; }
+.oc-item-desc { margin: 6px 0 0; font-size: 13px; color: #475569; line-height: 1.5; }
+.oc-item-meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; font-size: 12px; color: #64748b; }
+.oc-item-memo { margin: 6px 0 0; font-size: 12px; color: #6b7280; }
+
+.oc-supply {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.oc-supply.ok { background: #ecfdf3; color: #15803d; }
+.oc-supply.short { background: #fef3f2; color: #b42318; }
+.oc-supply-purchase {
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.oc-supply-vendor { color: #64748b; }
+
+.oc-item-side {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  flex: 0 0 auto;
+  width: 130px;
+}
+.oc-status-select {
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #fff;
+}
+.oc-item-buttons { display: flex; gap: 6px; }
+.oc-item-buttons button {
+  flex: 1 1 auto;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 12px;
+  cursor: pointer;
+  color: #334155;
+}
+.oc-item-buttons .oc-delete { color: #b42318; border-color: #fecaca; background: #fff5f5; }
+
+/* ── 배지 ────────────────────────────────────────────────── */
+.oc-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.oc-pri-low { background: #f1f5f9; color: #64748b; }
+.oc-pri-normal { background: #eff6ff; color: #2563eb; }
+.oc-pri-high { background: #fff7ed; color: #c2410c; }
+.oc-pri-must { background: #fef2f2; color: #b91c1c; }
+
+.oc-status-unknown { background: #f1f5f9; color: #64748b; }
+.oc-status-progress { background: #eff6ff; color: #2563eb; }
+.oc-status-done { background: #ecfdf3; color: #15803d; }
+.oc-status-hold { background: #fffbeb; color: #b45309; }
+.oc-status-issue { background: #fef2f2; color: #b91c1c; }
+
+/* 상태 select에 상태색 살짝 반영 (배경은 흰색 유지, 텍스트색만) */
+.oc-status-select.oc-status-done { color: #15803d; }
+.oc-status-select.oc-status-issue { color: #b91c1c; }
+.oc-status-select.oc-status-hold { color: #b45309; }
+.oc-status-select.oc-status-progress { color: #2563eb; }
+
+@media (max-width: 640px) {
+  .oc-item { flex-direction: column; }
+  .oc-item-side { width: 100%; flex-direction: row; }
+  .oc-status-select { flex: 1 1 auto; }
+}

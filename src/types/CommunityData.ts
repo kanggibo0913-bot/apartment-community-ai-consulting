@@ -501,6 +501,45 @@ export interface WeeklyReportData {
   generatedReport: string // 생성 결과
 }
 
+// ─── 오픈 체크리스트 ──────────────────────────────────────────────────────────
+// 커뮤니티센터 오픈 준비 점검 항목. 단지별 CommunityData에 영속되어 기존 데이터
+// 동기화(SystemDataSync) 경로를 그대로 타므로, 추후 클라우드 자동 동기화로 이전하기 쉽다.
+export type ChecklistCategory = '계약/행정' | '시설 체크' | '하자보수' | '운영 시뮬레이션' | '비품'
+export type ChecklistStatus = '미확인' | '진행중' | '완료' | '보류' | '문제발생'
+export type ChecklistPriority = '낮음' | '보통' | '높음' | '필수'
+export type SupplyPurchaseStatus = '미구매' | '구매예정' | '구매완료' | '입고완료' | '불필요'
+
+export const CHECKLIST_CATEGORIES: ChecklistCategory[] = ['계약/행정', '시설 체크', '하자보수', '운영 시뮬레이션', '비품']
+export const CHECKLIST_STATUSES: ChecklistStatus[] = ['미확인', '진행중', '완료', '보류', '문제발생']
+export const CHECKLIST_PRIORITIES: ChecklistPriority[] = ['낮음', '보통', '높음', '필수']
+export const SUPPLY_PURCHASE_STATUSES: SupplyPurchaseStatus[] = ['미구매', '구매예정', '구매완료', '입고완료', '불필요']
+
+export interface OpeningChecklistItem {
+  id: string
+  category: ChecklistCategory
+  title: string
+  description: string // 설명 (메모와 별도로 항목 자체 설명)
+  status: ChecklistStatus
+  assignee: string // 담당자
+  dueDate: string // 목표일 (YYYY-MM-DD 또는 '')
+  completedAt: string // 완료 시각 (ISO 문자열 또는 '') — 상태가 '완료'가 될 때 자동 기록
+  priority: ChecklistPriority
+  memo: string
+  // 비품 전용 필드 (category === '비품'일 때만 의미. 다른 카테고리는 undefined)
+  quantityNeeded?: number
+  quantityReady?: number
+  unit?: string
+  supplier?: string
+  purchaseStatus?: SupplyPurchaseStatus
+  // TODO(사진 업로드): 항목별 현장 사진 첨부 — 이번 범위 제외, 추후 추가
+  // TODO(AI 요약): 체크리스트 진행 상황 AI 요약 — 이번 범위 제외, 추후 추가
+}
+
+export interface OpeningChecklistData {
+  items: OpeningChecklistItem[]
+  // TODO(클라우드 동기화): 추후 자동 동기화 시 updatedAt/revision 등 메타데이터 추가 위치
+}
+
 export interface CommunityData {
   apartmentInfo: ApartmentInfoData
   facilityInfo: {
@@ -520,6 +559,7 @@ export interface CommunityData {
   contractManagement: ContractManagement
   monthlyReport: MonthlyReportData
   weeklyReport: WeeklyReportData
+  openingChecklist: OpeningChecklistData
 }
 
 export interface CommunityProject {

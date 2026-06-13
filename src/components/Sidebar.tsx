@@ -53,6 +53,7 @@ const menuGroups: MenuGroup[] = [
       { id: 'contract-manage', label: '계약 관리', icon: '📋' },
       { id: 'monthly-report', label: '월간 리포트', icon: '📰' },
       { id: 'weekly-report', label: '주간 리포트', icon: '🗓️' },
+      { id: 'opening-checklist', label: '오픈 체크리스트', icon: '✅' },
       { id: 'resident-notice', label: '입주민 안내 보고서', icon: '📢' },
       { id: 'report', label: '보고서 초안', icon: '📄' },
       { id: 'analysis', label: 'AI 분석 결과', icon: '🤖' },
