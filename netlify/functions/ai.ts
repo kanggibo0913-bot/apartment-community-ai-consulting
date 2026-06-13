@@ -185,10 +185,15 @@ interface TaskModelConfig {
 }
 
 const TASK_MODEL_CONFIG: Record<string, TaskModelConfig> = {
-  // 월간 운영 리포트: 운영진단 품질이 중요 → GPT-5.5 (2026-04 출시, Responses API 지원 확인됨)
-  monthlyReport: { envVar: 'OPENAI_MODEL_MONTHLY_REPORT', fallbackModel: 'gpt-5.5', reasoningEffort: 'low' },
-  // 추후 확장 예시 — 입주민 공개 보고서/운영진단형 보고서를 상위 모델로 올릴 때 여기에 항목만 추가:
-  // residentNoticeReport: { envVar: 'OPENAI_MODEL_RESIDENT_REPORT', fallbackModel: 'gpt-5.5', reasoningEffort: 'low' },
+  // 월간 운영 리포트: 일반 task보다 품질이 중요해 상위 모델(gpt-4.1)을 사용한다.
+  // 운영진단 품질은 사전 계산 지표(monthlyReportMetrics)와 강화된 시스템 프롬프트가 보장하므로
+  // 모델의 추론(reasoning) 깊이에 의존하지 않는다.
+  // ⚠️ gpt-5.5(추론형)는 실측 결과 동기 호출이 25~30초+로, Netlify 동기 함수 한도(기본 10초·최대 26초)와
+  //    클라이언트 25초 타임아웃을 넘겨 사용 불가였다. 추론형 모델을 쓰려면 비동기(백그라운드+폴링) 구조가 필요하다.
+  // reasoningEffort는 gpt-5 계열로 라우팅될 때만 적용되며(아래 dispatch 가드), 그 경우 가장 빠른 'none'을 쓴다.
+  monthlyReport: { envVar: 'OPENAI_MODEL_MONTHLY_REPORT', fallbackModel: 'gpt-4.1', reasoningEffort: 'none' },
+  // 추후 확장 예시 — 입주민 공개 보고서 등 다른 보고서형 task를 별도 모델로 올릴 때 여기에 항목만 추가:
+  // residentNoticeReport: { envVar: 'OPENAI_MODEL_RESIDENT_REPORT', fallbackModel: 'gpt-4.1', reasoningEffort: 'none' },
 }
 
 const resolveModelForTask = (taskType: string): { model: string; reasoningEffort?: 'none' | 'low' | 'medium' } => {
