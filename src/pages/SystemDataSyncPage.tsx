@@ -3,18 +3,22 @@ import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import Button from '../components/Button'
 import { SYNC_GROUPS, SYNC_KEY_DEFS } from '../utils/syncKeys'
+import { mergeSyncValue } from '../utils/cloudMerge'
 import './SystemDataSyncPage.css'
 
 // HOMEBASE AI 클라우드 수동 동기화 페이지.
 // 기존 localStorage 저장 구조는 그대로 유지하고, "클라우드에 저장" / "클라우드에서 불러오기"
-// 두 가지 수동 버튼만 제공한다. 자동 동기화·자동 머지 로직은 의도적으로 미구현.
+// 두 가지 수동 버튼만 제공한다. 자동(주기적) 동기화는 의도적으로 미구현.
 //
 // 동작 요약:
 //   - 저장: 화이트리스트 key를 localStorage에서 읽어 JSON으로 정규화한 뒤
 //           POST /.netlify/functions/app-state 로 업서트.
-//   - 불러오기: 덮어쓰기 전 현재 로컬 데이터를 JSON 백업으로 자동 다운로드(되돌리기 안전망) →
-//                GET /.netlify/functions/app-state 호출 결과를 confirm 후
-//                localStorage에 덮어쓰고 페이지 새로고침으로 모든 화면 재초기화.
+//   - 불러오기(Phase B 병합): 병합 전 현재 로컬 데이터를 JSON 백업으로 자동 다운로드(되돌리기 안전망) →
+//                GET /.netlify/functions/app-state 결과를 confirm 후, 로컬을 통째로 덮어쓰지 않고
+//                key 종류별로 안전 병합(src/utils/cloudMerge.ts)한 뒤 localStorage에 적용하고 새로고침.
+//                · 단지(communityAiProjects)/AI 이력: project.id·entry.id 단위 합집합, 더 최신 항목 우선
+//                · 단지별(byProject) key: projectId 단위 병합
+//                · 입찰 등 전역 key: 로컬 우선(로컬이 비었을 때만 클라우드로 채움)
 //   - 상태: 페이지 진입 시 클라우드 updated_at을 조회해 로컬 시각과 비교 표시(수동 새로고침 가능).
 //   - 마지막 저장/불러오기 시각은 별도 localStorage key(syncMeta)에 보존.
 //
@@ -236,7 +240,7 @@ const SystemDataSyncPage: React.FC = () => {
     if (!lastSaved) {
       return {
         tone: 'warn',
-        text: '이 브라우저에서 클라우드에 저장한 기록이 없습니다. "클라우드에서 불러오기"는 현재 로컬 데이터를 덮어씁니다 — 불러오기 직전 백업이 자동 생성됩니다.',
+        text: '이 브라우저에서 클라우드에 저장한 기록이 없습니다. "클라우드에서 불러오기"는 단지/AI 이력을 더 최신 항목 우선으로 병합하고 전역 항목은 로컬을 우선합니다 — 병합 직전 백업이 자동 생성됩니다.',
       }
     }
     const cloudNewer = cloud > lastSaved
@@ -244,13 +248,13 @@ const SystemDataSyncPage: React.FC = () => {
     if (cloudNewer && localNewer) {
       return {
         tone: 'warn',
-        text: '⚠️ 충돌 가능성: 이 브라우저의 마지막 저장 이후 로컬과 클라우드가 모두 변경되었습니다. 불러오면 로컬 변경분이 사라질 수 있으니, 먼저 "클라우드에 저장"하거나 백업을 받으세요.',
+        text: '⚠️ 양쪽 변경 감지: 이 브라우저의 마지막 저장 이후 로컬과 클라우드가 모두 변경되었습니다. 불러오면 단지/AI 이력은 항목별 더 최신 기준으로 병합되지만, 입찰 등 전역 항목은 로컬이 우선됩니다. 전역 항목까지 합치려면 먼저 "클라우드에 저장"하세요.',
       }
     }
     if (cloudNewer) {
       return {
         tone: 'info',
-        text: '클라우드가 이 브라우저의 마지막 저장 이후 갱신되었습니다(다른 기기에서 저장했을 수 있음). 불러오면 최신 데이터를 받지만, 로컬 미저장 변경은 덮어쓰입니다.',
+        text: '클라우드가 이 브라우저의 마지막 저장 이후 갱신되었습니다(다른 기기에서 저장했을 수 있음). 불러오면 단지/AI 이력의 더 최신 항목을 병합해 받습니다(전역 항목은 로컬 우선).',
       }
     }
     if (localNewer) {
@@ -334,12 +338,15 @@ const SystemDataSyncPage: React.FC = () => {
       return
     }
     const confirmed = window.confirm(
-      '현재 브라우저의 데이터가 클라우드 데이터로 덮어써집니다.\n불러오기 직전, 현재 데이터가 백업 파일(JSON)로 자동 다운로드됩니다.\n계속할까요?',
+      '클라우드 데이터를 현재 브라우저 데이터와 병합합니다(통째 덮어쓰기 아님).\n' +
+        '• 단지/AI 이력: 더 최신 항목 우선으로 안전 병합(양쪽에만 있는 항목은 모두 보존)\n' +
+        '• 입찰 등 전역 항목: 현재 브라우저(로컬) 우선\n' +
+        '병합 직전, 현재 데이터가 백업 파일(JSON)로 자동 다운로드됩니다.\n계속할까요?',
     )
     if (!confirmed) return
 
-    // 되돌릴 수 있도록, 덮어쓰기 전에 현재 로컬 데이터를 백업 파일로 자동 저장한다.
-    // 백업 준비에 실패하면 데이터 보호를 위해 불러오기를 중단한다(덮어쓰기 안 함).
+    // 되돌릴 수 있도록, 병합 적용 전에 현재 로컬 데이터를 백업 파일로 자동 저장한다.
+    // 백업 준비에 실패하면 데이터 보호를 위해 불러오기를 중단한다(병합/적용 안 함).
     let backupFileName = ''
     try {
       backupFileName = downloadLocalBackup()
@@ -369,18 +376,30 @@ const SystemDataSyncPage: React.FC = () => {
       }
       const cloudItems = data.items || {}
       let applied = 0
+      let mergeErrors = 0
+      // 클라우드에 존재하는 key만 병합 대상. 클라우드에 없는 key는 로컬을 그대로 둔다(보존).
       selectedKeys.forEach((k) => {
-        if (k in cloudItems) {
-          writeLocalFromPayload(k, cloudItems[k])
+        if (!(k in cloudItems)) return
+        try {
+          const localValue = readLocalAsJson(k)
+          // 통째 덮어쓰기 대신 key 종류별 안전 병합. 어떤 입력이든 mergeSyncValue는 throw하지 않고
+          // 실패 시 local을 반환하므로, 한 항목 때문에 전체 불러오기가 깨지지 않는다.
+          const merged = mergeSyncValue(k, localValue, cloudItems[k])
+          writeLocalFromPayload(k, merged)
           applied += 1
+        } catch (e) {
+          // 이론상 도달하지 않지만(merge 내부 방어), 만일을 대비해 해당 key만 건너뛰고 로컬 보존.
+          mergeErrors += 1
+          console.warn('[handleLoad] merge/write failed for key:', k, e)
         }
       })
       const now = new Date().toISOString()
       const nextMeta = { ...meta, lastLoadedAt: now }
       saveMeta(nextMeta) // reload 전에 영구화
+      const errNote = mergeErrors > 0 ? ` (병합 실패 ${mergeErrors}건은 로컬 유지)` : ''
       setMsg({
         type: 'ok',
-        text: `${applied}개 항목을 클라우드에서 불러왔습니다. (백업 파일: ${backupFileName}) 새로고침합니다.`,
+        text: `${applied}개 항목을 백업 후 병합했습니다.${errNote} (백업 파일: ${backupFileName}) 새로고침합니다.`,
       })
       // 모든 페이지가 새 localStorage 값으로 초기화되도록 강제 새로고침.
       window.setTimeout(() => window.location.reload(), 1000)
@@ -457,7 +476,7 @@ const SystemDataSyncPage: React.FC = () => {
       />
 
       <div className="sys-sync-info">
-        ⓘ 자동 동기화는 하지 않습니다. 다른 브라우저에서 데이터를 보려면 한쪽에서 "클라우드에 저장" → 다른 쪽에서 "클라우드에서 불러오기" 순서로 진행하세요. <strong>불러오기는 현재 브라우저 데이터를 덮어쓰며, 덮어쓰기 직전 자동 백업 파일이 다운로드됩니다.</strong>
+        ⓘ 자동 동기화는 하지 않습니다. 다른 브라우저에서 데이터를 보려면 한쪽에서 "클라우드에 저장" → 다른 쪽에서 "클라우드에서 불러오기" 순서로 진행하세요. <strong>불러오기는 통째로 덮어쓰지 않고, 단지·AI 이력을 더 최신 항목 우선으로 병합합니다(입찰 등 전역 항목은 로컬 우선). 병합 직전 자동 백업 파일이 다운로드됩니다.</strong>
       </div>
 
       {/* 클라우드/로컬 신선도 비교 */}
@@ -547,7 +566,7 @@ const SystemDataSyncPage: React.FC = () => {
             {busy ? '저장 중...' : '클라우드에 저장'}
           </Button>
           <Button variant="primary" onClick={handleLoad} disabled={busy || noneSelected}>
-            {busy ? '불러오는 중...' : '클라우드에서 불러오기'}
+            {busy ? '병합 중...' : '클라우드에서 불러오기 (백업 후 병합)'}
           </Button>
         </div>
 
@@ -584,8 +603,9 @@ const SystemDataSyncPage: React.FC = () => {
         <ul className="sys-sync-help">
           <li>이 기능은 사전에 Supabase 프로젝트 + Netlify 환경변수 설정이 필요합니다. <strong>SUPABASE_SETUP.md</strong>를 참고하세요.</li>
           <li>저장 대상 키는 기존 localStorage 키와 동일하며, 저장 후 즉시 다른 브라우저에서 불러올 수 있습니다.</li>
-          <li><strong>불러오기는 현재 브라우저 데이터를 덮어씁니다.</strong> 덮어쓰기 직전 자동으로 백업 파일이 다운로드되며, "백업 파일에서 복원"으로 되돌릴 수 있습니다.</li>
-          <li>현 단계에서는 충돌 자동 해결을 하지 않습니다. 양쪽에서 동시 수정 시 마지막 저장이 최종 값이 됩니다.</li>
+          <li><strong>불러오기는 통째 덮어쓰기가 아니라 안전 병합입니다.</strong> 단지(<code>communityAiProjects</code>)는 단지별로, AI 이력은 항목별로 합쳐지며 같은 항목은 <strong>더 최신(updatedAt) 쪽</strong>이 채택됩니다. 한쪽에만 있는 단지/항목은 보존됩니다. 병합 직전 자동 백업이 다운로드되고 "백업 파일에서 복원"으로 되돌릴 수 있습니다.</li>
+          <li><strong>입찰공고·산출표 등 전역 항목은 단지 단위로 나눌 수 없어 로컬을 우선합니다</strong>(로컬이 비어있을 때만 클라우드 값으로 채움). 전역 항목을 다른 기기로 옮기려면, 비어있는 기기에서 불러오거나 한쪽에서 "클라우드에 저장" 후 사용하세요.</li>
+          <li>같은 단지/항목을 양쪽에서 동시에 수정한 경우, <code>updatedAt</code>이 더 최신인 쪽이 채택되고 오래된 쪽 변경분은 백업 파일에만 남습니다.</li>
           <li>service role 키는 Netlify Function 내부에서만 사용되며, 브라우저에 절대 노출되지 않습니다.</li>
         </ul>
       </Card>
