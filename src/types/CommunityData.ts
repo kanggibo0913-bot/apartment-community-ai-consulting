@@ -482,6 +482,25 @@ export interface MonthlyReportData {
   selectedBidCalculationSnapshotId?: string
 }
 
+// 주간 운영 리포트 출력 모드 — 관리소 보고용(실무 상세) / 입주민 공개용(순화)
+export type WeeklyReportOutputMode = 'office' | 'resident'
+
+// 주간 운영 리포트 입력/결과. monthlyReport와 동일하게 단지별 communityAiProjects에 영속된다.
+export interface WeeklyReportData {
+  reportWeek: string // ISO 주차 식별자 (예: 2026-W24) — 중복 생성 confirm 기준 키
+  periodLabel: string // 기간 표시 텍스트 (예: 2026-06-08 ~ 2026-06-14)
+  staffName: string // 근무자/담당자
+  mainTasks: string // 이번 주 주요 업무
+  facilityInspection: string // 시설 점검 내역
+  complaintHandling: string // 민원 대응 내역
+  defectActions: string // 하자 발견 및 조치 내역
+  suppliesInventory: string // 비품 보충/재고 관련
+  specialNotes: string // 특이사항
+  nextWeekPlan: string // 다음 주 예정 업무
+  outputMode: WeeklyReportOutputMode // 출력 모드 선택
+  generatedReport: string // 생성 결과
+}
+
 export interface CommunityData {
   apartmentInfo: ApartmentInfoData
   facilityInfo: {
@@ -500,6 +519,7 @@ export interface CommunityData {
   complaints: ComplaintItem[]
   contractManagement: ContractManagement
   monthlyReport: MonthlyReportData
+  weeklyReport: WeeklyReportData
 }
 
 export interface CommunityProject {

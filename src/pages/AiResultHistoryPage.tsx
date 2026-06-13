@@ -15,6 +15,7 @@ import './AiResultHistoryPage.css'
 // taskType → 사용자용 한글 라벨 (현재 저장되는 taskType + 확장 대비)
 const TASK_LABELS: Record<string, string> = {
   monthlyReport: '월간 리포트',
+  weeklyReport: '주간 리포트',
   bidNoticeAnalysis: '공고문 분석',
   document: '공문 작성',
   contractGenerate: '계약서 생성',
@@ -115,12 +116,14 @@ const FILTERS: Array<{ key: string; label: string; match: (taskType: string) => 
   { key: 'all', label: '전체', match: () => true },
   { key: 'bidNoticeAnalysis', label: '공고문 분석', match: (t) => t === 'bidNoticeAnalysis' },
   { key: 'monthlyReport', label: '월간 리포트', match: (t) => t === 'monthlyReport' },
+  { key: 'weeklyReport', label: '주간 리포트', match: (t) => t === 'weeklyReport' },
   { key: 'contract', label: '계약서', match: (t) => t === 'contractGenerate' || t === 'contractReview' },
   { key: 'document', label: '공문', match: (t) => t === 'document' },
   {
     key: 'etc',
     label: '기타',
-    match: (t) => !['bidNoticeAnalysis', 'monthlyReport', 'contractGenerate', 'contractReview', 'document'].includes(t),
+    match: (t) =>
+      !['bidNoticeAnalysis', 'monthlyReport', 'weeklyReport', 'contractGenerate', 'contractReview', 'document'].includes(t),
   },
 ]
 

@@ -15,6 +15,7 @@ import ContractGenerator from './pages/ContractGenerator'
 import ContractReview from './pages/ContractReview'
 import ContractManagement from './pages/ContractManagement'
 import MonthlyReport from './pages/MonthlyReport'
+import WeeklyReport from './pages/WeeklyReport'
 import AgendaPredictor from './pages/AgendaPredictor'
 import AIAnalysis from './pages/AIAnalysis'
 import ReportDraft from './pages/ReportDraft'
@@ -47,9 +48,10 @@ import {
   AgendaPredictorData,
   ContractItem,
   MonthlyReportData,
+  WeeklyReportData,
 } from './types/CommunityData'
 
-type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate' | 'contract-manage' | 'monthly-report' | 'ai-history' | 'maintenance' | 'resident-notice' | 'labor-cost' | 'employment-contract' | 'system-data-sync'
+type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate' | 'contract-manage' | 'monthly-report' | 'weekly-report' | 'ai-history' | 'maintenance' | 'resident-notice' | 'labor-cost' | 'employment-contract' | 'system-data-sync'
 
 const defaultFacilityItems: FacilityDetail[] = [
   { id: 1, name: '헬스장', enabled: false, operatingStatus: '미운영', paidType: '무료', peakHours: '', notes: '', roomCount: 0, perUseFee: 0, monthlyUsageCount: 0, reservationType: '', needsCleaningStaff: false },
@@ -185,6 +187,20 @@ const defaultCommunityData: CommunityData = {
     keyIssues: '',
     improvementPlan: '',
     memo: '',
+    generatedReport: '',
+  },
+  weeklyReport: {
+    reportWeek: '',
+    periodLabel: '',
+    staffName: '',
+    mainTasks: '',
+    facilityInspection: '',
+    complaintHandling: '',
+    defectActions: '',
+    suppliesInventory: '',
+    specialNotes: '',
+    nextWeekPlan: '',
+    outputMode: 'office',
     generatedReport: '',
   },
 }
@@ -333,6 +349,20 @@ const sampleCommunityData: CommunityData = {
     memo: '',
     generatedReport: '',
   },
+  weeklyReport: {
+    reportWeek: '',
+    periodLabel: '',
+    staffName: '',
+    mainTasks: '',
+    facilityInspection: '',
+    complaintHandling: '',
+    defectActions: '',
+    suppliesInventory: '',
+    specialNotes: '',
+    nextWeekPlan: '',
+    outputMode: 'office',
+    generatedReport: '',
+  },
 }
 
 // 구버전 localStorage 데이터에는 이후 추가된 필드(monthlyReport 등)가 없을 수 있어
@@ -358,6 +388,7 @@ const normalizeCommunityData = (saved?: Partial<CommunityData>): CommunityData =
     complaints: s.complaints ?? base.complaints,
     contractManagement: { contracts: s.contractManagement?.contracts ?? base.contractManagement.contracts },
     monthlyReport: { ...base.monthlyReport, ...s.monthlyReport },
+    weeklyReport: { ...base.weeklyReport, ...s.weeklyReport },
   }
 }
 
@@ -379,6 +410,7 @@ const pageLabels: Record<PageType, string> = {
   estimate: '산출표 자동 계산',
   'contract-manage': '계약 관리',
   'monthly-report': '월간 운영 리포트',
+  'weekly-report': '주간 운영 리포트',
   'ai-history': 'AI 결과 이력',
   maintenance: '시설 보수 내역',
   'resident-notice': '입주민 안내 보고서',
@@ -576,6 +608,13 @@ function App() {
     updateActiveProjectData(data => ({
       ...data,
       monthlyReport: { ...data.monthlyReport, ...next },
+    }))
+  }
+
+  const updateWeeklyReport = (next: Partial<WeeklyReportData>) => {
+    updateActiveProjectData(data => ({
+      ...data,
+      weeklyReport: { ...data.weeklyReport, ...next },
     }))
   }
 
@@ -829,6 +868,18 @@ function App() {
               data={data}
               reportData={data.monthlyReport}
               onChange={updateMonthlyReport}
+              projectId={activeProject?.id}
+              projectName={activeProject?.name}
+            />
+          </>
+        )
+      case 'weekly-report':
+        return (
+          <>
+            <h2>주간 운영 리포트</h2>
+            <WeeklyReport
+              reportData={data.weeklyReport}
+              onChange={updateWeeklyReport}
               projectId={activeProject?.id}
               projectName={activeProject?.name}
             />

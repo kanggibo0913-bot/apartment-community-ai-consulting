@@ -4,6 +4,7 @@ export type AiTaskType =
   | 'contractReview'
   | 'agendaPredict'
   | 'monthlyReport'
+  | 'weeklyReport'
   | 'bidNoticeAnalysis'
 
 export interface AiResponse {
