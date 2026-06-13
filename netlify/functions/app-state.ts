@@ -1,4 +1,5 @@
-import { Handler } from '@netlify/functions'
+import type { Handler } from '@netlify/functions'
+import { createHash } from 'node:crypto'
 import { SYNC_KEY_SET } from '../../src/utils/syncKeys'
 
 // HOMEBASE AI 앱 state 수동 동기화 함수.
@@ -7,13 +8,22 @@ import { SYNC_KEY_SET } from '../../src/utils/syncKeys'
 //
 // 라우팅:
 //   GET  /.netlify/functions/app-state
-//     → { ok: true, items: { state_key: payload, ... }, updatedAt: { state_key: iso }, workspaceId }
+//     → { ok: true, items: { state_key: payload, ... }, updatedAt: { state_key: iso }, workspaceId, usedDefault }
 //   POST /.netlify/functions/app-state
 //     body: { items: Record<state_key, any> }
-//     → { ok: true, saved: number, savedKeys: string[] }
+//     → { ok: true, saved: number, savedKeys: string[], usedDefault }
+//
+// 워크스페이스 접근 게이트 (Phase C-1/C-2):
+//   - 요청 헤더 x-workspace-access-code 로 "워크스페이스 접근코드"를 받는다(GET/POST 동일).
+//   - ⚠️ 이것은 "현장(단지)별 격리"가 아니라 "워크스페이스 접근 게이트"다. 외부인이 함수 URL만으로
+//     데이터를 읽거나 덮어쓰는 것을 1차 차단하는 용도. 현장별(projectId) 접근 제한은 추후 단계.
+//   - 코드의 sha256 해시는 "서버에서만" 계산한다. 코드 평문/해시는 응답·로그에 절대 싣지 않는다.
+//   - 코드가 있으면 그 해시로 workspace를 조회한다. 매칭이 없으면 403(잘못된 접근코드).
+//   - 코드가 없으면 전환기 동안 기존 기본 workspace로 동작한다(아래 DEFAULT_WORKSPACE_CODE_HASH).
 //
 // 응답 정책:
-//   - HTTP status는 의도적으로 거의 항상 200으로 통일. ok 플래그로 분기 (브라우저 단순화).
+//   - HTTP status는 거의 항상 200으로 통일하고 ok 플래그로 분기한다(브라우저 단순화).
+//     단 "잘못된 접근코드"만 예외적으로 403을 반환한다.
 //   - service role key는 응답·로그·에러 메시지에 절대 노출하지 않는다.
 //   - Supabase 외부 응답 본문도 그대로 노출하지 않고 status 숫자만 사용한다.
 
@@ -25,9 +35,62 @@ import { SYNC_KEY_SET } from '../../src/utils/syncKeys'
 //    (이 파일은 Netlify esbuild 번들 시 syncKeys.ts를 함께 인라인하므로 별도 복제가 불필요.)
 const ALLOWED_KEYS = SYNC_KEY_SET
 
-// 기본 작업공간 — schema.sql에서 시드한 행과 동일.
-// 후속 단계에서 접근코드 기반 sha256 hash로 교체 예정.
+// 전환기 기본 작업공간 — schema.sql에서 시드한 행과 동일.
+// 접근코드가 없을 때만 fallback으로 사용한다(코드가 있으면 sha256 해시로 별도 조회).
 const DEFAULT_WORKSPACE_CODE_HASH = 'default-placeholder-hash'
+
+// 접근코드를 받는 요청 헤더 이름.
+// ⚠️ src/utils/accessCode.ts 의 ACCESS_CODE_HEADER 와 반드시 동일해야 한다.
+const ACCESS_CODE_HEADER = 'x-workspace-access-code'
+
+// 접근코드 → sha256 hex. ⚠️ 해시는 서버에서만 계산한다(브라우저로 내려보내지 않는다).
+// Postgres 쪽 운영 INSERT는 encode(digest('코드','sha256'),'hex') 와 동일한 값이 되어야 매칭된다.
+const sha256Hex = (input: string): string =>
+  createHash('sha256').update(input, 'utf8').digest('hex')
+
+// 요청 헤더에서 접근코드를 읽는다(트림). 없으면 빈 문자열.
+// Netlify는 헤더 key를 소문자로 정규화하지만, 방어적으로 몇 가지 변형도 확인한다.
+const readAccessCode = (event: { headers?: Record<string, string | undefined> }): string => {
+  const h = event.headers || {}
+  const raw = h[ACCESS_CODE_HEADER] ?? h[ACCESS_CODE_HEADER.toUpperCase()] ?? ''
+  return typeof raw === 'string' ? raw.trim() : ''
+}
+
+// 워크스페이스 해석 결과.
+type WorkspaceResolution =
+  | { kind: 'ok'; workspaceId: string; usedDefault: boolean }
+  | { kind: 'invalid_code' } // 코드는 왔지만 매칭 workspace 없음 → 403
+  | { kind: 'not_found' } // 기본 workspace 자체가 없음(schema 미적용)
+  | { kind: 'error' } // 조회 쿼리 실패
+
+// 접근코드 유무에 따라 workspace를 해석한다.
+const resolveWorkspace = async (
+  origin: string,
+  headers: Record<string, string>,
+  accessCode: string,
+): Promise<WorkspaceResolution> => {
+  const code = (accessCode || '').trim()
+  if (code) {
+    // 코드가 있으면 서버에서만 sha256 해시 후 그 해시로 workspace를 찾는다.
+    let id: string | null
+    try {
+      id = await fetchWorkspaceIdByHash(origin, headers, sha256Hex(code))
+    } catch {
+      return { kind: 'error' }
+    }
+    if (!id) return { kind: 'invalid_code' } // 코드가 틀림 → 403, 어떤 읽기/쓰기도 하지 않음
+    return { kind: 'ok', workspaceId: id, usedDefault: false }
+  }
+  // 코드가 없으면 전환기 동안 기본 workspace로 동작한다.
+  let id: string | null
+  try {
+    id = await fetchWorkspaceIdByHash(origin, headers, DEFAULT_WORKSPACE_CODE_HASH)
+  } catch {
+    return { kind: 'error' }
+  }
+  if (!id) return { kind: 'not_found' }
+  return { kind: 'ok', workspaceId: id, usedDefault: true }
+}
 
 const handler: Handler = async (event) => {
   const supabaseUrl = process.env.SUPABASE_URL
@@ -54,21 +117,34 @@ const handler: Handler = async (event) => {
     Authorization: `Bearer ${supabaseKey}`,
   }
 
-  // 1) 작업공간 ID 조회. 없으면 schema가 적용되지 않은 것으로 안내.
-  const workspaceId = await fetchWorkspaceId(restOrigin, authHeaders).catch(() => null)
-  if (!workspaceId) {
+  // 1) 접근코드(있으면) → 워크스페이스 해석. 없으면 전환기 기본 workspace fallback.
+  const resolution = await resolveWorkspace(restOrigin, authHeaders, readAccessCode(event))
+  if (resolution.kind === 'invalid_code') {
+    // ⚠️ 코드/해시는 응답에 싣지 않는다. 틀린 코드는 어떤 데이터도 읽거나 쓰지 않고 즉시 거부한다.
+    return json(403, {
+      ok: false,
+      error: 'invalid_access_code',
+      message:
+        '워크스페이스 접근코드가 올바르지 않습니다. 코드를 다시 확인하거나, 코드를 비우고 전환기 기본 작업공간으로 시도하세요.',
+    })
+  }
+  if (resolution.kind === 'error') {
+    return json(200, { ok: false, message: '작업공간 조회 중 오류가 발생했습니다.' })
+  }
+  if (resolution.kind === 'not_found') {
     return json(200, {
       ok: false,
       message:
         'Default workspace not found. supabase/schema.sql 을 먼저 실행했는지 확인해주세요.',
     })
   }
+  const { workspaceId, usedDefault } = resolution
 
   if (event.httpMethod === 'GET') {
-    return await handleGet(restOrigin, authHeaders, workspaceId)
+    return await handleGet(restOrigin, authHeaders, workspaceId, usedDefault)
   }
   if (event.httpMethod === 'POST') {
-    return await handlePost(restOrigin, authHeaders, workspaceId, event.body)
+    return await handlePost(restOrigin, authHeaders, workspaceId, event.body, usedDefault)
   }
   return json(405, { ok: false, message: `Method ${event.httpMethod} not allowed` })
 }
@@ -77,6 +153,7 @@ const handleGet = async (
   origin: string,
   headers: Record<string, string>,
   workspaceId: string,
+  usedDefault: boolean,
 ) => {
   const url = `${origin}/rest/v1/homebase_app_state?workspace_id=eq.${workspaceId}&select=state_key,payload,version,updated_at`
   try {
@@ -101,7 +178,7 @@ const handleGet = async (
       items[r.state_key] = r.payload
       updatedAt[r.state_key] = r.updated_at
     })
-    return json(200, { ok: true, items, updatedAt, workspaceId })
+    return json(200, { ok: true, items, updatedAt, workspaceId, usedDefault })
   } catch (e) {
     return json(200, {
       ok: false,
@@ -115,6 +192,7 @@ const handlePost = async (
   headers: Record<string, string>,
   workspaceId: string,
   bodyRaw: string | null | undefined,
+  usedDefault: boolean,
 ) => {
   let parsed: { items?: Record<string, unknown> }
   try {
@@ -159,6 +237,7 @@ const handlePost = async (
       saved: 0,
       savedKeys: [],
       skippedKeys,
+      usedDefault,
       message: '저장할 데이터가 없어 빈 항목은 건너뛰었습니다.',
     })
   }
@@ -213,6 +292,7 @@ const handlePost = async (
       saved: savedKeys.length,
       savedKeys,
       skippedKeys,
+      usedDefault,
       message,
     })
   } catch (e) {
@@ -228,12 +308,15 @@ const handlePost = async (
   }
 }
 
-const fetchWorkspaceId = async (
+// workspace_code_hash로 workspace id를 조회한다. 매칭이 없으면 null.
+// codeHash는 호출부에서 sha256(접근코드) 또는 DEFAULT_WORKSPACE_CODE_HASH 로 넘긴다.
+const fetchWorkspaceIdByHash = async (
   origin: string,
   headers: Record<string, string>,
+  codeHash: string,
 ): Promise<string | null> => {
   const url = `${origin}/rest/v1/homebase_workspaces?workspace_code_hash=eq.${encodeURIComponent(
-    DEFAULT_WORKSPACE_CODE_HASH,
+    codeHash,
   )}&select=id&limit=1`
   const res = await timedFetch(url, { headers })
   if (!res.ok) return null

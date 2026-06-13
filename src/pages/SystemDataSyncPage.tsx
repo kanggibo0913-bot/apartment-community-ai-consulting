@@ -19,6 +19,13 @@ import {
   type PullPayload,
   type ApplyMergeOutcome,
 } from '../utils/autoSyncRunner'
+import {
+  getAccessCode,
+  setAccessCode,
+  clearAccessCode,
+  maskAccessCode,
+  buildAccessCodeHeaders,
+} from '../utils/accessCode'
 import './SystemDataSyncPage.css'
 
 // HOMEBASE AI 클라우드 수동 동기화 페이지.
@@ -213,6 +220,10 @@ const SystemDataSyncPage: React.FC = () => {
     SYNC_KEYS.forEach(({ key }) => (init[key] = true))
     return init
   })
+  // 워크스페이스 접근코드 (Phase C-1/C-2). 평문은 sessionStorage에만 보관(동기화 대상 아님).
+  // accessCodeInput: 입력 중인 값. applied: 현재 적용된 값(마스킹해서만 표시).
+  const [accessCodeInput, setAccessCodeInput] = useState('')
+  const [appliedAccessCode, setAppliedAccessCode] = useState<string>(() => getAccessCode())
 
   useEffect(() => {
     if (!msg) return
@@ -240,7 +251,10 @@ const SystemDataSyncPage: React.FC = () => {
   const fetchCloudStatus = useCallback(async (): Promise<CloudStatus> => {
     setStatusBusy(true)
     try {
-      const res = await fetch('/.netlify/functions/app-state', { method: 'GET' })
+      const res = await fetch('/.netlify/functions/app-state', {
+        method: 'GET',
+        headers: { ...buildAccessCodeHeaders() },
+      })
       const data = (await res.json()) as {
         ok: boolean
         items?: Record<string, unknown>
@@ -359,6 +373,30 @@ const SystemDataSyncPage: React.FC = () => {
     saveMeta(next)
   }
 
+  // 워크스페이스 접근코드 적용 — sessionStorage에 저장하고, 새 코드 기준으로 클라우드 상태를 다시 조회한다.
+  // (코드가 틀리면 상태 조회가 403을 받아 위 상태 카드에 "접근코드가 올바르지 않습니다"가 표시된다.)
+  const handleApplyAccessCode = () => {
+    const code = accessCodeInput.trim()
+    if (!code) {
+      setMsg({ type: 'info', text: '워크스페이스 접근코드를 입력해주세요.' })
+      return
+    }
+    setAccessCode(code)
+    setAppliedAccessCode(getAccessCode())
+    setAccessCodeInput('') // 입력칸에 평문을 남겨두지 않는다.
+    setMsg({ type: 'ok', text: '워크스페이스 접근코드를 적용했습니다. 이제 저장/불러오기 요청에 이 코드가 사용됩니다.' })
+    void fetchCloudStatus() // 새 코드(=새 workspace) 기준으로 상태 갱신.
+  }
+
+  // 접근코드 삭제 — 이후 요청은 전환기 기본 작업공간(fallback)으로 동작한다.
+  const handleClearAccessCode = () => {
+    clearAccessCode()
+    setAppliedAccessCode('')
+    setAccessCodeInput('')
+    setMsg({ type: 'info', text: '접근코드를 삭제했습니다. 다음 요청은 전환기 기본 작업공간으로 동작합니다.' })
+    void fetchCloudStatus()
+  }
+
   // 자동 동기화 1회 실행(수동 버튼) — Phase D-1.
   // 버튼 클릭 시에만 실행되며, 자동 트리거(타이머/포커스/언로드/진입)는 일절 없다.
   // 실제 동작(저장/병합)은 실행 코어(autoSyncRunner)가 "실행 직전 신선 판정" 결과에 따라 결정한다.
@@ -397,7 +435,7 @@ const SystemDataSyncPage: React.FC = () => {
         })
         const res = await fetch('/.netlify/functions/app-state', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...buildAccessCodeHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ items }),
         })
         const data = (await res.json()) as { ok: boolean; saved?: number; message?: string }
@@ -407,7 +445,10 @@ const SystemDataSyncPage: React.FC = () => {
       backup: () => downloadLocalBackup(),
       // canPullMerge: 클라우드 payload + updated_at GET.
       pull: async (): Promise<PullPayload> => {
-        const res = await fetch('/.netlify/functions/app-state', { method: 'GET' })
+        const res = await fetch('/.netlify/functions/app-state', {
+          method: 'GET',
+          headers: { ...buildAccessCodeHeaders() },
+        })
         const data = (await res.json()) as {
           ok: boolean
           items?: Record<string, unknown>
@@ -488,7 +529,7 @@ const SystemDataSyncPage: React.FC = () => {
       })
       const res = await fetch('/.netlify/functions/app-state', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...buildAccessCodeHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ items }),
       })
       const data = (await res.json()) as {
@@ -580,7 +621,10 @@ const SystemDataSyncPage: React.FC = () => {
     setBusy(true)
     setMsg(null)
     try {
-      const res = await fetch('/.netlify/functions/app-state', { method: 'GET' })
+      const res = await fetch('/.netlify/functions/app-state', {
+        method: 'GET',
+        headers: { ...buildAccessCodeHeaders() },
+      })
       const data = (await res.json()) as {
         ok: boolean
         items?: Record<string, unknown>
@@ -711,6 +755,47 @@ const SystemDataSyncPage: React.FC = () => {
       <div className="sys-sync-info">
         ⓘ 자동 동기화는 하지 않습니다. 다른 브라우저에서 데이터를 보려면 한쪽에서 "클라우드에 저장" → 다른 쪽에서 "클라우드에서 불러오기" 순서로 진행하세요. <strong>불러오기는 통째로 덮어쓰지 않고, 단지·AI 이력을 더 최신 항목 우선으로 병합합니다(입찰 등 전역 항목은 로컬 우선). 병합 직전 자동 백업 파일이 다운로드됩니다.</strong>
       </div>
+
+      {/* 워크스페이스 접근코드 (Phase C-1/C-2) — 외부인 차단용 접근 게이트 */}
+      <Card title="워크스페이스 접근코드" className="sys-sync-card">
+        <p className="sys-sync-note">
+          이 코드는 <strong>워크스페이스 접근 게이트</strong>입니다 — 함수 주소만 아는 외부인이 클라우드 데이터를 읽거나 덮어쓰는 것을 막습니다. <strong>현장(단지)별 접근 제한이 아닙니다.</strong> 현장별 분리는 이후 단계(projectId 서버 필터링)에서 추가될 예정입니다. 코드는 이 탭에만(sessionStorage) 보관되며 동기화 대상이 아닙니다.
+        </p>
+
+        {appliedAccessCode ? (
+          <p className="sys-sync-verdict sys-sync-verdict--ok">
+            <strong>접근코드 적용됨</strong> ({maskAccessCode(appliedAccessCode)}) — 저장/불러오기 요청이 이 코드의 작업공간으로 전달됩니다.
+          </p>
+        ) : (
+          <p className="sys-sync-verdict sys-sync-verdict--warn">
+            <strong>접근코드 미설정 · 전환기 기본 작업공간 사용 중</strong> — 코드 없이도 기존 기본 작업공간으로 동작하지만, 보안을 위해 운영용 접근코드 적용을 권장합니다.
+          </p>
+        )}
+
+        <div className="sys-sync-tool">
+          <input
+            type="password"
+            className="sys-sync-code-input"
+            placeholder="워크스페이스 접근코드 입력"
+            autoComplete="off"
+            value={accessCodeInput}
+            onChange={(e) => setAccessCodeInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleApplyAccessCode()
+            }}
+            disabled={busy}
+          />
+          <Button variant="primary" onClick={handleApplyAccessCode} disabled={busy || !accessCodeInput.trim()}>
+            적용
+          </Button>
+          <Button variant="secondary" onClick={handleClearAccessCode} disabled={busy || !appliedAccessCode}>
+            삭제
+          </Button>
+        </div>
+        <p className="sys-sync-note">
+          ※ 코드는 화면·로그에 평문으로 노출되지 않으며, 서버에서만 sha256 해시로 검증됩니다. 코드가 틀리면 위 "클라우드 / 로컬 상태"에 오류가 표시됩니다. 운영 작업공간 생성 방법은 <strong>SUPABASE_SETUP.md</strong>를 참고하세요.
+        </p>
+      </Card>
 
       {/* 클라우드/로컬 신선도 비교 */}
       <Card title="클라우드 / 로컬 상태" className="sys-sync-card">

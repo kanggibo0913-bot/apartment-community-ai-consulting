@@ -35,6 +35,28 @@
   color: #64748b;
 }
 
+/* 워크스페이스 접근코드 입력 */
+.sys-sync-code-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.sys-sync-code-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.sys-sync-code-input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
 /* 그룹 컨테이너 */
 .sys-sync-groups {
   display: flex;

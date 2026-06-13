@@ -87,12 +87,46 @@ https://<your-netlify-site>/.netlify/functions/supabase-health
 - RLS는 schema.sql에서 활성화되며 정책 없이 둔다. 브라우저가 anon 키로 직접 접근하려고 해도 차단된다.
 - service role 키가 유출된 것 같으면 즉시 Supabase Settings → API → **Rotate service_role** 로 키 교체.
 
-## 7. 향후 마이그레이션 계획 (참고)
+## 7. 워크스페이스 접근코드 게이트 (Phase C-1/C-2)
 
-1. `state_key`별 sync 어댑터 추가 (예: tenderNotices, siteLaborCalendarInputs)
-2. Netlify Function `app-state-sync` 1개에서 GET/PUT 처리 (workspace_code 헤더 기반)
-3. 브라우저는 작업공간 접근 코드만 입력 → 함수가 sha256 해시 후 workspace 찾기
-4. 첫 GET 시 localStorage가 비어 있으면 서버 값으로 채움, 아니면 사용자에게 충돌 선택지 제공
-5. 단계별로 한 key씩 옮기고 회귀 점검
+데이터 동기화 페이지에 **워크스페이스 접근코드** 입력이 추가되었습니다.
 
-이번 커밋은 1~4단계의 토대만 마련한다.
+> ⚠️ **이것은 "현장(단지)별 격리"가 아니라 "워크스페이스 접근 게이트"입니다.**
+> 함수 주소만 아는 외부인이 클라우드 데이터를 읽거나 덮어쓰는 것을 1차로 막는 용도입니다.
+> 현장별(projectId 단위) 접근 제한은 이후 단계(서버 필터링)에서 별도로 추가될 예정입니다.
+
+### 동작 방식
+
+- 브라우저는 접근코드를 `x-workspace-access-code` 헤더에 실어 GET/POST 모두에 전달합니다.
+- 코드 평문은 `sessionStorage`에만 보관되며(탭을 닫으면 사라짐), 동기화 대상이 아닙니다.
+- **해시(sha256)는 서버(Netlify Function)에서만 계산**합니다. 코드 평문/해시는 응답·로그에 노출되지 않습니다.
+- 코드가 있으면 그 해시로 workspace를 찾고, 매칭이 없으면 **403(잘못된 접근코드)**를 돌려줍니다(읽기/쓰기 모두 차단).
+- 코드가 없으면 **전환기 동안** 기존 기본 작업공간(`default-placeholder-hash`)으로 동작합니다.
+
+### 운영 작업공간(접근코드) 만들기 — Supabase SQL Editor에서 1회 실행
+
+코드 평문은 저장하지 않고, `pgcrypto`의 `digest`로 sha256 해시만 저장합니다.
+아래 해시 계산식은 함수의 `sha256(코드)`와 동일한 값이 되도록 맞춘 것입니다.
+
+```sql
+-- 아래 'YOUR_LONG_RANDOM_ACCESS_CODE'는 placeholder입니다.
+-- 실제 운영 코드로 직접 바꿔 실행하세요 (앞뒤 공백 없이, 대소문자 정확히).
+-- ⚠️ 실제 코드는 이 문서/커밋/로그/채팅에 절대 남기지 마세요.
+insert into public.homebase_workspaces (workspace_code_hash, label)
+values (encode(digest('YOUR_LONG_RANDOM_ACCESS_CODE', 'sha256'), 'hex'), '회사 작업공간')
+on conflict (workspace_code_hash) do nothing;
+```
+
+- 이후 데이터 동기화 페이지에서 같은 코드를 입력하면 이 작업공간으로 연결됩니다.
+- ⚠️ 짧고 추측하기 쉬운 코드 대신 **길고 무작위한 코드**를 사용하세요(sha256은 짧은 코드에 약함).
+  더 강한 보호(코드별 bcrypt·전용 access_codes 테이블·요청 rate limit·감사 로그)는 이후 단계 과제입니다.
+- 기존 기본 작업공간(`default-placeholder-hash`)은 전환기 호환을 위해 그대로 둡니다. 모든 사용자가
+  코드로 전환한 뒤 별도 단계에서 정리(폐기 deadline 적용)할 예정입니다.
+
+## 8. 향후 마이그레이션 계획 (참고)
+
+1. (완료) 접근코드 헤더 + 서버 sha256 해시로 workspace 선택, 코드 없으면 기본 fallback
+2. 현장별(projectId) 서버 필터링 — `byProject` key를 단지 단위로 분리(추후)
+3. 권한 모델(내부관리자 / 현장관리자 / 읽기전용)과 코드별 허용 단지 목록(추후)
+4. 전환기 기본 workspace 폐기 deadline 적용 후 코드 미입력 시 403(추후)
+5. rate limit · 낙관적 version 잠금 · 감사 로그 · CORS 등 인프라 보강(추후)
