@@ -52,7 +52,7 @@ import {
   WeeklyReportData,
   OpeningChecklistData,
 } from './types/CommunityData'
-import { createDefaultChecklistItems } from './utils/openingChecklistDefaults'
+import { createDefaultChecklistItems, normalizeOpeningChecklistData, OPENING_CHECKLIST_SEED_VERSION } from './utils/openingChecklistDefaults'
 
 type PageType = 'dashboard' | 'apartment' | 'facility' | 'operation' | 'cost' | 'revenue' | 'complaint' | 'document' | 'contract' | 'review' | 'agenda' | 'analysis' | 'report' | 'tender' | 'estimate' | 'contract-manage' | 'monthly-report' | 'weekly-report' | 'opening-checklist' | 'ai-history' | 'maintenance' | 'resident-notice' | 'labor-cost' | 'employment-contract' | 'system-data-sync'
 
@@ -208,6 +208,7 @@ const defaultCommunityData: CommunityData = {
   },
   openingChecklist: {
     items: createDefaultChecklistItems(),
+    seedVersion: OPENING_CHECKLIST_SEED_VERSION,
   },
 }
 
@@ -371,6 +372,7 @@ const sampleCommunityData: CommunityData = {
   },
   openingChecklist: {
     items: createDefaultChecklistItems(),
+    seedVersion: OPENING_CHECKLIST_SEED_VERSION,
   },
 }
 
@@ -398,9 +400,9 @@ const normalizeCommunityData = (saved?: Partial<CommunityData>): CommunityData =
     contractManagement: { contracts: s.contractManagement?.contracts ?? base.contractManagement.contracts },
     monthlyReport: { ...base.monthlyReport, ...s.monthlyReport },
     weeklyReport: { ...base.weeklyReport, ...s.weeklyReport },
-    // 저장된 체크리스트가 없으면(구버전/신규 단지) 기본 시드를 새로 생성해 채운다.
-    // 사용자가 항목을 모두 지워 items:[]가 저장된 경우는 그대로 보존(재시드하지 않음).
-    openingChecklist: { items: s.openingChecklist?.items ?? createDefaultChecklistItems() },
+    // 오픈 체크리스트 정규화: 신규/구버전은 최신 seed 초기화, items:[]는 보존,
+    // seed 버전이 낮으면 1회 migration으로 누락 항목 append + subCategory backfill(사용자 입력값 보존).
+    openingChecklist: normalizeOpeningChecklistData(s.openingChecklist),
   }
 }
 

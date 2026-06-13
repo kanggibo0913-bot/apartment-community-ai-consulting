@@ -5,9 +5,12 @@ import {
   CHECKLIST_STATUSES,
   ChecklistCategory,
   ChecklistStatus,
+  FACILITY_SUBCATEGORIES,
   OpeningChecklistData,
   OpeningChecklistItem,
+  SUBCATEGORY_CATEGORIES,
   SUPPLY_PURCHASE_STATUSES,
+  SUPPLY_SUBCATEGORIES,
 } from '../types/CommunityData'
 import Card from '../components/Card'
 import Button from '../components/Button'
@@ -19,10 +22,21 @@ interface OpeningChecklistPageProps {
 }
 
 const SUPPLY_CATEGORY: ChecklistCategory = '비품'
+const FACILITY_CATEGORY: ChecklistCategory = '시설 체크'
+// subCategory가 비어 있는 항목을 필터/표시할 때 쓰는 라벨
+const NO_SUBCATEGORY = '미분류'
+
+// 카테고리별 subCategory 권장값 (폼/필터 옵션). 그 외 카테고리는 subCategory 미사용.
+const subCategoryOptions = (category: ChecklistCategory): readonly string[] => {
+  if (category === FACILITY_CATEGORY) return FACILITY_SUBCATEGORIES
+  if (category === SUPPLY_CATEGORY) return SUPPLY_SUBCATEGORIES
+  return []
+}
 
 const blankDraft = (): OpeningChecklistItem => ({
   id: '',
   category: '계약/행정',
+  subCategory: '',
   title: '',
   description: '',
   status: '미확인',
@@ -41,11 +55,15 @@ const withStatusTimestamp = (item: OpeningChecklistItem, nextStatus: ChecklistSt
   return { ...item, status: nextStatus, completedAt: '' }
 }
 
-// 비품이 아닌 카테고리는 비품 전용 필드를 제거해 데이터를 깔끔하게 유지한다.
+// 카테고리에 맞게 항목을 정돈한다.
+//  - subCategory는 '시설 체크'/'비품'에서만 유지하고 그 외 카테고리에서는 비운다.
+//  - 비품 전용 수량/구매 필드는 비품이 아닌 카테고리에서 제거해 데이터를 깔끔하게 유지한다.
 const normalizeItemForCategory = (item: OpeningChecklistItem): OpeningChecklistItem => {
+  const subCategory = SUBCATEGORY_CATEGORIES.includes(item.category) ? (item.subCategory ?? '') : ''
   if (item.category === SUPPLY_CATEGORY) {
     return {
       ...item,
+      subCategory,
       quantityNeeded: Number.isFinite(item.quantityNeeded) ? item.quantityNeeded : 0,
       quantityReady: Number.isFinite(item.quantityReady) ? item.quantityReady : 0,
       unit: item.unit ?? '',
@@ -59,7 +77,7 @@ const normalizeItemForCategory = (item: OpeningChecklistItem): OpeningChecklistI
   void unit
   void supplier
   void purchaseStatus
-  return rest
+  return { ...rest, subCategory }
 }
 
 const genId = () => `oc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -88,6 +106,7 @@ const OpeningChecklistPage: React.FC<OpeningChecklistPageProps> = ({ data, onCha
   const items = data?.items ?? []
 
   const [categoryFilter, setCategoryFilter] = useState<'all' | ChecklistCategory>('all')
+  const [subCategoryFilter, setSubCategoryFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | ChecklistStatus>('all')
   const [formOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -117,14 +136,42 @@ const OpeningChecklistPage: React.FC<OpeningChecklistPageProps> = ({ data, onCha
     [items],
   )
 
+  // subCategory 필터는 카테고리가 '시설 체크'/'비품'일 때만 노출한다.
+  const showSubCategoryFilter =
+    categoryFilter !== 'all' && SUBCATEGORY_CATEGORIES.includes(categoryFilter as ChecklistCategory)
+
+  // 현재 선택 카테고리에 실제로 존재하는 subCategory 목록(빈 값은 '미분류'로 묶음).
+  const availableSubCategories = useMemo(() => {
+    if (!showSubCategoryFilter) return [] as string[]
+    const present = new Set<string>()
+    for (const i of items) {
+      if (i.category !== categoryFilter) continue
+      present.add(i.subCategory && i.subCategory.trim() ? i.subCategory : NO_SUBCATEGORY)
+    }
+    // 권장 순서 우선, 그 외(미분류 등)는 뒤에 정렬해서 붙인다.
+    const recommended = subCategoryOptions(categoryFilter as ChecklistCategory).filter((s) => present.has(s))
+    const extras = [...present].filter((s) => !recommended.includes(s)).sort()
+    return [...recommended, ...extras]
+  }, [items, categoryFilter, showSubCategoryFilter])
+
+  // 카테고리 필터를 바꾸면 subCategory 필터는 초기화(다른 카테고리의 값이 남지 않게).
+  const changeCategoryFilter = (next: 'all' | ChecklistCategory) => {
+    setCategoryFilter(next)
+    setSubCategoryFilter('all')
+  }
+
   const filtered = useMemo(
     () =>
-      items.filter(
-        (i) =>
-          (categoryFilter === 'all' || i.category === categoryFilter) &&
-          (statusFilter === 'all' || i.status === statusFilter),
-      ),
-    [items, categoryFilter, statusFilter],
+      items.filter((i) => {
+        if (categoryFilter !== 'all' && i.category !== categoryFilter) return false
+        if (statusFilter !== 'all' && i.status !== statusFilter) return false
+        if (showSubCategoryFilter && subCategoryFilter !== 'all') {
+          const sub = i.subCategory && i.subCategory.trim() ? i.subCategory : NO_SUBCATEGORY
+          if (sub !== subCategoryFilter) return false
+        }
+        return true
+      }),
+    [items, categoryFilter, statusFilter, subCategoryFilter, showSubCategoryFilter],
   )
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────
@@ -170,6 +217,7 @@ const OpeningChecklistPage: React.FC<OpeningChecklistPageProps> = ({ data, onCha
   }
 
   const isSupplyDraft = draft.category === SUPPLY_CATEGORY
+  const isSubcatDraft = SUBCATEGORY_CATEGORIES.includes(draft.category)
 
   return (
     <div className="page oc-page">
@@ -225,16 +273,29 @@ const OpeningChecklistPage: React.FC<OpeningChecklistPageProps> = ({ data, onCha
           <div className="oc-filter-group">
             <span className="oc-filter-label">카테고리</span>
             <div className="oc-chip-row">
-              <button className={`oc-chip ${categoryFilter === 'all' ? 'on' : ''}`} onClick={() => setCategoryFilter('all')}>
+              <button className={`oc-chip ${categoryFilter === 'all' ? 'on' : ''}`} onClick={() => changeCategoryFilter('all')}>
                 전체
               </button>
               {CHECKLIST_CATEGORIES.map((c) => (
-                <button key={c} className={`oc-chip ${categoryFilter === c ? 'on' : ''}`} onClick={() => setCategoryFilter(c)}>
+                <button key={c} className={`oc-chip ${categoryFilter === c ? 'on' : ''}`} onClick={() => changeCategoryFilter(c)}>
                   {c}
                 </button>
               ))}
             </div>
           </div>
+          {showSubCategoryFilter && (
+            <div className="oc-filter-group">
+              <span className="oc-filter-label">세부 분류</span>
+              <select value={subCategoryFilter} onChange={(e) => setSubCategoryFilter(e.target.value)}>
+                <option value="all">전체</option>
+                {availableSubCategories.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="oc-filter-group">
             <span className="oc-filter-label">상태</span>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | ChecklistStatus)}>
@@ -261,7 +322,9 @@ const OpeningChecklistPage: React.FC<OpeningChecklistPageProps> = ({ data, onCha
                 카테고리
                 <select
                   value={draft.category}
-                  onChange={(e) => setDraft({ ...draft, category: e.target.value as ChecklistCategory })}
+                  onChange={(e) =>
+                    setDraft({ ...draft, category: e.target.value as ChecklistCategory, subCategory: '' })
+                  }
                 >
                   {CHECKLIST_CATEGORIES.map((c) => (
                     <option key={c} value={c}>
@@ -270,6 +333,19 @@ const OpeningChecklistPage: React.FC<OpeningChecklistPageProps> = ({ data, onCha
                   ))}
                 </select>
               </label>
+              {isSubcatDraft && (
+                <label>
+                  세부 분류
+                  <select value={draft.subCategory ?? ''} onChange={(e) => setDraft({ ...draft, subCategory: e.target.value })}>
+                    <option value="">(미분류)</option>
+                    {subCategoryOptions(draft.category).map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label>
                 우선순위
                 <select
@@ -392,6 +468,7 @@ const OpeningChecklistPage: React.FC<OpeningChecklistPageProps> = ({ data, onCha
                     <div className="oc-item-top">
                       <span className={`oc-badge ${PRIORITY_CLASS[item.priority]}`}>{item.priority}</span>
                       <span className="oc-item-cat">{item.category}</span>
+                      {item.subCategory && <span className="oc-badge oc-subcat-badge">{item.subCategory}</span>}
                       <span className="oc-item-title">{item.title}</span>
                     </div>
                     {item.description && <p className="oc-item-desc">{item.description}</p>}

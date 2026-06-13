@@ -190,6 +190,9 @@
   padding: 2px 8px;
   white-space: nowrap;
 }
+/* 세부 분류(subCategory) 배지 */
+.oc-subcat-badge { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+
 .oc-pri-low { background: #f1f5f9; color: #64748b; }
 .oc-pri-normal { background: #eff6ff; color: #2563eb; }
 .oc-pri-high { background: #fff7ed; color: #c2410c; }

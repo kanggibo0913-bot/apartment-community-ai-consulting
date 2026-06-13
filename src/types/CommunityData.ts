@@ -514,9 +514,19 @@ export const CHECKLIST_STATUSES: ChecklistStatus[] = ['미확인', '진행중', 
 export const CHECKLIST_PRIORITIES: ChecklistPriority[] = ['낮음', '보통', '높음', '필수']
 export const SUPPLY_PURCHASE_STATUSES: SupplyPurchaseStatus[] = ['미구매', '구매예정', '구매완료', '입고완료', '불필요']
 
+// subCategory(세부 분류)는 '시설 체크'와 '비품' 카테고리에서만 의미가 있다.
+// 자유 문자열(subCategory?: string)이지만 신규 항목 입력/필터 UI에서 아래 권장값을 제시한다.
+// 기존 데이터에 subCategory가 없어도(undefined/'') 정상 동작한다.
+export const FACILITY_SUBCATEGORIES = ['공통', '헬스장', '골프장', '수영장', '체육관', '샤워 / 탈의', '안전 / 방재', '설비 / 전기'] as const
+export const SUPPLY_SUBCATEGORIES = ['인포 / 사무', '운영 / 안내', '청소 / 위생', '샤워 / 탈의', '헬스', '골프', '수영', '체육관', '안전 / 응급', '기타 소모품'] as const
+// subCategory가 의미 있는 카테고리 (그 외 카테고리에서는 비워 둔다)
+export const SUBCATEGORY_CATEGORIES: ChecklistCategory[] = ['시설 체크', '비품']
+
 export interface OpeningChecklistItem {
   id: string
   category: ChecklistCategory
+  // 세부 분류 (옵셔널, '시설 체크'/'비품'에서만 사용). 기존 데이터 하위호환: 없으면 미분류로 취급.
+  subCategory?: string
   title: string
   description: string // 설명 (메모와 별도로 항목 자체 설명)
   status: ChecklistStatus
@@ -537,6 +547,10 @@ export interface OpeningChecklistItem {
 
 export interface OpeningChecklistData {
   items: OpeningChecklistItem[]
+  // 적용된 공식 seed 버전(옵셔널, 하위호환). 이 값이 최신 seed 버전보다 낮으면 1회 migration으로
+  // 누락된 공식 seed 항목을 append하고 subCategory를 backfill한다. (openingChecklistDefaults.ts)
+  // 최신 버전과 같으면 migration을 다시 실행하지 않아 사용자가 삭제한 항목이 되살아나지 않는다.
+  seedVersion?: number
   // TODO(클라우드 동기화): 추후 자동 동기화 시 updatedAt/revision 등 메타데이터 추가 위치
 }
 
