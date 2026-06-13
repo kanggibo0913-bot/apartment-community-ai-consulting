@@ -162,6 +162,52 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 파일 선택 input을 감싼 label을 버튼처럼 보이게 (Button과 동일한 .btn 클래스 사용) */
+.sys-sync-restore-label {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.sys-sync-restore-label.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* 클라우드/로컬 신선도 판정 배지 */
+.sys-sync-verdict {
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.sys-sync-verdict--ok {
+  background: #e7f6ee;
+  border: 1px solid #b6e3c8;
+  color: #0a7f3f;
+}
+
+.sys-sync-verdict--warn {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #b45309;
+}
+
+.sys-sync-verdict--info {
+  background: #eef4ff;
+  border: 1px solid #b4d2ff;
+  color: #1d4ed8;
+}
+
+.sys-sync-verdict--err {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
 .sys-sync-msg {
   margin: 10px 0 0;
   padding: 8px 12px;

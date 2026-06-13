@@ -1,4 +1,5 @@
 import { Handler } from '@netlify/functions'
+import { SYNC_KEY_SET } from '../../src/utils/syncKeys'
 
 // HOMEBASE AI 앱 state 수동 동기화 함수.
 // 브라우저는 GET으로 클라우드 값을 받아 localStorage에 복원하고, POST로 현재
@@ -18,41 +19,11 @@ import { Handler } from '@netlify/functions'
 
 // 동기화 대상 — 기존 localStorage key와 동일 식별자.
 // 화이트리스트로 두어 외부 입력이 임의 key를 만들지 못하게 차단한다.
-// 실제 src 코드에서 쓰는 key만 포함하고, 레거시/UI 메타/세션 토글은 제외한다.
-// 추가/변경 시 src/pages/SystemDataSyncPage.tsx 의 SYNC_KEYS 라벨 배열도 함께 갱신할 것.
-const ALLOWED_KEYS = new Set<string>([
-  // 단지/커뮤니티 프로젝트 — 단지 기본정보/시설/운영/비용/수익/민원/계약/월간리포트 전부 포함.
-  'communityAiProjects',
-  // 입찰공고 관리
-  'tenderNotices',
-  'tenderScheduleEvents',
-  'bidNoticeChecklist',
-  // 입찰 산출표
-  'estimateSheets',
-  'bidCalculationSnapshots',
-  // 현장 인건비 (legacy 전역 + 신규 ByProject 양쪽 모두 동기화 대상)
-  'siteLaborCalendarInputs',
-  'siteLaborCalendarInputsByProject',
-  'siteLaborCostData',
-  'siteLaborCostDataByProject',
-  'siteLaborCostSnapshots',
-  'siteLaborCostSnapshotsByProject',
-  'siteLaborPayrollDraft',
-  'siteLaborPayrollDraftByProject',
-  // 급여요약 적용 기준(direct calc vs calendar) — 단지별 분리 저장. 사용자가 다른 PC에서도
-  // 같은 적용 기준을 보고 싶을 가능성이 높아 동기화 대상에 포함.
-  'siteLaborPayrollSourcePref',
-  'siteLaborPayrollSourcePrefByProject',
-  // 시설 보수/입주민 보고서 (legacy + ByProject)
-  'maintenanceRecords',
-  'maintenanceRecordsByProject',
-  'residentNoticeReports',
-  'residentNoticeReportsByProject',
-  'publishedResidentReports',
-  'publishedResidentReportsByProject',
-  // AI 결과 이력 — 단일 storage이지만 각 항목에 projectId 메타가 들어가서 분리됨
-  'aiResultHistory',
-])
+// ⚠️ 단일 출처: 목록 정의는 src/utils/syncKeys.ts 한 곳에만 둔다.
+//    프론트(SystemDataSyncPage)와 이 함수가 같은 모듈을 import해 드리프트를 막는다.
+//    key 추가/변경 시 src/utils/syncKeys.ts만 수정하면 양쪽에 동시 반영된다.
+//    (이 파일은 Netlify esbuild 번들 시 syncKeys.ts를 함께 인라인하므로 별도 복제가 불필요.)
+const ALLOWED_KEYS = SYNC_KEY_SET
 
 // 기본 작업공간 — schema.sql에서 시드한 행과 동일.
 // 후속 단계에서 접근코드 기반 sha256 hash로 교체 예정.
