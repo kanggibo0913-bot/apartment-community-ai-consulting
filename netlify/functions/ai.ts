@@ -327,26 +327,25 @@ const handler: Handler = async (event) => {
       body: JSON.stringify({ success: true, result: outputText.trim() }),
     }
   } catch (error) {
-    let message = '알 수 없는 오류가 발생했습니다.'
-
-    if (error instanceof Error) {
-      const isTimeoutError =
-        error.name === 'TimeoutError' ||
+    // 원본 error.message는 타임아웃 분류용으로만 내부에서 읽고, 외부로는 절대 내보내지 않는다.
+    const isTimeoutError =
+      error instanceof Error &&
+      (error.name === 'TimeoutError' ||
         error.message.includes('timeout') ||
         error.message.includes('Timeout') ||
-        error.message.includes('ECONNABORTED')
+        error.message.includes('ECONNABORTED'))
 
-      if (isTimeoutError) {
-        message = 'AI 응답 시간이 길어 요청이 중단되었습니다. 입력 내용을 줄이거나 다시 시도해주세요.'
-      } else {
-        message = `AI 호출 중 오류가 발생했습니다: ${error.message}`
-      }
-    }
+    // 보안: OpenAI 원본 에러 메시지에는 마스킹된 API 키 조각·request id·authorization 정보가
+    // 섞여 있을 수 있다. 사용자 응답·AI 이력·콘솔 로그 어디에도 원본 메시지를 노출하지 않고
+    // 일반화된 문구만 반환한다. (원인 구분은 아래 errorStatus 코드로 한다)
+    const message = isTimeoutError
+      ? 'AI 응답 시간이 길어 요청이 중단되었습니다. 입력 내용을 줄이거나 다시 시도해주세요.'
+      : 'AI 요청 처리 중 오류가 발생했습니다. API 키 또는 모델 설정을 확인해주세요.'
 
-    // 보안: 모델명·원본 error 객체(요청 정보 포함 가능)는 로그에 남기지 않는다
+    // 로그에도 원본 error 객체·메시지는 남기지 않고, 분류용 최소 정보(이름·상태코드)만 기록한다.
     const errorName = error instanceof Error ? error.name : 'UnknownError'
     const errorStatus = (error as { status?: number })?.status
-    console.error('AI function error:', { taskType, message, errorName, errorStatus })
+    console.error('AI function error:', { taskType, errorName, errorStatus })
     return {
       statusCode: 500,
       headers: jsonHeaders,
