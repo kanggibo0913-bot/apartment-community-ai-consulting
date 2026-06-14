@@ -8,18 +8,24 @@ import { SYNC_KEY_SET } from '../../src/utils/syncKeys'
 //
 // 라우팅:
 //   GET  /.netlify/functions/app-state
-//     → { ok: true, items: { state_key: payload, ... }, updatedAt: { state_key: iso }, workspaceId, usedDefault }
+//     → { ok: true, items: { state_key: payload, ... }, updatedAt: { state_key: iso }, workspaceId, usedDefault, fallbackAllowed }
 //   POST /.netlify/functions/app-state
 //     body: { items: Record<state_key, any> }
-//     → { ok: true, saved: number, savedKeys: string[], usedDefault }
+//     → { ok: true, saved: number, savedKeys: string[], usedDefault, fallbackAllowed }
 //
 // 워크스페이스 접근 게이트 (Phase C-1/C-2):
 //   - 요청 헤더 x-workspace-access-code 로 "워크스페이스 접근코드"를 받는다(GET/POST 동일).
 //   - ⚠️ 이것은 "현장(단지)별 격리"가 아니라 "워크스페이스 접근 게이트"다. 외부인이 함수 URL만으로
 //     데이터를 읽거나 덮어쓰는 것을 1차 차단하는 용도. 현장별(projectId) 접근 제한은 추후 단계.
 //   - 코드의 sha256 해시는 "서버에서만" 계산한다. 코드 평문/해시는 응답·로그에 절대 싣지 않는다.
-//   - 코드가 있으면 그 해시로 workspace를 조회한다. 매칭이 없으면 403(잘못된 접근코드).
+//   - 코드가 있으면 그 해시로 workspace를 조회한다. 매칭이 없으면 403(잘못된 접근코드, invalid_access_code).
 //   - 코드가 없으면 전환기 동안 기존 기본 workspace로 동작한다(아래 DEFAULT_WORKSPACE_CODE_HASH).
+//
+// 전환기 fallback 폐기 준비 (Phase C-3):
+//   - "코드 없음 → 기본 workspace" 전환기 fallback을 환경변수로 끌 수 있다(resolveFallbackPolicy).
+//   - fallback이 꺼져 있고 코드도 없으면 403(access_code_required) — GET/POST 모두 차단.
+//   - 기본값(환경변수 미설정)은 현재 동작과 동일한 "fallback 허용"이라 배포가 깨지지 않는다.
+//   - 응답 메타 usedDefault(전환기 기본 사용 여부) + fallbackAllowed(서버 정책상 fallback 허용 여부)로 상태를 가시화.
 //
 // 응답 정책:
 //   - HTTP status는 거의 항상 200으로 통일하고 ok 플래그로 분기한다(브라우저 단순화).
@@ -48,6 +54,57 @@ const ACCESS_CODE_HEADER = 'x-workspace-access-code'
 const sha256Hex = (input: string): string =>
   createHash('sha256').update(input, 'utf8').digest('hex')
 
+// ── 전환기 기본 작업공간(default fallback) 폐기 준비 (Phase C-3) ──────────────
+// "코드가 없으면 기본 workspace로 동작"하는 전환기 fallback을 환경변수로 끄고 켤 수 있게 한다.
+// ⚠️ 기본값(둘 다 미설정)은 현재 production 동작과 동일한 "fallback 허용"이다 — 설정을 바꾸지 않는 한
+//    배포가 깨지지 않는다. 실제 폐기는 운영 workspace 생성·코드 검증 후 환경변수로 명시적으로 한다.
+//
+//   - HOMEBASE_ALLOW_DEFAULT_WORKSPACE_FALLBACK
+//       'false' → fallback 차단(코드 없으면 403). 'true' → 강제 허용(마감일 무시). 그 외/미설정 → 미지정.
+//   - HOMEBASE_DEFAULT_WORKSPACE_FALLBACK_UNTIL = 'YYYY-MM-DD'
+//       위 플래그가 미지정일 때만 사용한다. 이 날짜(UTC 기준 그 날의 끝 23:59:59.999Z)가 지나면 차단.
+//       형식이 잘못되면 배포를 깨지 않도록 안전하게 "허용"으로 두되 reason=invalid_until로 표시한다.
+//
+// ⚠️ 순수 함수다 — process.env/Date를 직접 읽지 않고 인자로 받는다. 그래야 테스트에서 결정적으로 검증된다.
+type FallbackPolicyReason =
+  | 'explicitly_disabled'
+  | 'explicitly_enabled'
+  | 'deadline_passed'
+  | 'within_deadline'
+  | 'invalid_until'
+  | 'default_allowed'
+
+interface FallbackPolicy {
+  allowed: boolean
+  reason: FallbackPolicyReason
+}
+
+// ⚠️ 테스트에서 직접 검증하므로 export 한다(Netlify는 handler만 쓰지만 추가 export는 무해).
+export const resolveFallbackPolicy = (
+  env: {
+    HOMEBASE_ALLOW_DEFAULT_WORKSPACE_FALLBACK?: string
+    HOMEBASE_DEFAULT_WORKSPACE_FALLBACK_UNTIL?: string
+  },
+  nowMs: number,
+): FallbackPolicy => {
+  const flag = (env.HOMEBASE_ALLOW_DEFAULT_WORKSPACE_FALLBACK || '').trim().toLowerCase()
+  if (flag === 'false') return { allowed: false, reason: 'explicitly_disabled' }
+  if (flag === 'true') return { allowed: true, reason: 'explicitly_enabled' }
+
+  const until = (env.HOMEBASE_DEFAULT_WORKSPACE_FALLBACK_UNTIL || '').trim()
+  if (until) {
+    // 'YYYY-MM-DD'만 허용. 그 날의 끝(UTC 23:59:59.999)까지 허용, 이후 차단.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) return { allowed: true, reason: 'invalid_until' }
+    const cutoff = Date.parse(`${until}T23:59:59.999Z`)
+    if (Number.isNaN(cutoff)) return { allowed: true, reason: 'invalid_until' }
+    return nowMs > cutoff
+      ? { allowed: false, reason: 'deadline_passed' }
+      : { allowed: true, reason: 'within_deadline' }
+  }
+
+  return { allowed: true, reason: 'default_allowed' }
+}
+
 // 요청 헤더에서 접근코드를 읽는다(트림). 없으면 빈 문자열.
 // Netlify는 헤더 key를 소문자로 정규화하지만, 방어적으로 몇 가지 변형도 확인한다.
 const readAccessCode = (event: { headers?: Record<string, string | undefined> }): string => {
@@ -60,14 +117,17 @@ const readAccessCode = (event: { headers?: Record<string, string | undefined> })
 type WorkspaceResolution =
   | { kind: 'ok'; workspaceId: string; usedDefault: boolean }
   | { kind: 'invalid_code' } // 코드는 왔지만 매칭 workspace 없음 → 403
+  | { kind: 'fallback_disabled' } // 코드 없음 + 전환기 fallback 비활성화 → 403(접근코드 필수)
   | { kind: 'not_found' } // 기본 workspace 자체가 없음(schema 미적용)
   | { kind: 'error' } // 조회 쿼리 실패
 
 // 접근코드 유무에 따라 workspace를 해석한다.
+// fallbackAllowed=false면 코드가 없을 때 기본 workspace로 넘어가지 않고 fallback_disabled를 돌려준다.
 const resolveWorkspace = async (
   origin: string,
   headers: Record<string, string>,
   accessCode: string,
+  fallbackAllowed: boolean,
 ): Promise<WorkspaceResolution> => {
   const code = (accessCode || '').trim()
   if (code) {
@@ -81,7 +141,9 @@ const resolveWorkspace = async (
     if (!id) return { kind: 'invalid_code' } // 코드가 틀림 → 403, 어떤 읽기/쓰기도 하지 않음
     return { kind: 'ok', workspaceId: id, usedDefault: false }
   }
-  // 코드가 없으면 전환기 동안 기본 workspace로 동작한다.
+  // 코드가 없을 때: 전환기 fallback이 꺼져 있으면 접근코드를 요구한다(읽기/쓰기 0).
+  if (!fallbackAllowed) return { kind: 'fallback_disabled' }
+  // fallback 허용 시에만 전환기 기본 workspace로 동작한다.
   let id: string | null
   try {
     id = await fetchWorkspaceIdByHash(origin, headers, DEFAULT_WORKSPACE_CODE_HASH)
@@ -117,8 +179,16 @@ const handler: Handler = async (event) => {
     Authorization: `Bearer ${supabaseKey}`,
   }
 
-  // 1) 접근코드(있으면) → 워크스페이스 해석. 없으면 전환기 기본 workspace fallback.
-  const resolution = await resolveWorkspace(restOrigin, authHeaders, readAccessCode(event))
+  // 0) 전환기 기본 작업공간 fallback 허용 여부(환경변수 기반, 기본 허용 → 현재 동작 유지).
+  const fallback = resolveFallbackPolicy(process.env, Date.now())
+
+  // 1) 접근코드(있으면) → 워크스페이스 해석. 없으면 fallback 허용 시에만 기본 workspace 사용.
+  const resolution = await resolveWorkspace(
+    restOrigin,
+    authHeaders,
+    readAccessCode(event),
+    fallback.allowed,
+  )
   if (resolution.kind === 'invalid_code') {
     // ⚠️ 코드/해시는 응답에 싣지 않는다. 틀린 코드는 어떤 데이터도 읽거나 쓰지 않고 즉시 거부한다.
     return json(403, {
@@ -126,6 +196,15 @@ const handler: Handler = async (event) => {
       error: 'invalid_access_code',
       message:
         '워크스페이스 접근코드가 올바르지 않습니다. 코드를 다시 확인하거나, 코드를 비우고 전환기 기본 작업공간으로 시도하세요.',
+    })
+  }
+  if (resolution.kind === 'fallback_disabled') {
+    // 코드 없음 + 전환기 fallback 비활성화 → 접근코드 필수. GET/POST 모두 여기서 차단(읽기/쓰기 0).
+    return json(403, {
+      ok: false,
+      error: 'access_code_required',
+      message:
+        '전환기 기본 작업공간이 비활성화되어 있습니다. 워크스페이스 접근코드를 입력해주세요.',
     })
   }
   if (resolution.kind === 'error') {
@@ -141,10 +220,17 @@ const handler: Handler = async (event) => {
   const { workspaceId, usedDefault } = resolution
 
   if (event.httpMethod === 'GET') {
-    return await handleGet(restOrigin, authHeaders, workspaceId, usedDefault)
+    return await handleGet(restOrigin, authHeaders, workspaceId, usedDefault, fallback.allowed)
   }
   if (event.httpMethod === 'POST') {
-    return await handlePost(restOrigin, authHeaders, workspaceId, event.body, usedDefault)
+    return await handlePost(
+      restOrigin,
+      authHeaders,
+      workspaceId,
+      event.body,
+      usedDefault,
+      fallback.allowed,
+    )
   }
   return json(405, { ok: false, message: `Method ${event.httpMethod} not allowed` })
 }
@@ -154,6 +240,7 @@ const handleGet = async (
   headers: Record<string, string>,
   workspaceId: string,
   usedDefault: boolean,
+  fallbackAllowed: boolean,
 ) => {
   const url = `${origin}/rest/v1/homebase_app_state?workspace_id=eq.${workspaceId}&select=state_key,payload,version,updated_at`
   try {
@@ -178,7 +265,7 @@ const handleGet = async (
       items[r.state_key] = r.payload
       updatedAt[r.state_key] = r.updated_at
     })
-    return json(200, { ok: true, items, updatedAt, workspaceId, usedDefault })
+    return json(200, { ok: true, items, updatedAt, workspaceId, usedDefault, fallbackAllowed })
   } catch (e) {
     return json(200, {
       ok: false,
@@ -193,6 +280,7 @@ const handlePost = async (
   workspaceId: string,
   bodyRaw: string | null | undefined,
   usedDefault: boolean,
+  fallbackAllowed: boolean,
 ) => {
   let parsed: { items?: Record<string, unknown> }
   try {
@@ -238,6 +326,7 @@ const handlePost = async (
       savedKeys: [],
       skippedKeys,
       usedDefault,
+      fallbackAllowed,
       message: '저장할 데이터가 없어 빈 항목은 건너뛰었습니다.',
     })
   }
@@ -293,6 +382,7 @@ const handlePost = async (
       savedKeys,
       skippedKeys,
       usedDefault,
+      fallbackAllowed,
       message,
     })
   } catch (e) {

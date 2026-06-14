@@ -201,6 +201,9 @@ interface CloudStatus {
   message?: string // available=false일 때 사유
   cloudLatest: string | null // 동기화 대상 key의 서버 updated_at 최대값
   keyCount: number // 클라우드에 저장된 동기화 대상 key 수
+  usedDefault?: boolean // 전환기 기본 작업공간으로 응답했는지(접근코드 유효 시 false) — Phase C-3
+  fallbackAllowed?: boolean // 서버 정책상 전환기 fallback 허용 여부 — Phase C-3
+  error?: string // available=false일 때 서버 error 코드(invalid_access_code | access_code_required 등)
 }
 
 type VerdictTone = 'ok' | 'warn' | 'info' | 'err'
@@ -260,6 +263,9 @@ const SystemDataSyncPage: React.FC = () => {
         items?: Record<string, unknown>
         updatedAt?: Record<string, string>
         message?: string
+        usedDefault?: boolean
+        fallbackAllowed?: boolean
+        error?: string
       }
       if (!data.ok) {
         const s: CloudStatus = {
@@ -267,6 +273,8 @@ const SystemDataSyncPage: React.FC = () => {
           message: data.message || '클라우드 상태를 확인할 수 없습니다.',
           cloudLatest: null,
           keyCount: 0,
+          error: data.error,
+          fallbackAllowed: data.fallbackAllowed,
         }
         setCloudStatus(s)
         return s
@@ -282,7 +290,13 @@ const SystemDataSyncPage: React.FC = () => {
           if (ts > latest) latest = ts
         }
       })
-      const s: CloudStatus = { available: true, cloudLatest: latest || null, keyCount: count }
+      const s: CloudStatus = {
+        available: true,
+        cloudLatest: latest || null,
+        keyCount: count,
+        usedDefault: data.usedDefault,
+        fallbackAllowed: data.fallbackAllowed,
+      }
       setCloudStatus(s)
       return s
     } catch (e) {
@@ -393,7 +407,10 @@ const SystemDataSyncPage: React.FC = () => {
     clearAccessCode()
     setAppliedAccessCode('')
     setAccessCodeInput('')
-    setMsg({ type: 'info', text: '접근코드를 삭제했습니다. 다음 요청은 전환기 기본 작업공간으로 동작합니다.' })
+    setMsg({
+      type: 'info',
+      text: '접근코드를 삭제했습니다. 전환기 기본 작업공간이 열려 있으면 그 작업공간으로 동작하고, 닫혀 있으면 접근이 거부됩니다(아래 상태 확인).',
+    })
     void fetchCloudStatus()
   }
 
@@ -763,12 +780,25 @@ const SystemDataSyncPage: React.FC = () => {
         </p>
 
         {appliedAccessCode ? (
-          <p className="sys-sync-verdict sys-sync-verdict--ok">
-            <strong>접근코드 적용됨</strong> ({maskAccessCode(appliedAccessCode)}) — 저장/불러오기 요청이 이 코드의 작업공간으로 전달됩니다.
+          cloudStatus && !cloudStatus.available ? (
+            // 코드는 적용됐지만 상태 조회가 실패 — 보통 코드 불일치(403) 또는 서버 오류.
+            <p className="sys-sync-verdict sys-sync-verdict--err">
+              <strong>접근코드 적용됨</strong> ({maskAccessCode(appliedAccessCode)}) — 다만 이 코드로 작업공간을 확인하지 못했습니다. 아래 "클라우드 / 로컬 상태"의 오류를 확인하거나 코드를 다시 입력하세요.
+            </p>
+          ) : (
+            <p className="sys-sync-verdict sys-sync-verdict--ok">
+              <strong>접근코드 기반 작업공간 사용 중</strong> ({maskAccessCode(appliedAccessCode)}) — 저장/불러오기 요청이 이 코드의 작업공간으로 전달됩니다.
+            </p>
+          )
+        ) : cloudStatus && !cloudStatus.available && cloudStatus.error === 'access_code_required' ? (
+          // 코드 미설정 + 서버에서 전환기 fallback이 닫힘 → 접근코드 필수(폐기 완료 상태).
+          <p className="sys-sync-verdict sys-sync-verdict--err">
+            <strong>접근코드 필수 · 전환기 기본 작업공간 비활성화됨</strong> — 이 서버는 더 이상 코드 없이 접근할 수 없습니다. 운영용 접근코드를 입력하세요.
           </p>
         ) : (
+          // 코드 미설정 + 전환기 fallback 열림(usedDefault) → 동작은 하지만 폐기 예정 경고.
           <p className="sys-sync-verdict sys-sync-verdict--warn">
-            <strong>접근코드 미설정 · 전환기 기본 작업공간 사용 중</strong> — 코드 없이도 기존 기본 작업공간으로 동작하지만, 보안을 위해 운영용 접근코드 적용을 권장합니다.
+            <strong>접근코드 미설정 · 전환기 기본 작업공간 사용 중</strong> — 코드 없이도 기본 작업공간으로 동작하지만, 보안상 운영 workspace 전환 후 이 기본 작업공간은 <strong>비활성화될 예정</strong>입니다. 운영용 접근코드 적용을 권장합니다.
           </p>
         )}
 
